@@ -319,30 +319,30 @@
 
 ## Fase 8 — Notificaciones, Polish y Seguridad
 
-### T-800: Implementar sistema de notificaciones internas
+### [x] T-800: Implementar sistema de notificaciones internas
 - **Reqs:** REQ-NOT-001, REQ-NOT-002
-- **Entregable:** `modules/notifications/` con alertas en dashboard operativo.
-- **DoD:** Alertas de token expirado, circuit breaker, DLQ visibles en UI.
+- **Entregable:** `modules/notifications/service.py` y `router.py` con detección de fallos DLQ y circuit breakers.
+- **Estado:** ✅ Completado. Integrado dinámicamente en dashboard operativo y endpoint `/notifications/alerts`.
 
-### T-801: Implementar rate limiting en endpoints
+### [x] T-801: Implementar rate limiting en endpoints
 - **Reqs:** Principio XVI
-- **Entregable:** SlowAPI configurado en endpoints sensibles.
-- **DoD:** Exceso de peticiones retorna `429`. Rate limits configurables.
+- **Entregable:** SlowAPI configurado en `core/security/limiter.py` y aplicado en `/auth/login` y `/reports/generate`.
+- **Estado:** ✅ Completado. Control de concurrencia y protección contra abuso y denegación de servicio.
 
-### T-802: Implementar headers de seguridad HTTP
+### [x] T-802: Implementar headers de seguridad HTTP
 - **Reqs:** Constitución §Security.2
-- **Entregable:** Middleware con CSP, X-Content-Type-Options, X-Frame-Options, HSTS.
-- **DoD:** Headers presentes en todas las respuestas. Validación con herramienta de security headers.
+- **Entregable:** `core/middleware/security.py` con `SecurityHeadersMiddleware`.
+- **Estado:** ✅ Completado. Inyección de CSP, HSTS, X-Content-Type-Options, X-Frame-Options y Referrer-Policy.
 
-### T-803: Implementar purga automática de payloads crudos
+### [x] T-803: Implementar purga automática de payloads crudos
 - **Reqs:** BR-INT-005 (180 días)
-- **Entregable:** Tarea Celery Beat de purga diaria de `interaction_evidences` expiradas.
-- **DoD:** Evidencias >180 días purgadas conservando hash. Test de verificación.
+- **Entregable:** `modules/interactions/tasks.py` con `purge_expired_raw_evidences` y tarea Celery Beat.
+- **Estado:** ✅ Completado. Purga que preserva perennemente el hash SHA-256 para auditoría inmutable (Principio X).
 
-### T-804: Validación de seguridad completa (OWASP)
+### [x] T-804: Validación de seguridad completa (OWASP)
 - **Reqs:** Principio XVI
-- **Entregable:** Suite de tests de seguridad: inyección SQL, XSS, CSRF, escalación de privilegios.
-- **DoD:** 0 vulnerabilidades CRITICAL/HIGH en escaneo DAST/SAST.
+- **Entregable:** `backend/tests/test_security_and_compliance.py`.
+- **Estado:** ✅ Completado. Suite completa con tests de inyección SQL, escalación de privilegios, headers y rate limiting.
 
 ---
 

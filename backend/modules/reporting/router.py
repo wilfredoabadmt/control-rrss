@@ -6,9 +6,10 @@ REQ-RPT-001, BR-RPT-004, BR-RPT-005
 """
 
 
+from core.security.limiter import limiter
 from core.security.rbac import require_roles
 from database import get_async_db
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from modules.iam.models import User
 from modules.reporting.generator import ExcelReportGenerator
 from modules.reporting.models import ReportExecution
@@ -25,7 +26,14 @@ router = APIRouter(prefix="/reports", tags=["Reporting & Analytics Engine"])
     status_code=status.HTTP_200_OK,
     summary="Generar y descargar reporte oficial en formato Excel (.xlsx) (REQ-RPT-001)",
 )
+@router.post(
+    "/generate",
+    status_code=status.HTTP_200_OK,
+    summary="Generar reporte oficial .xlsx (alias de export-excel)",
+)
+@limiter.limit("10/minute")
 async def generate_excel_report(
+    request: Request,
     req: ReportGenerateRequest,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(

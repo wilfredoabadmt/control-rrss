@@ -17,6 +17,7 @@ from modules.employees.models import Employee
 from modules.iam.models import User
 from modules.interactions.models import Interaction
 from modules.monitoring.models import ExternalSyncJob
+from modules.notifications.service import NotificationService
 from modules.publications.models import Publication
 from modules.reporting.indicators import IndicatorEngine
 from modules.shared.enums import EmployeeStatus, UserRole, VerificationStatus
@@ -88,10 +89,12 @@ async def get_operational_dashboard(
         for j in jobs
     ]
 
-    # 6. Alertas
+    # 6. Alertas dinámicas del sistema
+    system_alerts = await NotificationService.get_active_system_alerts(db)
     alerts = [
         {"level": "INFO", "message": "Tokens de conectores institucionales Meta y TikTok vigentes."},
         {"level": "SUCCESS", "message": "Motor de ingesta operando con idempotencia activa."},
+        *system_alerts,
     ]
 
     return OperationalDashboardResponse(

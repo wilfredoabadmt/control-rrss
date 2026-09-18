@@ -69,7 +69,8 @@ class UserResponse(UserBase):
 # -----------------------------------------------------------------------------
 
 class LoginRequest(BaseModel):
-    email: EmailStr = Field(..., description="Correo institucional")
+    email: EmailStr | None = Field(None, description="Correo institucional")
+    username: str | None = Field(None, description="Identificador o correo institucional")
     password: str = Field(..., description="Contraseña")
 
 

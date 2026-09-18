@@ -53,6 +53,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Middleware de Cabeceras de Seguridad HTTP (Constitución §Security.2)
+from core.middleware.security import SecurityHeadersMiddleware
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Rate Limiting (Principio XVI)
+from core.security.limiter import limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Middleware de CORS
 app.add_middleware(
     CORSMiddleware,
@@ -228,6 +241,11 @@ from modules.reporting.router import router as reporting_router
 
 app.include_router(reporting_router, prefix=settings.API_V1_STR)
 app.include_router(dashboard_router, prefix=settings.API_V1_STR)
+
+# Fase 8: Notificaciones y Alertas
+from modules.notifications.router import router as notifications_router
+
+app.include_router(notifications_router, prefix=settings.API_V1_STR)
 
 
 

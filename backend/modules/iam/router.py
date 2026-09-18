@@ -38,11 +38,14 @@ users_router = APIRouter()
 roles_router = APIRouter()
 
 
+from core.security.limiter import limiter
+
 # -----------------------------------------------------------------------------
 # Endpoints de Autenticación (/api/v1/auth)
 # -----------------------------------------------------------------------------
 
 @auth_router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")
 async def login(
     req: LoginRequest,
     request: Request,
@@ -56,9 +59,10 @@ async def login(
     user_agent = request.headers.get("user-agent")
 
     try:
+        user_email = req.email or req.username or ""
         return await IAMService.authenticate_user(
             db=db,
-            email=req.email,
+            email=user_email,
             password=req.password,
             ip_address=client_ip,
             user_agent=user_agent,
