@@ -47,8 +47,8 @@ app = FastAPI(
         "del Gobierno Autónomo Municipal de El Alto (GAMEA)."
     ),
     version="1.0.0",
-    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
-    redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
+    docs_url="/docs" if (settings.ENVIRONMENT != "production" or settings.ENABLE_DOCS) else None,
+    redoc_url="/redoc" if (settings.ENVIRONMENT != "production" or settings.ENABLE_DOCS) else None,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )

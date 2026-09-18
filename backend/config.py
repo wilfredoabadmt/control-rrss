@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # Entorno y Proyecto
     ENVIRONMENT: str = Field(default="development")
     DEBUG: bool = Field(default=True)
+    ENABLE_DOCS: bool = Field(default=True)
     PROJECT_NAME: str = Field(default="GAMEA Social Monitor")
     API_V1_STR: str = Field(default="/api/v1")
 
