@@ -5,7 +5,7 @@ Principio XXXI: Configuración Externalizada
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -61,9 +61,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = Field(
         default="postgresql+asyncpg://gamea_admin:gamea_secure_password_dev_change_in_prod@localhost:5432/gamea_social_monitor"
     )
-    DATABASE_URL_SYNC: str = Field(
-        default="postgresql+psycopg2://gamea_admin:gamea_secure_password_dev_change_in_prod@localhost:5432/gamea_social_monitor"
-    )
+    DATABASE_URL_SYNC: str = Field(default="")
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -78,13 +76,16 @@ class Settings(BaseSettings):
 
     @field_validator("DATABASE_URL_SYNC", mode="before")
     @classmethod
-    def assemble_sync_db_url(cls, v: str | None) -> str:
+    def assemble_sync_db_url(cls, v: str | None, info: ValidationInfo) -> str:
         if v:
             if v.startswith("postgres://"):
                 return v.replace("postgres://", "postgresql+psycopg2://", 1)
             if v.startswith("postgresql://") and not v.startswith("postgresql+"):
                 return v.replace("postgresql://", "postgresql+psycopg2://", 1)
             return v
+        async_url = info.data.get("DATABASE_URL")
+        if async_url and "postgresql+asyncpg://" in str(async_url):
+            return str(async_url).replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
         return "postgresql+psycopg2://gamea_admin:gamea_secure_password_dev_change_in_prod@localhost:5432/gamea_social_monitor"
 
 
