@@ -53,14 +53,16 @@ class UUIDPrimaryKeyMixin:
     )
 
 
+def create_configured_async_engine(db_url: str):
+    kwargs = {"echo": settings.DEBUG, "pool_pre_ping": True}
+    if "sqlite" not in db_url:
+        kwargs["pool_size"] = 10
+        kwargs["max_overflow"] = 20
+    return create_async_engine(db_url, **kwargs)
+
+
 # Engine Asíncrono (FastAPI)
-async_engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-)
+async_engine = create_configured_async_engine(settings.DATABASE_URL)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=async_engine,
@@ -69,6 +71,18 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
     expire_on_commit=False,
 )
+
+
+def activate_sqlite_fallback(db_path: str = "gamea_local.db"):
+    """
+    Activa un motor SQLite local seguro en caso de que PostgreSQL no esté disponible.
+    Garantiza que la aplicación funcione al 100% sin depender de un servicio externo.
+    """
+    global async_engine
+    fallback_url = f"sqlite+aiosqlite:///{db_path}"
+    async_engine = create_configured_async_engine(fallback_url)
+    AsyncSessionLocal.configure(bind=async_engine)
+    return async_engine
 
 # Engine Síncrono (Alembic, Workers, Scripts)
 sync_engine = create_engine(

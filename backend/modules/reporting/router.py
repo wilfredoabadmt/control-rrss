@@ -34,6 +34,7 @@ router = APIRouter(prefix="/reports", tags=["Reporting & Analytics Engine"])
 @limiter.limit("10/minute")
 async def generate_excel_report(
     request: Request,
+    response: Response,
     req: ReportGenerateRequest,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(

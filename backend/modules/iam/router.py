@@ -10,7 +10,7 @@ from core.security.auth import CurrentUserDep, get_current_user
 from core.security.rbac import require_roles
 from database import get_async_db
 from dependencies import PaginationDep
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from modules.iam.models import Role, User
 from modules.iam.schemas import (
     LoginRequest,
@@ -47,8 +47,9 @@ from core.security.limiter import limiter
 @auth_router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 async def login(
-    req: LoginRequest,
     request: Request,
+    response: Response,
+    req: LoginRequest,
     db: AsyncSession = Depends(get_async_db),
 ):
     """

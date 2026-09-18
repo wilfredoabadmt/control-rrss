@@ -27,8 +27,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Política de Referencias
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
-        # Content Security Policy restrictiva
-        response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none';"
+        # Content Security Policy que permite recursos de fuentes y activos necesarios
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "img-src 'self' data: https: blob:; "
+            "script-src 'self' 'unsafe-inline'; "
+            "connect-src 'self' https: wss:; "
+            "frame-ancestors 'none';"
+        )
 
         # Restricción de capacidades de hardware
         response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"

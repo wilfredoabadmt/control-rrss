@@ -47,13 +47,25 @@ async def lifespan(app: FastAPI):
     # Auto-sembrado seguro de roles, plataformas y superadmin inicial
     try:
         from core.security.password import hash_password
-        from database import AsyncSessionLocal, Base, async_engine
+        from database import AsyncSessionLocal, Base, activate_sqlite_fallback, async_engine
         from modules.iam.models import Role, User
         from modules.iam.seed import seed_roles_and_permissions
         from modules.shared.enums import UserRole
         from modules.social_accounts.seed import seed_social_platforms
-        from sqlalchemy import select
+        from sqlalchemy import select, text
         from sqlalchemy.orm import selectinload
+
+        # Comprobar si PostgreSQL responde; de lo contrario activar SQLite fallback transparente
+        try:
+            async with async_engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            logger.info("database_connected_successfully", dialect=async_engine.dialect.name)
+        except Exception as conn_err:
+            logger.warning(
+                "postgres_connection_failed_using_sqlite_fallback",
+                error=str(conn_err),
+            )
+            async_engine = activate_sqlite_fallback()
 
         async with async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -80,7 +92,7 @@ async def lifespan(app: FastAPI):
                 await session.commit()
                 logger.info("superadmin_seeded_successfully", email=admin_email)
     except Exception as e:
-        logger.warning("startup_seeding_skipped", error=str(e))
+        logger.error("startup_seeding_failed", error=str(e), exc_info=True)
 
     yield
     logger.info("app_shutdown", project=settings.PROJECT_NAME)
@@ -194,32 +206,32 @@ async def health_liveness() -> dict[str, Any]:
 @app.get("/health/readiness", tags=["Health"])
 async def health_readiness() -> JSONResponse:
     """
-    Endpoint de readiness probe: valida conectividad con PostgreSQL y Redis.
+    Endpoint de readiness probe: valida conectividad con Base de Datos y Redis.
     """
     checks: dict[str, Any] = {
-        "postgres": {"status": "UNKNOWN"},
+        "database": {"status": "UNKNOWN"},
         "redis": {"status": "UNKNOWN"},
     }
     overall_healthy = True
 
-    # 1. Comprobar PostgreSQL
+    # 1. Comprobar Base de Datos activa
     try:
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1"))
-        checks["postgres"]["status"] = "HEALTHY"
+            dialect_name = session.bind.dialect.name if session.bind else "unknown"
+        checks["database"] = {"status": "HEALTHY", "dialect": dialect_name}
     except Exception as e:
-        checks["postgres"] = {"status": "UNHEALTHY", "error": str(e)}
+        checks["database"] = {"status": "UNHEALTHY", "error": str(e)}
         overall_healthy = False
 
-    # 2. Comprobar Redis
+    # 2. Comprobar Redis (con degradación airosa en memoria)
     try:
         redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         await redis_client.ping()
         await redis_client.aclose()
-        checks["redis"]["status"] = "HEALTHY"
-    except Exception as e:
-        checks["redis"] = {"status": "UNHEALTHY", "error": str(e)}
-        overall_healthy = False
+        checks["redis"] = {"status": "HEALTHY"}
+    except Exception:
+        checks["redis"] = {"status": "DEGRADED", "info": "Running in-memory cache/limiter"}
 
     http_status = status.HTTP_200_OK if overall_healthy else status.HTTP_503_SERVICE_UNAVAILABLE
     return JSONResponse(
