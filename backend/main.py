@@ -43,6 +43,45 @@ async def lifespan(app: FastAPI):
         environment=settings.ENVIRONMENT,
         debug=settings.DEBUG,
     )
+
+    # Auto-sembrado seguro de roles, plataformas y superadmin inicial
+    try:
+        from core.security.password import hash_password
+        from database import AsyncSessionLocal, Base, async_engine
+        from modules.iam.models import Role, User
+        from modules.iam.seed import seed_roles_and_permissions
+        from modules.shared.enums import UserRole
+        from modules.social_accounts.seed import seed_social_platforms
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        async with async_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        async with AsyncSessionLocal() as session:
+            await seed_roles_and_permissions(session)
+            await seed_social_platforms(session)
+
+            admin_email = "admin@elalto.gob.bo"
+            stmt = select(User).where(User.email == admin_email).options(selectinload(User.roles))
+            res = await session.execute(stmt)
+            if not res.scalar_one_or_none():
+                stmt_role = select(Role).where(Role.name == UserRole.SUPER_ADMIN.value)
+                role_res = await session.execute(stmt_role)
+                superadmin_role = role_res.scalar_one_or_none()
+                admin_user = User(
+                    email=admin_email,
+                    full_name="Super Administrador GAMEA",
+                    password_hash=hash_password("AdminGamea2026!"),
+                    is_active=True,
+                    roles=[superadmin_role] if superadmin_role else [],
+                )
+                session.add(admin_user)
+                await session.commit()
+                logger.info("superadmin_seeded_successfully", email=admin_email)
+    except Exception as e:
+        logger.warning("startup_seeding_skipped", error=str(e))
+
     yield
     logger.info("app_shutdown", project=settings.PROJECT_NAME)
 
