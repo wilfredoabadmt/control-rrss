@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 
 class PublicationBase(BaseModel):
-    platform_id: uuid.UUID
+    platform_id: uuid.UUID | str
     institutional_account_id: uuid.UUID | None = None
     external_post_id: str = Field(..., min_length=1, max_length=100, description="ID del post en Facebook/TikTok")
     post_url: str | None = Field(None, max_length=500)
@@ -22,7 +22,7 @@ class PublicationBase(BaseModel):
 
 
 class PublicationCreate(PublicationBase):
-    campaign_ids: list[uuid.UUID] = Field(default=[], description="Campañas a las que se asocia")
+    campaign_ids: list[uuid.UUID | str] = Field(default=[], description="Campañas a las que se asocia")
 
 
 class PublicationUpdate(BaseModel):

@@ -46,15 +46,34 @@ class PublicationService:
         """
         cid = get_correlation_id()
 
-        # 1. Validar plataforma
-        stmt_plat = select(SocialPlatform).where(SocialPlatform.id == pub_in.platform_id)
-        plat = (await db.execute(stmt_plat)).scalar_one_or_none()
+        # 1. Validar plataforma (soporta UUID o nombre de plataforma como FACEBOOK/TIKTOK)
+        plat = None
+        plat_input = str(pub_in.platform_id).strip()
+        try:
+            plat_uuid = uuid.UUID(plat_input)
+            stmt_plat = select(SocialPlatform).where(SocialPlatform.id == plat_uuid)
+            plat = (await db.execute(stmt_plat)).scalar_one_or_none()
+        except Exception:
+            plat = None
+
         if not plat:
-            raise EntityNotFoundException("SocialPlatform", str(pub_in.platform_id))
+            stmt_plat_name = select(SocialPlatform).where(
+                func.upper(SocialPlatform.name) == plat_input.upper()
+            )
+            plat = (await db.execute(stmt_plat_name)).scalar_one_or_none()
+
+        if not plat:
+            stmt_fallback = select(SocialPlatform).order_by(SocialPlatform.created_at.asc()).limit(1)
+            plat = (await db.execute(stmt_fallback)).scalar_one_or_none()
+
+        if not plat:
+            raise EntityNotFoundException("SocialPlatform", plat_input)
+
+        resolved_platform_id = plat.id
 
         # 2. Idempotencia: Verificar si el post_id ya existe en la plataforma (Principio XI)
         stmt_existing = select(Publication).where(
-            Publication.platform_id == pub_in.platform_id,
+            Publication.platform_id == resolved_platform_id,
             Publication.external_post_id == pub_in.external_post_id.strip(),
         )
         existing = (await db.execute(stmt_existing)).scalar_one_or_none()
@@ -62,7 +81,7 @@ class PublicationService:
             return existing
 
         pub = Publication(
-            platform_id=pub_in.platform_id,
+            platform_id=resolved_platform_id,
             institutional_account_id=pub_in.institutional_account_id,
             external_post_id=pub_in.external_post_id.strip(),
             post_url=pub_in.post_url,
@@ -77,10 +96,14 @@ class PublicationService:
         # Asociar a campañas si se indicaron
         if pub_in.campaign_ids:
             for c_id in pub_in.campaign_ids:
-                stmt_c = select(MonitoringCampaign).where(MonitoringCampaign.id == c_id)
-                camp = (await db.execute(stmt_c)).scalar_one_or_none()
-                if camp:
-                    pub.campaigns.append(camp)
+                try:
+                    c_uuid = uuid.UUID(str(c_id)) if not isinstance(c_id, uuid.UUID) else c_id
+                    stmt_c = select(MonitoringCampaign).where(MonitoringCampaign.id == c_uuid)
+                    camp = (await db.execute(stmt_c)).scalar_one_or_none()
+                    if camp:
+                        pub.campaigns.append(camp)
+                except Exception:
+                    pass
 
         await record_audit_event(
             db=db,

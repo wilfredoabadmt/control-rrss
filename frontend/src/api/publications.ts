@@ -58,7 +58,8 @@ export const createPublicationApi = async (data: {
   external_post_id: string;
   title?: string;
   post_url?: string;
-  published_at: string;
+  published_at?: string;
+  campaign_ids?: string[];
 }): Promise<PublicationItem> => {
   const res = await apiClient.post('/publications/', data);
   return res.data;
