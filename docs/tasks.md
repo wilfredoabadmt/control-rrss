@@ -275,45 +275,45 @@
 
 ## Fase 7 — Frontend Completo
 
-### T-700: Implementar página de login
+### [x] T-700: Implementar página de login
 - **Reqs:** REQ-IAM-001
-- **Entregable:** `frontend/src/pages/Login.tsx` con formulario de autenticación.
-- **DoD:** Login funcional, token almacenado de forma segura, redirección post-login.
+- **Entregable:** `frontend/src/pages/LoginPage.tsx` con formulario de autenticación, JWT y manejo de bloqueo preventivo.
+- **Estado:** ✅ Completado. Autenticación contra backend, persistencia de tokens e integración con `AuthContext`.
 
-### T-701: Implementar layout principal con navegación por rol
+### [x] T-701: Implementar layout principal con navegación por rol
 - **Reqs:** REQ-IAM-002
-- **Entregable:** Layout con sidebar/nav que muestra opciones según el rol del usuario.
-- **DoD:** Menú diferenciado por rol. Rutas protegidas en frontend (reforzado en backend).
+- **Entregable:** `frontend/src/components/MainLayout.tsx`, `Sidebar.tsx`, `Header.tsx`.
+- **Estado:** ✅ Completado. Menú lateral con filtrado dinámico según roles constitucionales y header institucional.
 
-### T-702: Implementar página de gestión de funcionarios
+### [x] T-702: Implementar página de gestión de funcionarios
 - **Reqs:** REQ-EMP-001 a 004
-- **Entregable:** `frontend/src/pages/Employees.tsx` con tabla, filtros, importación, historial.
-- **DoD:** CRUD visual. Importación Excel funcional. Historial de cambios visible.
+- **Entregable:** `frontend/src/pages/EmployeesPage.tsx` con tabla, enmascaramiento PII, importador Excel y modal de historial.
+- **Estado:** ✅ Completado. CRUD y visualización protegida por índices ciegos HMAC.
 
-### T-703: Implementar página de publicaciones y campañas
+### [x] T-703: Implementar página de publicaciones y campañas
 - **Reqs:** REQ-PUB-002, REQ-PUB-003
-- **Entregable:** `frontend/src/pages/Publications.tsx` con listado, filtros por campaña/plataforma.
-- **DoD:** Crear/listar publicaciones. Gestión de campañas. Asignación a campañas.
+- **Entregable:** `frontend/src/pages/PublicationsPage.tsx` con metas de cobertura y publicaciones multi-plataforma.
+- **Estado:** ✅ Completado. Creación de campañas y listado de publicaciones en Facebook y TikTok.
 
-### T-704: Implementar página de interacciones y verificación
+### [x] T-704: Implementar página de interacciones y verificación
 - **Reqs:** REQ-INT-001, REQ-VER-001 a 004
-- **Entregable:** `frontend/src/pages/Interactions.tsx` y `Verification.tsx`.
-- **DoD:** Listado con filtros por estado, plataforma, campaña. Flujo de verificación manual con evidencia. Explicabilidad visible.
+- **Entregable:** `frontend/src/pages/InteractionsPage.tsx` con badges epistémicos y modal probatorio.
+- **Estado:** ✅ Completado. Explicabilidad formal de estados (Principio XXVIII) y verificación manual asistida.
 
-### T-705: Implementar página de reportes
+### [x] T-705: Implementar página de reportes
 - **Reqs:** REQ-RPT-001
-- **Entregable:** `frontend/src/pages/Reports.tsx` con formulario de generación y listado de reportes previos.
-- **DoD:** Generar reporte con filtros. Descargar Excel. Ver historial de reportes.
+- **Entregable:** `frontend/src/pages/ReportsPage.tsx` con generación .xlsx, firma SHA-256 e historial de ejecuciones.
+- **Estado:** ✅ Completado. Descarga directa y trazabilidad criptográfica inmutable.
 
-### T-706: Implementar página de auditoría
+### [x] T-706: Implementar página de auditoría
 - **Reqs:** REQ-AUD-002
-- **Entregable:** `frontend/src/pages/Audit.tsx` con tabla de eventos de auditoría.
-- **DoD:** Filtros funcionales. Solo visible para `AUDITOR` y `SUPER_ADMIN`.
+- **Entregable:** `frontend/src/pages/AuditPage.tsx` con tabla inmutable, inspector de diffs JSON y exportación CSV.
+- **Estado:** ✅ Completado. Restringido por constitución a AUDITOR y SUPER_ADMIN (Principio X).
 
-### T-707: Implementar página de administración
+### [x] T-707: Implementar página de administración
 - **Reqs:** REQ-ADM-001, REQ-ADM-002
-- **Entregable:** `frontend/src/pages/Admin.tsx` con gestión de configuración, usuarios, plataformas.
-- **DoD:** Edición de parámetros con auditoría. Gestión de conexiones a plataformas.
+- **Entregable:** `frontend/src/pages/AdminPage.tsx` con gestión de conectores, control de usuarios y políticas globales.
+- **Estado:** ✅ Completado. Gestión integral con privilegios SUPER_ADMIN.
 
 ---
 
