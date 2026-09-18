@@ -29,6 +29,13 @@ export enum SyncJobStatus {
 
 export enum VerificationStatus {
   PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  NOT_FOUND = 'NOT_FOUND',
+  NOT_OBSERVABLE = 'NOT_OBSERVABLE',
+  DECLARED_CONFIRMED = 'DECLARED_CONFIRMED',
+  DECLARED_NOT_FOUND = 'DECLARED_NOT_FOUND',
+  API_RESTRICTED = 'API_RESTRICTED',
+  ERROR = 'ERROR',
   VERIFIED_AUTOMATIC = 'VERIFIED_AUTOMATIC',
   VERIFIED_MANUAL = 'VERIFIED_MANUAL',
   REJECTED = 'REJECTED',
@@ -81,4 +88,53 @@ export interface AuthTokens {
   refresh_token: string;
   token_type: string;
   expires_in: number;
+}
+
+export interface PlatformHealthItem {
+  name: string;
+  display_name: string;
+  is_active: boolean;
+  status: string; // ONLINE, DEGRADED, OFFLINE
+}
+
+export interface OperationalDashboardResponse {
+  platforms: PlatformHealthItem[];
+  monitored_publications_count: number;
+  total_interactions_count: number;
+  pending_verifications_count: number;
+  recent_sync_jobs: Array<{
+    id: string;
+    platform: string;
+    job_type: string;
+    status: SyncJobStatus;
+    created_at: string;
+    records_processed?: number;
+    records_failed?: number;
+  }>;
+  active_alerts: Array<{
+    level: string;
+    message: string;
+  }>;
+}
+
+export interface IndicatorResult {
+  code: string;
+  name: string;
+  value: number;
+  unit: string;
+  numerator: number;
+  denominator: number;
+  exclusions: number;
+  formula: string;
+  description: string;
+  methodology_notes: string;
+}
+
+export interface ExecutiveDashboardResponse {
+  observable_coverage_rate: IndicatorResult;
+  verification_rate: IndicatorResult;
+  verification_distribution: Record<string, number>;
+  platform_breakdown: Record<string, number>;
+  total_active_employees: number;
+  constitutional_disclaimer: string;
 }

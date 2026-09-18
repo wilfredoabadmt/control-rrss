@@ -222,6 +222,14 @@ from modules.facebook_adapter.webhook import router as facebook_webhook_router
 
 app.include_router(facebook_webhook_router, prefix=settings.API_V1_STR)
 
+# Fase 6: Reportes y Dashboards
+from modules.dashboard.router import router as dashboard_router
+from modules.reporting.router import router as reporting_router
+
+app.include_router(reporting_router, prefix=settings.API_V1_STR)
+app.include_router(dashboard_router, prefix=settings.API_V1_STR)
+
+
 
 
 

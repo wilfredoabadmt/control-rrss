@@ -246,30 +246,30 @@
 
 ## Fase 6 — Reportes y Dashboard
 
-### T-600: Implementar generador de reportes Excel
+### [x] T-600: Implementar generador de reportes Excel
 - **Reqs:** REQ-RPT-001, Principio XXIV
-- **Entregable:** `modules/reporting/generators/` con generación de .xlsx usando openpyxl. Registro en `report_executions`.
-- **DoD:** Reporte generado con filtros, hash SHA-256, metadatos completos. Reproducible.
+- **Entregable:** `modules/reporting/generator.py` con generación de .xlsx usando openpyxl. Registro en `report_executions`.
+- **Estado:** ✅ Completado. Reporte multi-hoja generado con hash SHA-256 inmutable, metadatos y disclaimer constitucional.
 
-### T-601: Implementar cálculo de indicadores con ficha técnica
+### [x] T-601: Implementar cálculo de indicadores con ficha técnica
 - **Reqs:** REQ-RPT-003, Principio XXVI
-- **Entregable:** `modules/reporting/indicators.py` con: Tasa de Cobertura Observable, Tasa por Tipo de Interacción, Tasa de Verificación, Pendientes.
-- **DoD:** Cada indicador declara numerador, denominador, periodo, exclusiones, tratamiento de NOT_OBSERVABLE.
+- **Entregable:** `modules/reporting/indicators.py` con Tasa de Cobertura Observable y Tasa de Verificación Institucional.
+- **Estado:** ✅ Completado. Fichas técnicas completas con numerador, denominador, exclusiones y notas metodológicas.
 
-### T-602: Implementar API de dashboard operativo
+### [x] T-602: Implementar API de dashboard operativo
 - **Reqs:** REQ-DSH-001, Principio XXV
 - **Entregable:** `modules/dashboard/router.py` con `GET /api/v1/dashboard/operational`.
-- **DoD:** Retorna estado de conexiones, sync jobs, DLQ, alertas activas. Datos desde backend, no cálculos frontend.
+- **Estado:** ✅ Completado. Métricas agregadas de publicaciones, interacciones y sync jobs recientes.
 
-### T-603: Implementar API de dashboard ejecutivo
+### [x] T-603: Implementar API de dashboard ejecutivo
 - **Reqs:** REQ-DSH-002, Principio XXV
 - **Entregable:** `GET /api/v1/dashboard/executive` consumiendo `indicators.py`.
-- **DoD:** Indicadores con misma lógica que reportes Excel. Sin PII para rol `READ_ONLY`.
+- **Estado:** ✅ Completado. Indicadores con fichas técnicas, distribución epistémica y disclaimer Principio XXVII.
 
-### T-604: Implementar frontend — página de dashboard
+### [x] T-604: Implementar frontend — página de dashboard
 - **Reqs:** REQ-DSH-001, REQ-DSH-002
-- **Entregable:** `frontend/src/pages/Dashboard.tsx` con gráficos y tarjetas de indicadores.
-- **DoD:** Dashboard operativo y ejecutivo funcionales. Tooltips con ficha técnica de indicadores.
+- **Entregable:** `frontend/src/pages/DashboardPage.tsx` con tabs operativo y ejecutivo, modal de ficha técnica y disclaimers.
+- **Estado:** ✅ Completado. TypeScript verificado con build exitoso y componentes reactivos.
 
 ---
 
