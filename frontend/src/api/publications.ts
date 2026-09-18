@@ -2,7 +2,7 @@ import { apiClient } from './client';
 
 export interface CampaignItem {
   id: string;
-  name: string;
+  title: string;
   description?: string;
   start_date: string;
   end_date?: string;
@@ -34,7 +34,7 @@ export const listCampaignsApi = async (): Promise<CampaignItem[]> => {
 };
 
 export const createCampaignApi = async (data: {
-  name: string;
+  title: string;
   description?: string;
   start_date: string;
   end_date?: string;

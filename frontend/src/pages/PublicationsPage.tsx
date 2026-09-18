@@ -24,7 +24,7 @@ export const PublicationsPage: React.FC = () => {
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([
     {
       id: 'camp-001',
-      name: 'Plan de Bacheo y Pavimentación 2026',
+      title: 'Plan de Bacheo y Pavimentación 2026',
       description: 'Difusión de obras de infraestructura vial y mejoramiento urbano en los 14 distritos.',
       start_date: '2026-01-01',
       end_date: '2026-03-31',
@@ -40,7 +40,7 @@ export const PublicationsPage: React.FC = () => {
     },
     {
       id: 'camp-002',
-      name: 'Seguridad Ciudadana y Cámaras de Vigilancia',
+      title: 'Seguridad Ciudadana y Cámaras de Vigilancia',
       description: 'Campañas de prevención ciudadana y despliegue tecnológico policial-municipal.',
       start_date: '2026-02-15',
       end_date: '2026-05-30',
@@ -122,7 +122,7 @@ export const PublicationsPage: React.FC = () => {
     setSubmitting(true);
     try {
       const res = await createCampaignApi({
-        name: campName,
+        title: campName,
         description: campDesc,
         start_date: campStart || new Date().toISOString(),
         end_date: campEnd || undefined,
@@ -135,7 +135,7 @@ export const PublicationsPage: React.FC = () => {
       // Fallback mock insert
       const newCamp: CampaignItem = {
         id: `camp-${Date.now()}`,
-        name: campName,
+        title: campName,
         description: campDesc,
         start_date: campStart || new Date().toISOString().split('T')[0],
         end_date: campEnd || undefined,
@@ -323,7 +323,7 @@ export const PublicationsPage: React.FC = () => {
             </div>
 
             <h4 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#fff', marginTop: '12px' }}>
-              {camp.name}
+              {camp.title}
             </h4>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '6px', lineHeight: 1.4 }}>
               {camp.description || 'Sin descripción adicional.'}
@@ -703,7 +703,7 @@ export const PublicationsPage: React.FC = () => {
                   <option value="">Monitoreo General (Sin Campaña Específica)</option>
                   {campaigns.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} {c.is_active ? '(Activa)' : '(Finalizada)'}
+                      {c.title} {c.is_active ? '(Activa)' : '(Finalizada)'}
                     </option>
                   ))}
                 </select>
