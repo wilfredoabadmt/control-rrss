@@ -65,6 +65,29 @@ class Settings(BaseSettings):
         default="postgresql+psycopg2://gamea_admin:gamea_secure_password_dev_change_in_prod@localhost:5432/gamea_social_monitor"
     )
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_async_db_url(cls, v: str | None) -> str:
+        if not v:
+            return "postgresql+asyncpg://gamea_admin:gamea_secure_password_dev_change_in_prod@localhost:5432/gamea_social_monitor"
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        if v.startswith("postgresql://") and not v.startswith("postgresql+"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
+
+    @field_validator("DATABASE_URL_SYNC", mode="before")
+    @classmethod
+    def assemble_sync_db_url(cls, v: str | None) -> str:
+        if v:
+            if v.startswith("postgres://"):
+                return v.replace("postgres://", "postgresql+psycopg2://", 1)
+            if v.startswith("postgresql://") and not v.startswith("postgresql+"):
+                return v.replace("postgresql://", "postgresql+psycopg2://", 1)
+            return v
+        return "postgresql+psycopg2://gamea_admin:gamea_secure_password_dev_change_in_prod@localhost:5432/gamea_social_monitor"
+
+
     # Redis & Celery
     REDIS_HOST: str = Field(default="localhost")
     REDIS_PORT: int = Field(default=6379)
