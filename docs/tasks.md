@@ -64,37 +64,37 @@
 
 ---
 
-## Fase 1 — Core: IAM + Auditoría
+## Fase 1 — Core: IAM + Auditoría [COMPLETADA]
 
-### T-100: Implementar modelos de base de datos de IAM
+### [x] T-100: Implementar modelos de base de datos de IAM
 - **Reqs:** REQ-IAM-001 a 004
-- **Entregable:** `modules/iam/models.py` con tablas `users`, `roles`, `user_roles`, `permissions`. Migración Alembic.
-- **DoD:** Migración ejecuta limpiamente. Seed de 7 roles constitucionales.
+- **Entregable:** `modules/iam/models.py` con tablas `users`, `roles`, `user_roles`, `permissions`. Migración Alembic `0002_iam_and_audit.py`.
+- **Estado:** ✅ Completado. Modelos, seed de los 7 roles constitucionales y migración con extensiones UUID.
 
-### T-101: Implementar servicio de autenticación (login/logout/refresh)
+### [x] T-101: Implementar servicio de autenticación (login/logout/refresh)
 - **Reqs:** REQ-IAM-001, REQ-IAM-004, ADR-004
-- **Entregable:** `core/security/` con: hashing Argon2id, generación/validación JWT, middleware de autenticación.
-- **DoD:** Tests: login válido emite tokens, login inválido rechaza, refresh renueva, logout invalida. Bloqueo tras 5 intentos.
+- **Entregable:** `core/security/` con: hashing Argon2id (`password.py`), generación/validación JWT (`tokens.py`), middleware de autenticación (`auth.py`).
+- **Estado:** ✅ Completado. Bloqueo temporal por 15 minutos tras 5 intentos fallidos consecutivos (BR-IAM-002) verificado.
 
-### T-102: Implementar middleware RBAC en backend
+### [x] T-102: Implementar middleware RBAC en backend
 - **Reqs:** REQ-IAM-002, Principio XVII
-- **Entregable:** Dependency de FastAPI que valida permisos por rol en cada endpoint.
-- **DoD:** Tests de seguridad: `ANALYST` no puede acceder a endpoints de `SUPER_ADMIN` → `403 Forbidden`.
+- **Entregable:** `core/security/rbac.py` con `require_roles` y `require_permissions` en cada endpoint.
+- **Estado:** ✅ Completado. RBAC estricto en backend; `ANALYST` recibe `403 Forbidden` al acceder a endpoints de administración.
 
-### T-103: Implementar CRUD de usuarios
+### [x] T-103: Implementar CRUD de usuarios
 - **Reqs:** REQ-IAM-003
-- **Entregable:** `modules/iam/router.py` con CRUD de usuarios, asignación de roles.
-- **DoD:** Crear, listar, actualizar, desactivar usuarios. Solo `SUPER_ADMIN` puede asignar roles.
+- **Entregable:** `modules/iam/schemas.py`, `modules/iam/service.py`, `modules/iam/router.py` con CRUD de usuarios, asignación de roles exclusiva para `SUPER_ADMIN`.
+- **Estado:** ✅ Completado. CRUD completo, baja lógica (BR-IAM-009) sin eliminación física y validación de complejidad de contraseña (BR-IAM-004).
 
-### T-104: Implementar sistema de auditoría append-only
+### [x] T-104: Implementar sistema de auditoría append-only
 - **Reqs:** REQ-AUD-001, REQ-AUD-002, Principio X
-- **Entregable:** `core/audit/` con tabla `audit_events`, trigger de bloqueo, servicio de registro, decorador para endpoints.
-- **DoD:** Toda mutación genera evento de auditoría. `UPDATE`/`DELETE` en `audit_events` lanza excepción. Tests de inmutabilidad.
+- **Entregable:** `core/audit/models.py` con tabla `audit_events`, listeners para bloquear `UPDATE` y `DELETE`, servicio `record_audit_event`.
+- **Estado:** ✅ Completado. Tabla append-only con listener `ImmutableAuditException` y triggers PostgreSQL.
 
-### T-105: Implementar consulta y exportación de auditoría
+### [x] T-105: Implementar consulta y exportación de auditoría
 - **Reqs:** REQ-AUD-002
-- **Entregable:** `modules/iam/router.py` (o módulo audit separado) con `GET /api/v1/audit/events` con filtros.
-- **DoD:** Filtros por usuario, acción, entidad, rango de fechas, correlation_id. Solo `AUDITOR` y `SUPER_ADMIN`.
+- **Entregable:** `core/audit/router.py` con `GET /api/v1/audit/events` (filtros por usuario, acción, entidad, fechas, correlation_id) y exportación CSV en `GET /api/v1/audit/export`.
+- **Estado:** ✅ Completado. Endpoints paginados y streaming CSV para auditoría, restringidos a `AUDITOR` y `SUPER_ADMIN`.
 
 ---
 

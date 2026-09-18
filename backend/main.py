@@ -182,3 +182,16 @@ async def root() -> dict[str, str]:
         "docs": f"{settings.API_V1_STR}/openapi.json",
         "status": "running",
     }
+
+
+# -----------------------------------------------------------------------------
+# Registro de Routers de Módulos (Fase 1: IAM + Auditoría)
+# -----------------------------------------------------------------------------
+from core.audit.router import audit_router
+from modules.iam.router import auth_router, roles_router, users_router
+
+app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Auth"])
+app.include_router(users_router, prefix=f"{settings.API_V1_STR}/users", tags=["Users"])
+app.include_router(roles_router, prefix=f"{settings.API_V1_STR}/roles", tags=["Roles"])
+app.include_router(audit_router, prefix=f"{settings.API_V1_STR}/audit", tags=["Audit"])
+
