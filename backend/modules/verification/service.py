@@ -80,7 +80,6 @@ class VerificationService:
             created_by_user_id=str(current_user.id),
         )
         db.add(evidence)
-        await db.flush()
         ev_id = evidence.id
 
         # 4. Generar explicación humana y técnica (Principio XXVIII)
@@ -105,7 +104,6 @@ class VerificationService:
             evidence_id=ev_id,
         )
         db.add(verification)
-        await db.flush()
 
         # BR-VER-006: Toda verificación manual MUST registrar evento de auditoría
         await record_audit_event(
@@ -126,7 +124,6 @@ class VerificationService:
             correlation_id=cid,
         )
 
-        await db.commit()
         await db.refresh(verification)
         return verification
 

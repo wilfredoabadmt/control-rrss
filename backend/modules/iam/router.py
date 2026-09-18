@@ -116,7 +116,6 @@ async def logout(
         ip_address=client_ip,
         user_agent=user_agent,
     )
-    await db.commit()
     return {"detail": "Sesión cerrada exitosamente."}
 
 

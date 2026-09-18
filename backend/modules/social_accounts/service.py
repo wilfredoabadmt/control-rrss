@@ -88,7 +88,6 @@ class SocialAccountService:
             binding_status=BindingStatus.ACTIVE.value,
         )
         db.add(account)
-        await db.flush()
 
         await record_audit_event(
             db=db,
@@ -105,7 +104,6 @@ class SocialAccountService:
             },
             correlation_id=cid,
         )
-        await db.commit()
         await db.refresh(account)
         return account
 
@@ -137,7 +135,6 @@ class SocialAccountService:
             details={"reason": reason, "operation": "UNBIND_ACCOUNT"},
             correlation_id=cid,
         )
-        await db.commit()
         await db.refresh(account)
         return account
 
@@ -190,7 +187,6 @@ class SocialAccountService:
             details={"operation": "USERNAME_CHANGE"},
             correlation_id=cid,
         )
-        await db.commit()
         stmt_refreshed = (
             select(SocialAccount)
             .where(SocialAccount.id == account_id)
@@ -220,7 +216,6 @@ class SocialAccountService:
             is_monitored=acc_in.is_monitored,
         )
         db.add(inst_acc)
-        await db.flush()
 
         await record_audit_event(
             db=db,
@@ -231,6 +226,5 @@ class SocialAccountService:
             user_email=current_user.email,
             new_state={"handle": inst_acc.handle, "page_id": inst_acc.external_page_id},
         )
-        await db.commit()
         await db.refresh(inst_acc)
         return inst_acc

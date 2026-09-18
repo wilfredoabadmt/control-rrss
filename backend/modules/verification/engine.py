@@ -82,7 +82,6 @@ class VerificationEngine:
             explanation=explanation,
         )
         db.add(verification)
-        await db.flush()
 
         await record_audit_event(
             db=db,
@@ -99,6 +98,5 @@ class VerificationEngine:
             },
             correlation_id=cid,
         )
-        await db.commit()
         await db.refresh(verification)
         return verification

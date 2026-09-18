@@ -91,19 +91,15 @@ class PublicationService:
             is_monitored=pub_in.is_monitored,
         )
         db.add(pub)
-        await db.flush()
 
         # Asociar a campañas si se indicaron
         if pub_in.campaign_ids:
             for c_id in pub_in.campaign_ids:
-                try:
-                    c_uuid = uuid.UUID(str(c_id)) if not isinstance(c_id, uuid.UUID) else c_id
-                    stmt_c = select(MonitoringCampaign).where(MonitoringCampaign.id == c_uuid)
-                    camp = (await db.execute(stmt_c)).scalar_one_or_none()
-                    if camp:
-                        pub.campaigns.append(camp)
-                except Exception:
-                    pass
+                c_uuid = uuid.UUID(str(c_id)) if not isinstance(c_id, uuid.UUID) else c_id
+                stmt_c = select(MonitoringCampaign).where(MonitoringCampaign.id == c_uuid)
+                camp = (await db.execute(stmt_c)).scalar_one_or_none()
+                if camp:
+                    pub.campaigns.append(camp)
 
         await record_audit_event(
             db=db,
@@ -115,7 +111,6 @@ class PublicationService:
             new_state={"external_post_id": pub.external_post_id, "platform": plat.name},
             correlation_id=cid,
         )
-        await db.commit()
         await db.refresh(pub)
         return pub
 
@@ -180,7 +175,6 @@ class PublicationService:
             camp.publications = pubs
 
         db.add(camp)
-        await db.flush()
 
         await record_audit_event(
             db=db,
@@ -192,7 +186,6 @@ class PublicationService:
             new_state={"title": camp.title, "start_date": camp.start_date.isoformat()},
             correlation_id=cid,
         )
-        await db.commit()
         detailed = await PublicationService.get_campaign_detail(db, camp.id)
         return detailed or camp
 
@@ -242,7 +235,6 @@ class PublicationService:
             details={"operation": "ADD_PUBLICATIONS", "count": added_count},
             correlation_id=cid,
         )
-        await db.commit()
         detailed = await PublicationService.get_campaign_detail(db, campaign_id)
         return detailed or camp
 
@@ -288,7 +280,6 @@ class PublicationService:
             )
             camp.targets.append(target)
             db.add(target)
-            await db.flush()
             action = AuditAction.CREATE
         else:
             target.target_percentage = target_in.target_percentage
@@ -310,6 +301,5 @@ class PublicationService:
             },
             correlation_id=cid,
         )
-        await db.commit()
         await db.refresh(target)
         return target

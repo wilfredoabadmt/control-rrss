@@ -188,7 +188,6 @@ class ExcelReportGenerator:
             correlation_id=cid,
         )
 
-        await db.commit()
         await db.refresh(execution)
 
         return excel_bytes, file_hash, execution

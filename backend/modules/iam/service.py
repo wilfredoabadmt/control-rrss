@@ -123,7 +123,6 @@ class IAMService:
                 ip_address=ip_address,
                 user_agent=user_agent,
             )
-            await db.commit()
             raise AuthenticationException("Credenciales inválidas.")
 
         # Autenticación Exitosa: Resetear contador y registrar timestamp
@@ -149,7 +148,6 @@ class IAMService:
             ip_address=ip_address,
             user_agent=user_agent,
         )
-        await db.commit()
 
         return TokenResponse(
             access_token=access_token,
@@ -228,7 +226,6 @@ class IAMService:
             roles=roles,
         )
         db.add(new_user)
-        await db.flush()
 
         # Registrar auditoría (BR-IAM-010)
         await record_audit_event(
@@ -240,7 +237,6 @@ class IAMService:
             user_email=current_user.email if current_user else None,
             new_state={"email": new_user.email, "full_name": new_user.full_name, "roles": [r.name for r in roles]},
         )
-        await db.commit()
         await db.refresh(new_user)
         return new_user
 
@@ -275,7 +271,6 @@ class IAMService:
             previous_state=previous_state,
             new_state=new_state,
         )
-        await db.commit()
         await db.refresh(user)
         return user
 
@@ -314,7 +309,6 @@ class IAMService:
             new_state={"roles": [r.name for r in new_roles]},
             details={"operation": "ASSIGN_ROLES"},
         )
-        await db.commit()
         await db.refresh(user)
         return user
 
@@ -340,7 +334,6 @@ class IAMService:
             user_email=current_user.email,
             details={"operation": "DEACTIVATE_USER", "is_active": False},
         )
-        await db.commit()
         await db.refresh(user)
         return user
 

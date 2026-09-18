@@ -84,7 +84,6 @@ class InteractionProcessor:
             correlation_id=cid,
         )
         db.add(interaction)
-        await db.flush()
 
         # 4. Almacenar evidencia técnica forense (REQ-INT-002)
         if item.raw_payload:
@@ -112,7 +111,6 @@ class InteractionProcessor:
             correlation_id=cid,
         )
 
-        await db.commit()
         stmt_refreshed = (
             select(Interaction)
             .where(Interaction.id == interaction.id)

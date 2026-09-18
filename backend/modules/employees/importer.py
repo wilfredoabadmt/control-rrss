@@ -136,7 +136,6 @@ class EmployeePayrollImporter:
                         status="ACTIVE",
                     )
                     db.add(target_unit)
-                    await db.flush()
                     units_by_code[target_unit.code.upper()] = target_unit
                     units_by_name[target_unit.name.upper()] = target_unit
 
@@ -150,7 +149,6 @@ class EmployeePayrollImporter:
                         status="ACTIVE",
                     )
                     db.add(target_pos)
-                    await db.flush()
                     positions_by_title[target_pos.title.upper()] = target_pos
 
             # Buscar funcionario existente por employee_id
@@ -243,8 +241,6 @@ class EmployeePayrollImporter:
             },
             correlation_id=correlation_id,
         )
-
-        await db.commit()
 
         return EmployeeImportReport(
             total_records=len(df),

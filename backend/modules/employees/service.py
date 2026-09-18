@@ -48,7 +48,6 @@ class EmployeeService:
             status=org_in.status,
         )
         db.add(unit)
-        await db.flush()
 
         await record_audit_event(
             db=db,
@@ -59,7 +58,6 @@ class EmployeeService:
             user_email=current_user.email,
             new_state={"name": unit.name, "code": unit.code, "parent_id": str(unit.parent_id) if unit.parent_id else None},
         )
-        await db.commit()
         await db.refresh(unit)
         return unit
 
@@ -99,7 +97,6 @@ class EmployeeService:
             previous_state=prev_state,
             new_state={"name": unit.name, "code": unit.code, "parent_id": str(unit.parent_id) if unit.parent_id else None},
         )
-        await db.commit()
         await db.refresh(unit)
         return unit
 
@@ -144,7 +141,6 @@ class EmployeeService:
             status=pos_in.status,
         )
         db.add(pos)
-        await db.flush()
 
         await record_audit_event(
             db=db,
@@ -155,7 +151,6 @@ class EmployeeService:
             user_email=current_user.email,
             new_state={"title": pos.title, "code": pos.code},
         )
-        await db.commit()
         await db.refresh(pos)
         return pos
 
@@ -208,7 +203,6 @@ class EmployeeService:
             termination_date=emp_in.termination_date,
         )
         db.add(emp)
-        await db.flush()
 
         cid = correlation_id or get_correlation_id()
         await record_audit_event(
@@ -225,7 +219,6 @@ class EmployeeService:
             },
             correlation_id=cid,
         )
-        await db.commit()
         return emp
 
     @staticmethod
@@ -298,7 +291,6 @@ class EmployeeService:
             new_state={"unit": str(emp.organizational_unit_id), "position": str(emp.position_id), "status": emp.status},
             correlation_id=cid,
         )
-        await db.commit()
         await db.refresh(emp)
         return emp
 
@@ -342,7 +334,6 @@ class EmployeeService:
             details={"operation": "TERMINATE_EMPLOYEE", "reason": reason},
             correlation_id=cid,
         )
-        await db.commit()
         await db.refresh(emp)
         return emp
 
