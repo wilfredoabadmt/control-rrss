@@ -22,8 +22,8 @@ Asegúrese de contar con las siguientes herramientas instaladas en su entorno:
 ### 2.1. Clonar el Repositorio
 
 ```bash
-git clone https://github.com/GAMEA/control-rrss.git
-cd "Control RRSS"
+git clone https://github.com/wilfredoabadmt/control-rrss.git
+cd control-rrss
 ```
 
 ### 2.2. Variables de Entorno

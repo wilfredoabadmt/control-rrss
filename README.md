@@ -6,8 +6,8 @@ Plataforma Institucional de Monitoreo y Analítica de Interacciones en Redes Soc
 
 ```bash
 # 1. Clonar repositorio
-git clone <repo-url>
-cd gamea-social-monitor
+git clone https://github.com/wilfredoabadmt/control-rrss.git
+cd control-rrss
 
 # 2. Copiar variables de entorno
 cp .env.example .env
@@ -37,13 +37,14 @@ docker-compose exec api python -m scripts.seed_dev
 
 ## Documentación
 
-| Documento | Descripción |
-| :--- | :--- |
-| [Constitución SDD](docs/constitution.md) | Norma suprema del proyecto |
-| [Especificación Funcional](docs/spec.md) | 14 módulos, 42 requerimientos |
-| [Plan Arquitectónico](docs/plan.md) | Stack, ADRs, modelo de datos |
-| [Tareas](docs/tasks.md) | Desglose de implementación |
-| [Investigación APIs](docs/research.md) | Hallazgos de APIs externas |
+| [Guía Rápida (Quickstart)](docs/quickstart.md) | Instalación, configuración y puesta en marcha |
+| [Constitución SDD](docs/constitution.md) | Norma suprema del proyecto (40 principios) |
+| [Auditoría Constitucional](docs/constitution-check.md) | Matriz de cumplimiento 100% PASS |
+| [Especificación Funcional](docs/spec.md) | 14 módulos, 42 requerimientos, 79 reglas |
+| [Plan Arquitectónico](docs/plan.md) | Stack, arquitectura modular, modelos de datos |
+| [Decisiones de Arquitectura (ADRs)](docs/adr/) | ADR-001 a ADR-006 formales |
+| [Tareas de Implementación](docs/tasks.md) | 10 fases, 53 tareas completadas al 100% |
+| [Contratos de Interfaz](contracts/) | OpenAPI 3.1 en JSON y YAML (47 rutas) |
 
 ## Estructura del Proyecto
 
