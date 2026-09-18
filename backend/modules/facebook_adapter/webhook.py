@@ -33,6 +33,7 @@ def verify_facebook_signature(payload: bytes, signature_header: str | None, app_
     return hmac.compare_digest(computed_signature, expected_signature)
 
 
+@router.get("", include_in_schema=False)
 @router.get("/", summary="Verificación de suscripción a Webhooks de Meta (REQ-FBI-005)")
 async def verify_webhook_subscription(
     hub_mode: str = Query(..., alias="hub.mode"),
@@ -43,17 +44,14 @@ async def verify_webhook_subscription(
     Endpoint de desafío (challenge) para registro y verificación de webhooks en Meta Developers.
     """
     if hub_mode == "subscribe" and hub_verify_token == settings.FACEBOOK_VERIFY_TOKEN:
-        logger.info("facebook_webhook_verified_successfully")
-        return Response(content=hub_challenge, media_type="text/plain")
+        return Response(content=hub_challenge, media_type="text/plain", status_code=status.HTTP_200_OK)
 
-    logger.warning("facebook_webhook_verification_failed", provided_token=hub_verify_token)
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Token de verificación de webhook de Meta inválido",
-    )
+    logger.warning("facebook_webhook_subscription_failed", hub_mode=hub_mode)
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token de verificación inválido")
 
 
-@router.post("/", summary="Recepción de eventos de Webhook de Meta")
+@router.post("", include_in_schema=False)
+@router.post("/", summary="Recepción de eventos asíncronos de Meta (REQ-FBI-005)")
 async def receive_facebook_webhook(
     request: Request,
     x_hub_signature_256: str | None = Header(None, alias="X-Hub-Signature-256"),

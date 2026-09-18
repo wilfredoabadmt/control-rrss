@@ -7,6 +7,7 @@ Gobierno Autónomo Municipal de El Alto
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -20,8 +21,14 @@ from core.logging_config import (
 from database import AsyncSessionLocal
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+
+# Directorio de frontend estático (dist / static)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+if not (STATIC_DIR / "index.html").exists():
+    STATIC_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 logger = structlog.get_logger(__name__)
 
@@ -187,8 +194,11 @@ async def health_readiness() -> JSONResponse:
 
 
 @app.get("/", tags=["Root"])
-async def root() -> dict[str, str]:
-    """Raíz del servicio API con enlace a la documentación."""
+async def root(request: Request) -> Any:
+    """Raíz del servicio: entrega la SPA de React a navegadores o JSON a clientes API."""
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and (STATIC_DIR / "index.html").exists():
+        return FileResponse(str(STATIC_DIR / "index.html"))
     return {
         "project": settings.PROJECT_NAME,
         "version": "1.0.0",
@@ -246,6 +256,37 @@ app.include_router(dashboard_router, prefix=settings.API_V1_STR)
 from modules.notifications.router import router as notifications_router
 
 app.include_router(notifications_router, prefix=settings.API_V1_STR)
+
+# -----------------------------------------------------------------------------
+# Integración y Montaje de Frontend SPA (React + Vite)
+# -----------------------------------------------------------------------------
+if (STATIC_DIR / "index.html").exists():
+    assets_dir = STATIC_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        fav = STATIC_DIR / "vite.svg"
+        if fav.exists():
+            return FileResponse(str(fav), media_type="image/svg+xml")
+        return Response(status_code=204)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        # Evitar interceptar rutas reservadas de backend
+        if (
+            full_path.startswith("api")
+            or full_path.startswith("docs")
+            or full_path.startswith("redoc")
+            or full_path.startswith("health")
+        ):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        potential_file = STATIC_DIR / full_path
+        if potential_file.is_file():
+            return FileResponse(str(potential_file))
+        return FileResponse(str(STATIC_DIR / "index.html"))
+
 
 
 
