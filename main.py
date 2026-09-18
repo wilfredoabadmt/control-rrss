@@ -29,7 +29,7 @@ app = backend_main.app
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.environ.get("PORT", os.environ.get("BACKEND_PORT", 8000)))
+    port = int(os.environ.get("PORT", os.environ.get("BACKEND_PORT", 3000)))
     host = os.environ.get("HOST", os.environ.get("BACKEND_HOST", "0.0.0.0"))
     uvicorn.run(
         "main:app",

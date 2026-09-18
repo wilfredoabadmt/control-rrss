@@ -26,9 +26,17 @@ class Settings(BaseSettings):
 
     # Servidor
     BACKEND_HOST: str = Field(default="0.0.0.0")
-    BACKEND_PORT: int = Field(default=8000)
+    BACKEND_PORT: int = Field(default=3000)
+    PORT: int = Field(default=3000)
     BACKEND_CORS_ORIGINS: list[str] = Field(
-        default=["http://localhost:3000", "http://localhost:5173", "http://localhost:80"]
+        default=[
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:80",
+            "https://control-social.89.116.29.168.sslip.io",
+            "http://control-social.89.116.29.168.sslip.io",
+            "*",
+        ]
     )
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
