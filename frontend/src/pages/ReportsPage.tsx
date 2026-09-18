@@ -11,6 +11,7 @@ import {
   generateReportApi,
   listReportExecutionsApi
 } from '../api/reports';
+import { formatReportType } from '../utils/formatters';
 
 export const ReportsPage: React.FC = () => {
   const [executions, setExecutions] = useState<ReportExecutionItem[]>([
@@ -263,7 +264,7 @@ export const ReportsPage: React.FC = () => {
               {executions.map((exec) => (
                 <tr key={exec.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '14px 20px' }}>
-                    <div style={{ fontWeight: '600', color: '#fff' }}>{exec.report_type}</div>
+                    <div style={{ fontWeight: '600', color: '#fff' }}>{formatReportType(exec.report_type)}</div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>
                       Versión: {exec.report_version}
                     </div>

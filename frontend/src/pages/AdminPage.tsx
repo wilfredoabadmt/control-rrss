@@ -12,9 +12,10 @@ import {
   UserAdminItem,
   createUserApi,
   deactivateUserApi,
-  listUsersApi
+  listUsersApi,
 } from '../api/admin';
 import { useAuth } from '../context/AuthContext';
+import { formatUserRole } from '../utils/formatters';
 import { UserRole } from '../types';
 
 export const AdminPage: React.FC = () => {
@@ -349,7 +350,7 @@ export const AdminPage: React.FC = () => {
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           {u.roles.map((r) => (
                             <span key={r.id || r.name} className="badge badge-info" style={{ fontSize: '0.7rem' }}>
-                              {r.name}
+                              {formatUserRole(r.name)}
                             </span>
                           ))}
                         </div>

@@ -14,6 +14,7 @@ import {
 } from '../api/audit';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
+import { formatAuditAction, formatEntityName } from '../utils/formatters';
 
 export const AuditPage: React.FC = () => {
   const { hasRole } = useAuth();
@@ -259,11 +260,11 @@ export const AuditPage: React.FC = () => {
                           : 'badge-warning'
                       }`}
                     >
-                      {ev.action}
+                      {formatAuditAction(ev.action)}
                     </span>
                   </td>
                   <td style={{ padding: '14px 20px', color: 'var(--text-muted)' }}>
-                    {ev.entity_name}
+                    {formatEntityName(ev.entity_name)}
                     {ev.entity_id && (
                       <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', marginLeft: '6px', color: 'var(--text-faint)' }}>
                         #{ev.entity_id.slice(0, 8)}

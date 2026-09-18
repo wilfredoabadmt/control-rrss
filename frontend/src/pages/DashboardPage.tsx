@@ -21,6 +21,7 @@ import {
   ExecutiveDashboardResponse,
   IndicatorResult
 } from '../types';
+import { formatJobType, formatJobStatus, formatVerificationStatus } from '../utils/formatters';
 
 interface DashboardPageProps {
   onLogout?: () => void;
@@ -455,19 +456,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                           {job.platform}
                         </td>
                         <td style={{ padding: '14px 16px', color: 'var(--text-muted)' }}>
-                          {job.job_type}
+                          {formatJobType(job.job_type)}
                         </td>
                         <td style={{ padding: '14px 16px' }}>
-                          <span
-                            className={`badge ${
-                              job.status === 'COMPLETED'
-                                ? 'badge-success'
-                                : job.status === 'FAILED_FATAL' || job.status === 'CIRCUIT_BROKEN'
-                                ? 'badge-warning'
-                                : 'badge-info'
-                            }`}
-                          >
-                            {job.status}
+                          <span className={`badge ${formatJobStatus(job.status).badgeClass}`}>
+                            {formatJobStatus(job.status).label}
                           </span>
                         </td>
                         <td style={{ padding: '14px 16px', color: '#fff', fontWeight: '500' }}>
@@ -687,7 +680,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                             marginBottom: '4px'
                           }}
                         >
-                          <span style={{ fontWeight: '500', color: '#fff' }}>{status}</span>
+                          <span style={{ fontWeight: '500', color: '#fff' }}>
+                            {formatVerificationStatus(status).label}
+                          </span>
                           <span style={{ color: 'var(--text-muted)' }}>
                             {count} ({percent}%)
                           </span>

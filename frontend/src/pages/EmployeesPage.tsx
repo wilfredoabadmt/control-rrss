@@ -658,7 +658,15 @@ export const EmployeesPage: React.FC = () => {
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '6px' }}>
-                      <span className="badge badge-info">{h.change_type || 'TRANSFERENCIA'}</span>
+                      <span className="badge badge-info">
+                        {h.change_type === 'TRANSFERENCIA'
+                          ? 'Transferencia de Unidad'
+                          : h.change_type === 'ALTA'
+                          ? 'Alta Institucional'
+                          : h.change_type === 'BAJA'
+                          ? 'Baja Institucional'
+                          : h.change_type || 'Transferencia de Unidad'}
+                      </span>
                       <span style={{ color: 'var(--text-faint)' }}>{h.effective_date}</span>
                     </div>
                     <div style={{ fontSize: '0.85rem', color: '#fff' }}>

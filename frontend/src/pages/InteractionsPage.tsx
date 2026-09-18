@@ -9,8 +9,9 @@ import {
 import {
   InteractionItem,
   listInteractionsApi,
-  manualVerificationApi
+  manualVerificationApi,
 } from '../api/interactions';
+import { formatInteractionType, formatOriginType } from '../utils/formatters';
 import { DataOriginType, VerificationStatus } from '../types';
 
 export const InteractionsPage: React.FC = () => {
@@ -262,7 +263,7 @@ export const InteractionsPage: React.FC = () => {
                       {it.platform_name}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      {it.interaction_type}
+                      {formatInteractionType(it.interaction_type)}
                     </div>
                   </td>
 
@@ -293,11 +294,10 @@ export const InteractionsPage: React.FC = () => {
                         background: 'rgba(31, 41, 55, 0.6)',
                         padding: '4px 8px',
                         borderRadius: '4px',
-                        fontFamily: 'monospace',
                         color: '#93c5fd',
                       }}
                     >
-                      {it.origin_type}
+                      {formatOriginType(it.origin_type)}
                     </span>
                   </td>
 
