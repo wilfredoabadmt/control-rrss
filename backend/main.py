@@ -185,13 +185,21 @@ async def root() -> dict[str, str]:
 
 
 # -----------------------------------------------------------------------------
-# Registro de Routers de Módulos (Fase 1: IAM + Auditoría)
+# Registro de Routers de Módulos
 # -----------------------------------------------------------------------------
 from core.audit.router import audit_router
+from modules.employees.router import employees_router, org_units_router, positions_router
 from modules.iam.router import auth_router, roles_router, users_router
 
+# Fase 1: IAM + Auditoría
 app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Auth"])
 app.include_router(users_router, prefix=f"{settings.API_V1_STR}/users", tags=["Users"])
 app.include_router(roles_router, prefix=f"{settings.API_V1_STR}/roles", tags=["Roles"])
 app.include_router(audit_router, prefix=f"{settings.API_V1_STR}/audit", tags=["Audit"])
+
+# Fase 2: Directorio de Funcionarios y Organización
+app.include_router(employees_router, prefix=f"{settings.API_V1_STR}/employees", tags=["Employees"])
+app.include_router(org_units_router, prefix=f"{settings.API_V1_STR}/org-units", tags=["Organizational Units"])
+app.include_router(positions_router, prefix=f"{settings.API_V1_STR}/positions", tags=["Positions"])
+
 

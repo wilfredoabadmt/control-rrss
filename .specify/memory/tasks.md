@@ -98,32 +98,32 @@
 
 ---
 
-## Fase 2 — Directorio de Funcionarios y Organización
+## Fase 2 — Directorio de Funcionarios y Organización [COMPLETADA]
 
-### T-200: Implementar modelos de Employee, OrgUnit, Position
-- **Reqs:** REQ-EMP-001, REQ-EMP-002, Principio IX
-- **Entregable:** `modules/employees/models.py` con tablas `employees`, `organizational_units`, `positions`, `employee_history`. Migración Alembic.
-- **DoD:** Migración limpia. Relaciones jerárquicas de OrgUnit funcionales.
+### [x] T-200: Implementar modelos de Employee, OrgUnit, Position, EmployeeHistory
+- **Reqs:** REQ-EMP-001, REQ-EMP-002, Principios VII, VIII, IX, XX
+- **Entregable:** `modules/employees/models.py` con tablas `employees`, `organizational_units`, `positions`, `employee_history`. Migración Alembic `0003_employees_and_org.py`.
+- **Estado:** ✅ Completado. `employee_id` como PK inmutable, cifrado de PII con Fernet/AES-256 y blind index HMAC-SHA256.
 
-### T-201: Implementar CRUD de unidades organizacionales
+### [x] T-201: Implementar CRUD de unidades organizacionales
 - **Reqs:** REQ-EMP-002
-- **Entregable:** `modules/employees/router.py` con CRUD de `organizational_units`. Endpoint `GET /api/v1/org-units/tree` para árbol jerárquico.
-- **DoD:** Crear, listar, actualizar unidades. Jerarquía padre-hijo funcional.
+- **Entregable:** `modules/employees/router.py` con CRUD de `organizational_units` y `positions`. Endpoint `GET /api/v1/org-units/tree` para árbol jerárquico.
+- **Estado:** ✅ Completado. Estructura recursiva padre-hijo y catálogo de cargos implementado.
 
-### T-202: Implementar CRUD de funcionarios
-- **Reqs:** REQ-EMP-001, Principio VII
-- **Entregable:** Endpoints CRUD para `employees`. Cifrado de `document_number`. Inmutabilidad de `employee_id`.
-- **DoD:** Crear funcionario con ID único. Rechazar cambio de `employee_id`. Cifrado verificable en BD.
+### [x] T-202: Implementar CRUD de funcionarios
+- **Reqs:** REQ-EMP-001, Principios VII, XX
+- **Entregable:** Endpoints CRUD para `employees` con PII masking dinámico según rol y validación de inmutabilidad de `employee_id`.
+- **Estado:** ✅ Completado. CRUD operativo con protección de datos personales.
 
-### T-203: Implementar importación de nómina desde archivo
+### [x] T-203: Implementar importación de nómina desde archivo
 - **Reqs:** REQ-EMP-003, Principio VIII
-- **Entregable:** `modules/employees/importer.py` con `POST /api/v1/employees/import`. Acepta Excel/CSV.
-- **DoD:** Importación idempotente: detecta altas, bajas, transferencias. Doble importación = cero cambios. Reporte de sincronización.
+- **Entregable:** `modules/employees/importer.py` con `POST /api/v1/employees/import`. Acepta Excel (.xlsx) y CSV.
+- **Estado:** ✅ Completado. Sincronización estrictamente idempotente: doble importación idéntica = 0 mutaciones (100% unchanged).
 
-### T-204: Implementar historial de cambios organizacionales
+### [x] T-204: Implementar historial de cambios organizacionales
 - **Reqs:** REQ-EMP-004
-- **Entregable:** Registro automático en `employee_history` ante cambios de unidad, cargo o estado.
-- **DoD:** `GET /api/v1/employees/{id}/history` retorna historial completo.
+- **Entregable:** Registro automático en `employee_history` ante cambios de unidad, cargo o estado. Endpoint `GET /api/v1/employees/{id}/history`.
+- **Estado:** ✅ Completado. Trazabilidad completa con auditoría de motivos y usuario que efectuó la acción.
 
 ---
 
