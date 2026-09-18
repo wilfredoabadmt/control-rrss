@@ -62,3 +62,16 @@ class InteractionResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InteractionUserItem(BaseModel):
+    """Usuario único que interactuó en redes sociales (comentario o reacción)."""
+    external_author_id: str | None = None
+    external_author_name: str | None = None
+    total_interactions: int = 0
+    comments_count: int = 0
+    reactions_count: int = 0
+    shares_count: int = 0
+    platforms: list[str] = []
+    first_interaction_at: datetime | None = None
+    last_interaction_at: datetime | None = None

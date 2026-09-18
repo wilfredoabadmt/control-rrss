@@ -16,10 +16,10 @@ from fastapi import APIRouter, Depends, Query, status
 from modules.iam.models import User
 from modules.interactions.models import Interaction
 from modules.interactions.processor import InteractionProcessor
-from modules.interactions.schemas import InteractionCreate, InteractionResponse
+from modules.interactions.schemas import InteractionCreate, InteractionResponse, InteractionUserItem
 from modules.shared.enums import UserRole
 from modules.shared.exceptions import EntityNotFoundException
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/interactions", tags=["Interactions & Evidence"])
@@ -104,3 +104,82 @@ async def get_interaction(
     if not interaction:
         raise EntityNotFoundException("Interaction", str(interaction_id))
     return interaction
+
+
+@router.get(
+    "/users/list",
+    response_model=list[InteractionUserItem],
+    summary="Listar usuarios únicos que interactuaron en redes sociales (comentarios y reacciones)",
+)
+async def list_interaction_users(
+    publication_id: uuid.UUID | None = Query(None, description="Filtrar por publicación específica"),
+    platform_id: uuid.UUID | None = Query(None, description="Filtrar por plataforma"),
+    interaction_type: str | None = Query(None, description="Filtrar por tipo: COMMENT, LIKE, SHARE, REPLY"),
+    db: AsyncSession = Depends(get_async_db),
+    _: User = Depends(get_current_user),
+):
+    """
+    Retorna la lista de usuarios únicos que realizaron comentarios o reacciones,
+    con conteo desglosado por tipo de interacción y plataformas utilizadas.
+    """
+    stmt = (
+        select(
+            Interaction.external_author_id,
+            Interaction.external_author_name,
+            func.count(Interaction.id).label("total_interactions"),
+            func.sum(
+                case((Interaction.interaction_type == "COMMENT", 1), else_=0)
+            ).label("comments_count"),
+            func.sum(
+                case((Interaction.interaction_type.in_(["LIKE", "REACTION"]), 1), else_=0)
+            ).label("reactions_count"),
+            func.sum(
+                case((Interaction.interaction_type == "SHARE", 1), else_=0)
+            ).label("shares_count"),
+            func.min(Interaction.external_created_at).label("first_interaction_at"),
+            func.max(Interaction.external_created_at).label("last_interaction_at"),
+        )
+        .where(Interaction.external_author_id.isnot(None))
+        .group_by(Interaction.external_author_id, Interaction.external_author_name)
+    )
+
+    if publication_id:
+        stmt = stmt.where(Interaction.publication_id == publication_id)
+    if platform_id:
+        stmt = stmt.where(Interaction.platform_id == platform_id)
+    if interaction_type:
+        stmt = stmt.where(Interaction.interaction_type == interaction_type)
+
+    stmt = stmt.order_by(func.count(Interaction.id).desc())
+
+    rows = (await db.execute(stmt)).all()
+
+    result: list[InteractionUserItem] = []
+    for row in rows:
+        # Obtener plataformas distintas del usuario
+        plat_stmt = (
+            select(func.distinct(Interaction.source_platform))
+            .where(
+                Interaction.external_author_id == row.external_author_id,
+                Interaction.source_platform.isnot(None),
+            )
+        )
+        if publication_id:
+            plat_stmt = plat_stmt.where(Interaction.publication_id == publication_id)
+        platforms = list((await db.execute(plat_stmt)).scalars().all())
+
+        result.append(
+            InteractionUserItem(
+                external_author_id=row.external_author_id,
+                external_author_name=row.external_author_name,
+                total_interactions=row.total_interactions,
+                comments_count=row.comments_count or 0,
+                reactions_count=row.reactions_count or 0,
+                shares_count=row.shares_count or 0,
+                platforms=platforms,
+                first_interaction_at=row.first_interaction_at,
+                last_interaction_at=row.last_interaction_at,
+            )
+        )
+
+    return result
