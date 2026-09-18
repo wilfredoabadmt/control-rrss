@@ -40,9 +40,16 @@ class SyncJobStatus(StrEnum):
 
 class VerificationStatus(StrEnum):
     """
-    Estados de verificación de cumplimiento de interacción institucional.
+    Estados de verificación de cumplimiento de interacción institucional (REQ-VER-001/002/003).
     """
     PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    NOT_FOUND = "NOT_FOUND"
+    NOT_OBSERVABLE = "NOT_OBSERVABLE"
+    DECLARED_CONFIRMED = "DECLARED_CONFIRMED"
+    DECLARED_NOT_FOUND = "DECLARED_NOT_FOUND"
+    API_RESTRICTED = "API_RESTRICTED"
+    ERROR = "ERROR"
     VERIFIED_AUTOMATIC = "VERIFIED_AUTOMATIC"
     VERIFIED_MANUAL = "VERIFIED_MANUAL"
     REJECTED = "REJECTED"

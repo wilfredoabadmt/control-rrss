@@ -82,3 +82,15 @@ class ImmutableAuditException(GameaException):
             code="IMMUTABLE_AUDIT_VIOLATION",
             correlation_id=correlation_id,
         )
+
+
+class InvalidStateTransitionException(GameaException):
+    """Lanzada ante transiciones ilegales en la máquina de estados de sincronización (Principio XXIII)."""
+    def __init__(self, current_state: str, new_state: str, correlation_id: str | None = None):
+        super().__init__(
+            message=f"Transición de estado inválida: no es posible pasar de '{current_state}' a '{new_state}'.",
+            code="INVALID_STATE_TRANSITION",
+            correlation_id=correlation_id,
+        )
+        self.current_state = current_state
+        self.new_state = new_state

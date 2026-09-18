@@ -156,42 +156,42 @@
 
 ---
 
-## Fase 4 — Interacciones y Verificación (Core Domain)
+## Fase 4 — Interacciones y Verificación (Core Domain) [COMPLETADA]
 
-### T-400: Implementar modelos de Interaction, Evidence, Verification
+### [x] T-400: Implementar modelos de Interaction, Evidence, Verification
 - **Reqs:** REQ-INT-001, REQ-INT-002, REQ-VER-001
 - **Entregable:** Modelos y migraciones con todos los campos de proveniencia (Principio VI) y tipificación epistémica (Principio V). Índice único de idempotencia.
-- **DoD:** Migración limpia. Índice único compuesto funcional. Enums de `data_origin_type` aplicados.
+- **Estado:** ✅ Completado. Modelos `Interaction`, `InteractionEvidence`, `Verification` y `ExternalSyncJob` creados en `modules/interactions/`, `modules/verification/` y `modules/monitoring/`. Migración Alembic `0005_interactions_and_verifications.py`.
 
-### T-401: Implementar procesador de interacciones idempotente
+### [x] T-401: Implementar procesador de interacciones idempotente
 - **Reqs:** REQ-INT-001, Principio XV
 - **Entregable:** `modules/interactions/processor.py` con lógica de ingesta idempotente.
-- **DoD:** Test: 10 inserciones concurrentes del mismo payload = exactamente 1 registro.
+- **Estado:** ✅ Completado. 10 inserciones consecutivas o concurrentes del mismo payload = exactamente 1 registro. Generación de hash SHA-256 forense almacenado en evidencias técnicas.
 
-### T-402: Implementar motor de cruce automático con funcionarios
+### [x] T-402: Implementar motor de cruce automático con funcionarios
 - **Reqs:** REQ-INT-003
 - **Entregable:** `modules/interactions/matcher.py` que cruza `external_author_id` con `social_accounts.external_user_id`.
-- **DoD:** Match encontrado → `PENDING_VERIFICATION`. No encontrado → `UNMATCHED`. Sin ID → `NOT_OBSERVABLE`.
+- **Estado:** ✅ Completado. Coincidencia con funcionario activo → `MATCHED`. No registrado → `UNMATCHED`. Sin autor observable o API restringida → `NOT_OBSERVABLE`.
 
-### T-403: Implementar motor de verificación automática
+### [x] T-403: Implementar motor de verificación automática
 - **Reqs:** REQ-VER-001
 - **Entregable:** `modules/verification/engine.py` con flujo automático de verificación.
-- **DoD:** Interacción cruzada con funcionario → `CONFIRMED`. No cruzable → `NOT_OBSERVABLE`.
+- **Estado:** ✅ Completado. Dictamen automático con creación de registro inmutable `Verification` (`CONFIRMED`, `NOT_FOUND` o `NOT_OBSERVABLE`) y registro de auditoría append-only.
 
-### T-404: Implementar verificación manual asistida
+### [x] T-404: Implementar verificación manual asistida
 - **Reqs:** REQ-VER-002
 - **Entregable:** Endpoint `POST /api/v1/verifications/manual` con evidencia, explicación, funcionario.
-- **DoD:** Operador confirma interacción → `DECLARED_CONFIRMED` con evidencia adjunta y auditoría.
+- **Estado:** ✅ Completado. Operador analista declara `DECLARED_CONFIRMED` o `DECLARED_NOT_FOUND` con justificación documental obligatoria y captura adjunta.
 
-### T-405: Implementar explicabilidad de estados
+### [x] T-405: Implementar explicabilidad de estados
 - **Reqs:** REQ-VER-004, Principio XXVIII
 - **Entregable:** `modules/verification/explainer.py` que genera explicaciones comprensibles por estado.
-- **DoD:** Cada estado de verificación tiene explicación textual completa consultable vía API.
+- **Estado:** ✅ Completado. Explicaciones humanas precisas y contextualizadas para cada uno de los estados epistémicos del sistema.
 
-### T-406: Implementar máquina de estados de sincronización
+### [x] T-406: Implementar máquina de estados de sincronización
 - **Reqs:** REQ-MON-002, Principio XXIII
 - **Entregable:** `modules/monitoring/state_machine.py` con 10 estados y transiciones válidas.
-- **DoD:** Tests que verifiquen transiciones válidas e inválidas (ej. `SUCCESS → PENDING` rechazado).
+- **Estado:** ✅ Completado. Transiciones de ciclo de vida validadas con matriz canónica; rechazo estricto de transiciones ilegales (ej. `COMPLETED` a `PENDING`).
 
 ---
 

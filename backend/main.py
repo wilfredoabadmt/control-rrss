@@ -210,5 +210,13 @@ app.include_router(social_accounts_router, prefix=f"{settings.API_V1_STR}/social
 app.include_router(publications_router, prefix=f"{settings.API_V1_STR}/publications", tags=["Publications"])
 app.include_router(campaigns_router, prefix=f"{settings.API_V1_STR}/campaigns", tags=["Campaigns"])
 
+# Fase 4: Interacciones y Verificación Epistémica
+from modules.interactions.router import router as interactions_router
+from modules.verification.router import router as verifications_router
+
+app.include_router(interactions_router, prefix=settings.API_V1_STR)
+app.include_router(verifications_router, prefix=settings.API_V1_STR)
+
+
 
 

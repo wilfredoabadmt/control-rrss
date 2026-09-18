@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 
 from database import Base, TimestampMixin, UUIDPrimaryKeyMixin, utc_now
+from modules.employees.models import Employee
 from modules.shared.enums import BindingStatus
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -106,6 +107,9 @@ class SocialAccount(Base, TimestampMixin, UUIDPrimaryKeyMixin):
     )
 
     # Relaciones
+    employee: Mapped[Employee] = relationship(
+        Employee,
+    )
     platform: Mapped[SocialPlatform] = relationship(
         SocialPlatform,
         back_populates="accounts",

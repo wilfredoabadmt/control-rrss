@@ -16,7 +16,7 @@ def require_roles(*allowed_roles: UserRole) -> Callable:
     Factory de dependencia para verificar que el usuario actual posea al menos
     uno de los roles permitidos. El rol SUPER_ADMIN siempre posee acceso pleno.
     """
-    allowed_role_names = {r.value for r in allowed_roles}
+    allowed_role_names = {r.value if hasattr(r, "value") else str(r) for r in allowed_roles}
     # Incluir SUPER_ADMIN por defecto como rol con acceso irrestricto
     allowed_role_names.add(UserRole.SUPER_ADMIN.value)
 
