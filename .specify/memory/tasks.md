@@ -127,32 +127,32 @@
 
 ---
 
-## Fase 3 — Vinculación Social y Publicaciones
+## Fase 3 — Vinculación Social y Publicaciones [COMPLETADA]
 
-### T-300: Implementar modelos de SocialPlatform, SocialAccount, InstitutionalAccount
+### [x] T-300: Implementar modelos de SocialPlatform, SocialAccount, InstitutionalAccount
 - **Reqs:** REQ-SAB-001, REQ-PUB-001, Principio IX
 - **Entregable:** Modelos y migraciones para `social_platforms`, `social_accounts`, `username_history`, `institutional_accounts`.
-- **DoD:** Migración limpia. Seed de plataformas: FACEBOOK, TIKTOK.
+- **Estado:** ✅ Completado. Modelos en `modules/social_accounts/models.py`, seed para FACEBOOK y TIKTOK en `seed.py`, y migración `0004_social_and_publications.py`.
 
-### T-301: Implementar vinculación/desvinculación de cuentas sociales
+### [x] T-301: Implementar vinculación/desvinculación de cuentas sociales
 - **Reqs:** REQ-SAB-001, REQ-SAB-003, Principio VII
 - **Entregable:** Endpoints `POST /bind`, `POST /unbind` en `modules/social_accounts/router.py`.
-- **DoD:** Vincular cuenta a funcionario. Unicidad verificada. Desvincular preserva historial. Auditoría registrada.
+- **Estado:** ✅ Completado. Validación de unicidad de external_user_id por plataforma, desvinculación lógica preservando trazabilidad completa e inserción de eventos de auditoría append-only.
 
-### T-302: Implementar historial de cambios de username
+### [x] T-302: Implementar historial de cambios de username
 - **Reqs:** REQ-SAB-002
 - **Entregable:** Actualización de `current_username` con registro en `username_history`.
-- **DoD:** Cambio de username crea registro histórico sin afectar interacciones previas.
+- **Estado:** ✅ Completado. Endpoint `PATCH /api/v1/social-accounts/{id}/username` con tracking histórico inmutable y correlation_id en `username_history`.
 
-### T-303: Implementar modelos de Publication, Campaign, Target
+### [x] T-303: Implementar modelos de Publication, Campaign, Target
 - **Reqs:** REQ-PUB-002, REQ-PUB-003, REQ-PUB-004
 - **Entregable:** Modelos y migraciones para `publications`, `monitoring_campaigns`, `campaign_publications`, `monitoring_targets`.
-- **DoD:** Migración limpia. Relaciones M:N campaña-publicación funcionales.
+- **Estado:** ✅ Completado. Modelos en `modules/publications/models.py`, restricción única compuesta `(platform_id, external_post_id)` para ingesta idempotente, tabla intermedia M:N y metas por unidad.
 
-### T-304: Implementar CRUD de publicaciones y campañas
-- **Reqs:** REQ-PUB-002, REQ-PUB-003
-- **Entregable:** Endpoints CRUD para publicaciones (registro manual) y campañas.
-- **DoD:** Crear publicación con metadatos completos. Crear campaña. Asignar publicaciones a campañas.
+### [x] T-304: Implementar CRUD de publicaciones y campañas
+- **Reqs:** REQ-PUB-002, REQ-PUB-003, REQ-PUB-004
+- **Entregable:** Endpoints CRUD para publicaciones (registro manual e idempotente), campañas y metas institucionales.
+- **Estado:** ✅ Completado. Routers en `modules/publications/router.py` montados en `/publications` y `/campaigns` con auditoría completa y verificación en tests.
 
 ---
 

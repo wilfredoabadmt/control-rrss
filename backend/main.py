@@ -202,4 +202,13 @@ app.include_router(employees_router, prefix=f"{settings.API_V1_STR}/employees", 
 app.include_router(org_units_router, prefix=f"{settings.API_V1_STR}/org-units", tags=["Organizational Units"])
 app.include_router(positions_router, prefix=f"{settings.API_V1_STR}/positions", tags=["Positions"])
 
+# Fase 3: Vinculación Social y Publicaciones
+from modules.publications.router import campaigns_router, publications_router
+from modules.social_accounts.router import social_accounts_router
+
+app.include_router(social_accounts_router, prefix=f"{settings.API_V1_STR}/social-accounts", tags=["Social Accounts"])
+app.include_router(publications_router, prefix=f"{settings.API_V1_STR}/publications", tags=["Publications"])
+app.include_router(campaigns_router, prefix=f"{settings.API_V1_STR}/campaigns", tags=["Campaigns"])
+
+
 
