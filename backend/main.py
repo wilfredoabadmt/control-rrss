@@ -217,6 +217,12 @@ from modules.verification.router import router as verifications_router
 app.include_router(interactions_router, prefix=settings.API_V1_STR)
 app.include_router(verifications_router, prefix=settings.API_V1_STR)
 
+# Fase 5: Adaptadores de Redes Sociales (Webhooks)
+from modules.facebook_adapter.webhook import router as facebook_webhook_router
+
+app.include_router(facebook_webhook_router, prefix=settings.API_V1_STR)
+
+
 
 
 

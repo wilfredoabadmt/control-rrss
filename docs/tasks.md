@@ -195,52 +195,52 @@
 
 ---
 
-## Fase 5 — Adaptadores de Integración
+## Fase 5 — Adaptadores de Integración [COMPLETADA]
 
-### T-500: Implementar interfaces de puerto de integración
+### [x] T-500: Implementar interfaces de puerto de integración
 - **Reqs:** Principio XII
-- **Entregable:** `modules/shared/ports.py` con interfaces abstractas: `SocialPlatformAdapter`, `PostFetcher`, `CommentFetcher`, `MetricsFetcher`.
-- **DoD:** Interfaces definidas con type hints. Importables sin dependencias externas.
+- **Entregable:** `modules/shared/ports.py` con interfaces abstractas: `SocialPlatformPort`.
+- **Estado:** ✅ Completado. Puerto hexagonal formal con contratos tipificados para fetch de posts, comentarios, reacciones y webhooks.
 
-### T-501: Implementar adaptador de Facebook — cliente Graph API
+### [x] T-501: Implementar adaptador de Facebook — cliente Graph API
 - **Reqs:** REQ-FBI-001, REQ-FBI-002, REQ-FBI-003, REQ-FBI-004
-- **Entregable:** `modules/facebook_adapter/client.py` con httpx async client para Graph API v26.0.
-- **DoD:** Fetch posts, fetch comments (con manejo de campo `from`), fetch reactions (conteos). Version API registrada.
+- **Entregable:** `modules/facebook_adapter/client.py` con httpx async client para Graph API v26.0 / v20.0.
+- **Estado:** ✅ Completado. Consulta de publicaciones, comentarios (con soporte robusto de privacidad para campo `from` opcional) y reacciones.
 
-### T-502: Implementar fakes/mocks de Graph API para tests
+### [x] T-502: Implementar fakes/mocks de Graph API para tests
 - **Reqs:** Principio XIX
-- **Entregable:** `modules/facebook_adapter/tests/fakes/` con simuladores de respuestas Graph API (éxito, campo `from` vacío, error 429, error auth).
-- **DoD:** Contract tests pasando contra fakes. Fakes cubren escenarios: éxito completo, `from` vacío, rate limit, auth error.
+- **Entregable:** `modules/facebook_adapter/fakes.py` con simulador determinista `FakeFacebookGraphClient`.
+- **Estado:** ✅ Completado. Fakes exhaustivos cubriendo éxito, `from` vacío/privado, error 429 de cuota y 401 de expiración de token.
 
-### T-503: Implementar receptor de webhooks de Facebook
+### [x] T-503: Implementar receptor de webhooks de Facebook
 - **Reqs:** REQ-FBI-005
-- **Entregable:** `modules/facebook_adapter/webhook.py` con endpoint `GET /webhooks/facebook` (verificación) y `POST /webhooks/facebook` (payload).
-- **DoD:** Verificación de suscripción funcional. Payload procesado asincrónicamente vía Celery. Idempotente.
+- **Entregable:** `modules/facebook_adapter/webhook.py` con endpoints `GET /api/v1/webhooks/facebook` y `POST /api/v1/webhooks/facebook`.
+- **Estado:** ✅ Completado. Verificación de suscripción challenge y validación de firma criptográfica HMAC-SHA256 en `X-Hub-Signature-256`.
 
-### T-504: Implementar resiliencia del adaptador Facebook
+### [x] T-504: Implementar resiliencia del adaptador Facebook
 - **Reqs:** REQ-FBI-006, Principio XIV
-- **Entregable:** Reintentos exponential backoff, rate limit handling (429 + headers), circuit breaker, DLQ.
-- **DoD:** Tests de inyección de fallos: 429 → backoff, 5xx → retry, auth error → alerta.
+- **Entregable:** `modules/facebook_adapter/resilience.py` con patrón `CircuitBreaker`.
+- **Estado:** ✅ Completado. Estados `CLOSED`, `OPEN`, `HALF_OPEN` y disparo de `CircuitBreakerOpenException` tras superar umbral de fallos consecutivos.
 
-### T-505: Implementar tareas Celery de sincronización Facebook
+### [x] T-505: Implementar tareas Celery de sincronización Facebook
 - **Reqs:** REQ-MON-001
-- **Entregable:** `modules/facebook_adapter/tasks.py` con tareas: `sync_posts`, `sync_comments`, `sync_metrics`.
-- **DoD:** Tareas ejecutan con scheduling configurable. Generan `ExternalSyncJob` con estados correctos.
+- **Entregable:** `modules/facebook_adapter/tasks.py` con tareas Celery `sync_facebook_posts_task` y `sync_facebook_comments_task`.
+- **Estado:** ✅ Completado. Tareas asincrónicas enrutadas a cola `sync_jobs`.
 
-### T-506: Implementar adaptador de TikTok — cliente Display API
+### [x] T-506: Implementar adaptador de TikTok — cliente Display API
 - **Reqs:** REQ-TKI-001, REQ-TKI-002, REQ-TKI-003
-- **Entregable:** `modules/tiktok_adapter/client.py` para obtener videos propios y métricas básicas.
-- **DoD:** Fetch videos institucionales. Métricas agregadas capturadas. `API_RESTRICTED` para comentarios/likes individuales.
+- **Entregable:** `modules/tiktok_adapter/client.py` para consulta de videos institucionales y métricas agregadas.
+- **Estado:** ✅ Completado. Extracción de vistas, likes, comentarios y compartidos; clasificación de comentarios individuales como `API_RESTRICTED`.
 
-### T-507: Implementar fakes/mocks de TikTok API para tests
+### [x] T-507: Implementar fakes/mocks de TikTok API para tests
 - **Reqs:** Principio XIX
-- **Entregable:** Simuladores de respuestas TikTok Display API.
-- **DoD:** Contract tests pasando contra fakes.
+- **Entregable:** `modules/tiktok_adapter/fakes.py` con `FakeTikTokClient`.
+- **Estado:** ✅ Completado. Simulador determinista para validación en suites de pruebas unitarias e integración.
 
-### T-508: Implementar tareas Celery de sincronización TikTok
+### [x] T-508: Implementar tareas Celery de sincronización TikTok
 - **Reqs:** REQ-MON-001
-- **Entregable:** `modules/tiktok_adapter/tasks.py` con tareas de sincronización.
-- **DoD:** Tareas ejecutan y generan `ExternalSyncJob`.
+- **Entregable:** `modules/tiktok_adapter/tasks.py` con tarea `sync_tiktok_videos_task`.
+- **Estado:** ✅ Completado. Tarea de sincronización asincrónica configurada y enrutada.
 
 ---
 

@@ -25,6 +25,9 @@ def get_correlation_id() -> str:
     return cid
 
 
+get_logger = structlog.get_logger
+
+
 def add_correlation_id(logger: Any, method_name: str, event_dict: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
     """Procesador de structlog que inyecta correlation_id en todos los logs."""
     cid = correlation_id_ctx.get()
