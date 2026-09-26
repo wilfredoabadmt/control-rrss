@@ -3,21 +3,19 @@ FROM python:3.12-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# Install system dependencies (build-essential, libpq-dev for psycopg, curl for healthcheck)
+# Instalar únicamente dependencias mínimas de ejecución (curl para probe de salud)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy backend requirements
+# Copiar requirements y cachear paquetes pip mediante Docker BuildKit
 COPY backend/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 # Development stage
 FROM base AS development
@@ -35,7 +33,7 @@ COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 WORKDIR /app/backend
 
-# Create non-root user for security
+# Crear usuario no root y asignar permisos
 RUN addgroup --system appgroup && adduser --system --group appuser \
     && chown -R appuser:appgroup /app
 USER appuser
