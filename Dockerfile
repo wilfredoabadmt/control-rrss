@@ -36,7 +36,8 @@ COPY alembic.ini /app/alembic.ini
 WORKDIR /app/backend
 
 # Create non-root user for security
-RUN addgroup --system appgroup && adduser --system --group appuser
+RUN addgroup --system appgroup && adduser --system --group appuser \
+    && chown -R appuser:appgroup /app
 USER appuser
 
 EXPOSE 8000
