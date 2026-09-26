@@ -59,6 +59,36 @@ export const VERIFICATION_STATUS_LABELS: Record<string, { label: string; descrip
     description: 'No se detectó actividad del funcionario en la publicación.',
     color: '#f43f5e',
   },
+  VERIFIED_AUTOMATIC: {
+    label: 'Verificado Automáticamente',
+    description: 'Validado de forma algorítmica mediante cruce de identificador único.',
+    color: '#10b981',
+  },
+  VERIFIED_MANUAL: {
+    label: 'Verificado Manualmente',
+    description: 'Validado por un analista municipal tras revisión de captura o evidencia.',
+    color: '#34d399',
+  },
+  REJECTED: {
+    label: 'Rechazado / No Válido',
+    description: 'Interacción descartada por no cumplir los criterios de la campaña.',
+    color: '#ef4444',
+  },
+  UNVERIFIABLE: {
+    label: 'No Verificable (Restricción Técnica)',
+    description: 'Limitación de privacidad de la red social que impide confirmar la autoría.',
+    color: '#8b5cf6',
+  },
+  EXEMPT: {
+    label: 'Exento de Fiscalización',
+    description: 'Personal con permiso justificado, baja médica o en comisión de servicio.',
+    color: '#6b7280',
+  },
+  ERROR: {
+    label: 'Error de Procesamiento',
+    description: 'Inconsistencia técnica durante la extracción de datos.',
+    color: '#dc2626',
+  },
 };
 
 export const USER_ROLE_LABELS: Record<string, string> = {

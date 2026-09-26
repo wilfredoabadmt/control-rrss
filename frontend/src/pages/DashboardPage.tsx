@@ -3,6 +3,9 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Facebook,
   HelpCircle,
@@ -11,9 +14,11 @@ import {
   LogOut,
   RefreshCw,
   Shield,
+  ShieldCheck,
   Users,
   Video,
-  X
+  X,
+  XCircle
 } from 'lucide-react';
 import { getOperationalDashboard, getExecutiveDashboard } from '../api/dashboard';
 import {
@@ -32,6 +37,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIndicator, setSelectedIndicator] = useState<IndicatorResult | null>(null);
+  const [showTechnicalBreakdown, setShowTechnicalBreakdown] = useState<boolean>(false);
 
   // Operational State
   const [opData, setOpData] = useState<OperationalDashboardResponse>({
@@ -645,71 +651,229 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
               </div>
             </div>
 
-            {/* Desglose Epistémico y Plataformas */}
+            {/* Desglose Ejecutivo de Cumplimiento y Plataformas */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
-              {/* Desglose Epistémico */}
+              {/* Desglose Ejecutivo de Cumplimiento */}
               <div className="glass-panel" style={{ padding: '28px' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: '#fff', marginBottom: '6px' }}>
-                  Distribución Epistémica de Verificaciones
-                </h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                  Principio V: Distinción formal entre lo confirmado, lo no observable y restricciones de API.
-                </p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {Object.entries(execData.verification_distribution).map(([status, count]) => {
-                    const percent =
-                      totalInteractionsDistribution > 0
-                        ? ((count / totalInteractionsDistribution) * 100).toFixed(1)
-                        : '0';
-
-                    let barColor = '#3b82f6';
-                    if (status.includes('CONFIRMED')) barColor = '#10b981';
-                    if (status.includes('PENDING')) barColor = '#fbbf24';
-                    if (status.includes('NOT_OBSERVABLE')) barColor = '#8b5cf6';
-                    if (status.includes('API_RESTRICTED')) barColor = '#ec4899';
-                    if (status.includes('NOT_FOUND')) barColor = '#f43f5e';
-
-                    return (
-                      <div key={status}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            fontSize: '0.8rem',
-                            marginBottom: '4px'
-                          }}
-                        >
-                          <span style={{ fontWeight: '500', color: '#fff' }}>
-                            {formatVerificationStatus(status).label}
-                          </span>
-                          <span style={{ color: 'var(--text-muted)' }}>
-                            {count} ({percent}%)
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            width: '100%',
-                            height: '8px',
-                            background: 'rgba(31, 41, 55, 0.8)',
-                            borderRadius: '4px',
-                            overflow: 'hidden'
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${percent}%`,
-                              height: '100%',
-                              background: barColor,
-                              borderRadius: '4px',
-                              transition: 'width 0.4s ease'
-                            }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: '#fff', marginBottom: '4px' }}>
+                      Estado de Verificación y Cumplimiento
+                    </h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Resumen ejecutivo del cumplimiento del personal en publicaciones oficiales monitoreadas.
+                    </p>
+                  </div>
+                  <span
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      color: '#60a5fa',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      padding: '4px 10px',
+                      borderRadius: '12px'
+                    }}
+                  >
+                    {totalInteractionsDistribution} interacciones
+                  </span>
                 </div>
+
+                {/* 4 Pilares Ejecutivos */}
+                {(() => {
+                  const rawDist = execData.verification_distribution || {};
+                  const totalVerified =
+                    (rawDist.CONFIRMED || 0) +
+                    (rawDist.DECLARED_CONFIRMED || 0) +
+                    (rawDist.VERIFIED_AUTOMATIC || 0) +
+                    (rawDist.VERIFIED_MANUAL || 0);
+                  const totalPending = rawDist.PENDING || 0;
+                  const totalRestricted =
+                    (rawDist.NOT_OBSERVABLE || 0) +
+                    (rawDist.API_RESTRICTED || 0) +
+                    (rawDist.UNVERIFIABLE || 0) +
+                    (rawDist.EXEMPT || 0);
+                  const totalNotFound =
+                    (rawDist.NOT_FOUND || 0) +
+                    (rawDist.DECLARED_NOT_FOUND || 0) +
+                    (rawDist.REJECTED || 0) +
+                    (rawDist.ERROR || 0);
+
+                  const executivePillars = [
+                    {
+                      id: 'verified',
+                      title: 'Cumplido / Verificado',
+                      subtitle: 'Interacciones confirmadas mediante identificador único o evidencia',
+                      count: totalVerified,
+                      color: '#10b981',
+                      badge: 'Verificado',
+                      icon: <CheckCircle2 size={16} color="#10b981" />
+                    },
+                    {
+                      id: 'pending',
+                      title: 'Pendiente de Revisión',
+                      subtitle: 'En cola de procesamiento o en espera de cruce algorítmico',
+                      count: totalPending,
+                      color: '#f59e0b',
+                      badge: 'En Proceso',
+                      icon: <Clock size={16} color="#f59e0b" />
+                    },
+                    {
+                      id: 'restricted',
+                      title: 'No Verificable (Restricción de Red)',
+                      subtitle: 'Protegido por privacidad de TikTok o Meta (no imputable al personal)',
+                      count: totalRestricted,
+                      color: '#8b5cf6',
+                      badge: 'Protegido',
+                      icon: <ShieldCheck size={16} color="#8b5cf6" />
+                    },
+                    {
+                      id: 'not_found',
+                      title: 'No Detectado / Incumplido',
+                      subtitle: 'Publicaciones auditadas donde no se encontró interacción del funcionario',
+                      count: totalNotFound,
+                      color: '#ef4444',
+                      badge: 'Sin Registro',
+                      icon: <XCircle size={16} color="#ef4444" />
+                    }
+                  ];
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '16px' }}>
+                      {executivePillars.map(pillar => {
+                        const pct =
+                          totalInteractionsDistribution > 0
+                            ? ((pillar.count / totalInteractionsDistribution) * 100).toFixed(1)
+                            : '0';
+
+                        return (
+                          <div
+                            key={pillar.id}
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.02)',
+                              border: '1px solid rgba(255, 255, 255, 0.06)',
+                              borderRadius: '8px',
+                              padding: '12px 14px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {pillar.icon}
+                                <span style={{ fontWeight: '600', color: '#fff', fontSize: '0.85rem' }}>
+                                  {pillar.title}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.9rem' }}>
+                                  {pillar.count}
+                                </span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                  ({pct}%)
+                                </span>
+                              </div>
+                            </div>
+                            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                              {pillar.subtitle}
+                            </p>
+                            <div
+                              style={{
+                                width: '100%',
+                                height: '6px',
+                                background: 'rgba(31, 41, 55, 0.8)',
+                                borderRadius: '3px',
+                                overflow: 'hidden'
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${pct}%`,
+                                  height: '100%',
+                                  background: pillar.color,
+                                  borderRadius: '3px',
+                                  transition: 'width 0.4s ease'
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Botón para alternar desglose técnico si se requiere para auditoría */}
+                      <button
+                        onClick={() => setShowTechnicalBreakdown(!showTechnicalBreakdown)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          background: 'none',
+                          border: 'none',
+                          color: '#94a3b8',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          padding: '6px 0',
+                          marginTop: '4px'
+                        }}
+                      >
+                        {showTechnicalBreakdown ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        {showTechnicalBreakdown
+                          ? 'Ocultar desglose técnico detallado'
+                          : 'Ver desglose técnico detallado (13 estados de auditoría)'}
+                      </button>
+
+                      {showTechnicalBreakdown && (
+                        <div
+                          style={{
+                            background: 'rgba(15, 23, 42, 0.6)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '8px',
+                            padding: '14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '10px'
+                          }}
+                        >
+                          <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: '700' }}>
+                            Sub-estados técnicos registrados en base de datos:
+                          </span>
+                          {Object.entries(execData.verification_distribution).map(([status, count]) => {
+                            const percent =
+                              totalInteractionsDistribution > 0
+                                ? ((count / totalInteractionsDistribution) * 100).toFixed(1)
+                                : '0';
+                            const info = formatVerificationStatus(status);
+                            return (
+                              <div
+                                key={status}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <div
+                                    style={{
+                                      width: '8px',
+                                      height: '8px',
+                                      borderRadius: '50%',
+                                      background: info.color
+                                    }}
+                                  />
+                                  <span style={{ color: '#cbd5e1' }}>{info.label}</span>
+                                </div>
+                                <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>
+                                  {count} ({percent}%)
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Desglose de Redes y Cumplimiento Metodológico */}
