@@ -52,6 +52,12 @@ class UUIDPrimaryKeyMixin:
         comment="Identificador único UUIDv4"
     )
 
+    def __init__(self, **kwargs):
+        if "id" not in kwargs or kwargs["id"] is None:
+            kwargs["id"] = uuid.uuid4()
+        super().__init__(**kwargs)
+
+
 
 def create_configured_async_engine(db_url: str):
     kwargs = {"echo": settings.DEBUG, "pool_pre_ping": True}

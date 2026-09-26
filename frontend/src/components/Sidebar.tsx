@@ -8,13 +8,15 @@ import {
   Radio,
   Settings,
   ShieldAlert,
-  Users
+  Users,
+  Zap,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 
 export type ActivePage =
   | 'dashboard'
+  | 'monitoring-hub'
   | 'employees'
   | 'publications'
   | 'interactions'
@@ -43,6 +45,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) =>
       label: 'Panel Principal',
       icon: Activity,
     },
+    {
+      id: 'monitoring-hub',
+      label: 'Auditoría RRSS & Scraper',
+      icon: Zap,
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
+    },
+
     {
       id: 'employees',
       label: 'Funcionarios',

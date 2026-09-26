@@ -303,10 +303,16 @@ from modules.reporting.router import router as reporting_router
 app.include_router(reporting_router, prefix=settings.API_V1_STR)
 app.include_router(dashboard_router, prefix=settings.API_V1_STR)
 
+# Fase 7: Centro de Ingesta, Monitoreo y Fiscalización de Audiencia (Facebook & TikTok)
+from modules.monitoring.router import monitoring_router
+
+app.include_router(monitoring_router, prefix=settings.API_V1_STR)
+
 # Fase 8: Notificaciones y Alertas
 from modules.notifications.router import router as notifications_router
 
 app.include_router(notifications_router, prefix=settings.API_V1_STR)
+
 
 # -----------------------------------------------------------------------------
 # Integración y Montaje de Frontend SPA (React + Vite)

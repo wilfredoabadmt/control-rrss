@@ -80,6 +80,7 @@ class VerificationService:
             created_by_user_id=str(current_user.id),
         )
         db.add(evidence)
+        await db.flush()
         ev_id = evidence.id
 
         # 4. Generar explicación humana y técnica (Principio XXVIII)

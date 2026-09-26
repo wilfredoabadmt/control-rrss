@@ -138,3 +138,130 @@ export interface ExecutiveDashboardResponse {
   total_active_employees: number;
   constitutional_disclaimer: string;
 }
+
+// ---------------------------------------------------------------------------
+// Módulo de Monitoreo & Ingesta (Facebook & TikTok Scraper Hub)
+// ---------------------------------------------------------------------------
+
+export interface ConnectorConfigItem {
+  platform_name: string;
+  target_account_id: string;
+  display_name: string;
+  access_token?: string;
+  api_secret?: string;
+  has_token: boolean;
+  has_secret: boolean;
+  api_version: string;
+  extraction_mode: string;
+  rate_limit_per_minute: number;
+  max_posts_per_sync: number;
+  max_comments_per_post: number;
+  is_active: boolean;
+  last_sync_at?: string;
+  last_status: string;
+  status_message?: string;
+}
+
+export interface ConnectorConfigsResponse {
+  configs: ConnectorConfigItem[];
+}
+
+export interface TestConnectionResponse {
+  platform_name: string;
+  success: boolean;
+  status: string;
+  message: string;
+  account_info?: Record<string, any>;
+}
+
+export interface MonitoredPerson {
+  ci: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  department: string;
+  position: string;
+  email?: string;
+  facebook_account?: string;
+  facebook_profile_url?: string;
+  tiktok_account?: string;
+  tiktok_profile_url?: string;
+  status: string;
+  created_at: string;
+}
+
+export interface MonitoredPersonCreateInput {
+  ci: string;
+  first_name: string;
+  last_name: string;
+  department: string;
+  position: string;
+  email?: string;
+  facebook_account?: string;
+  facebook_profile_url?: string;
+  tiktok_account?: string;
+  tiktok_profile_url?: string;
+}
+
+export interface MonitoredPersonBulkImportResponse {
+  total_parsed: number;
+  created_count: number;
+  updated_count: number;
+  failed_count: number;
+  errors: string[];
+}
+
+export interface RunSyncResponse {
+  job_id: string;
+  status: string;
+  platform: string;
+  posts_processed: number;
+  interactions_extracted: number;
+  matched_interactions: number;
+  new_interactions_created: number;
+  execution_time_seconds: number;
+  details: string;
+}
+
+export interface ActivityMatrixPersonPost {
+  publication_id: string;
+  platform: string;
+  external_post_id: string;
+  post_url?: string;
+  post_title: string;
+  published_at?: string;
+  reaction_type?: string;
+  comment_text?: string;
+  comment_created_at?: string;
+  verification_status: string;
+  epistemic_status_display: string;
+}
+
+export interface ActivityMatrixRow {
+  employee_id: string;
+  full_name: string;
+  department: string;
+  position: string;
+  facebook_handle?: string;
+  tiktok_handle?: string;
+  total_reactions: number;
+  total_comments: number;
+  has_participated: boolean;
+  posts: ActivityMatrixPersonPost[];
+}
+
+export interface ActivityMatrixSummary {
+  total_monitored_persons: number;
+  total_participated: number;
+  participation_percentage: number;
+  total_reactions: number;
+  total_comments: number;
+  reactions_by_type: Record<string, number>;
+  total_publications_evaluated: number;
+}
+
+export interface ActivityMatrixResponse {
+  summary: ActivityMatrixSummary;
+  rows: ActivityMatrixRow[];
+}
+

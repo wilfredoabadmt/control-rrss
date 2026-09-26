@@ -10,6 +10,7 @@ import { InteractionsPage } from './pages/InteractionsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { AuditPage } from './pages/AuditPage';
 import { AdminPage } from './pages/AdminPage';
+import { MonitoringHubPage } from './pages/MonitoringHubPage';
 import { Activity } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -45,8 +46,11 @@ const AppContent: React.FC = () => {
         switch (activePage) {
           case 'dashboard':
             return <DashboardPage onLogout={logout} />;
+          case 'monitoring-hub':
+            return <MonitoringHubPage />;
           case 'employees':
             return <EmployeesPage />;
+
           case 'publications':
             return <PublicationsPage />;
           case 'interactions':

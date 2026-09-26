@@ -51,8 +51,10 @@ class InteractionMatcher:
             )
 
         author_id = interaction.external_author_id.strip()
+        clean_author = author_id.lstrip("@").lower()
+        author_name = (interaction.external_author_name or "").strip().lower()
 
-        # BR-INT-006: Comparar external_author_id con external_user_id de SocialAccount activa
+        # BR-INT-006: 1. Comparar external_author_id con external_user_id de SocialAccount activa
         stmt = (
             select(SocialAccount)
             .where(
@@ -63,6 +65,23 @@ class InteractionMatcher:
             .options(selectinload(SocialAccount.employee))
         )
         account = (await db.execute(stmt)).scalar_one_or_none()
+
+        # 2. Si no coincide por ID externo, probar coincidencia por username/handle
+        if not account:
+            stmt_user = (
+                select(SocialAccount)
+                .where(
+                    SocialAccount.platform_id == interaction.platform_id,
+                    SocialAccount.binding_status == BindingStatus.ACTIVE.value,
+                )
+                .options(selectinload(SocialAccount.employee))
+            )
+            candidates = list((await db.execute(stmt_user)).scalars().all())
+            for cand in candidates:
+                cand_handle = (cand.current_username or "").lstrip("@").lower()
+                if cand_handle and (cand_handle == clean_author or (author_name and cand_handle == author_name)):
+                    account = cand
+                    break
 
         if account and account.employee and account.employee.status == EmployeeStatus.ACTIVE.value:
             return MatchResult(
@@ -77,3 +96,4 @@ class InteractionMatcher:
             status=MatchStatus.UNMATCHED,
             message=f"El identificador externo '{author_id}' no corresponde a ningún funcionario municipal activo registrado.",
         )
+

@@ -36,7 +36,7 @@
           "Health"
         ],
         "summary": "Health Readiness",
-        "description": "Endpoint de readiness probe: valida conectividad con PostgreSQL y Redis.",
+        "description": "Endpoint de readiness probe: valida conectividad con Base de Datos y Redis.",
         "operationId": "health_readiness_health_readiness_get",
         "responses": {
           "200": {
@@ -56,7 +56,7 @@
           "Root"
         ],
         "summary": "Root",
-        "description": "Raíz del servicio API con enlace a la documentación.",
+        "description": "Raíz del servicio: entrega la SPA de React a navegadores o JSON a clientes API.",
         "operationId": "root__get",
         "responses": {
           "200": {
@@ -64,10 +64,6 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "type": "object",
                   "title": "Response Root  Get"
                 }
               }
@@ -2608,6 +2604,105 @@
         }
       }
     },
+    "/api/v1/interactions/users/list": {
+      "get": {
+        "tags": [
+          "Interactions & Evidence"
+        ],
+        "summary": "Listar usuarios únicos que interactuaron en redes sociales (comentarios y reacciones)",
+        "description": "Retorna la lista de usuarios únicos que realizaron comentarios o reacciones,\ncon conteo desglosado por tipo de interacción y plataformas utilizadas.",
+        "operationId": "list_interaction_users_api_v1_interactions_users_list_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "publication_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrar por publicación específica",
+              "title": "Publication Id"
+            },
+            "description": "Filtrar por publicación específica"
+          },
+          {
+            "name": "platform_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrar por plataforma",
+              "title": "Platform Id"
+            },
+            "description": "Filtrar por plataforma"
+          },
+          {
+            "name": "interaction_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrar por tipo: COMMENT, LIKE, SHARE, REPLY",
+              "title": "Interaction Type"
+            },
+            "description": "Filtrar por tipo: COMMENT, LIKE, SHARE, REPLY"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InteractionUserItem"
+                  },
+                  "title": "Response List Interaction Users Api V1 Interactions Users List Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/verifications/manual": {
       "post": {
         "tags": [
@@ -2885,7 +2980,7 @@
         "tags": [
           "Webhooks"
         ],
-        "summary": "Recepción de eventos de Webhook de Meta",
+        "summary": "Recepción de eventos asíncronos de Meta (REQ-FBI-005)",
         "description": "Recepción de notificaciones de publicaciones, comentarios y reacciones en tiempo real.",
         "operationId": "receive_facebook_webhook_api_v1_webhooks_facebook__post",
         "parameters": [
@@ -3102,6 +3197,503 @@
         ]
       }
     },
+    "/api/v1/monitoring/hub/config": {
+      "get": {
+        "tags": [
+          "Monitoring & Social Scraper Hub"
+        ],
+        "summary": "Obtener configuración de conectores de redes sociales (Facebook & TikTok)",
+        "operationId": "get_connector_configs_api_v1_monitoring_hub_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorConfigsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Monitoring & Social Scraper Hub"
+        ],
+        "summary": "Actualizar credenciales y parámetros de extracción de Facebook y TikTok",
+        "operationId": "update_connector_configs_api_v1_monitoring_hub_config_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorConfigUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorConfigsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/hub/test-connection": {
+      "post": {
+        "tags": [
+          "Monitoring & Social Scraper Hub"
+        ],
+        "summary": "Probar conectividad y validar credenciales de Facebook o TikTok",
+        "operationId": "test_connection_api_v1_monitoring_hub_test_connection_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestConnectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/hub/audience": {
+      "get": {
+        "tags": [
+          "Monitoring & Social Scraper Hub"
+        ],
+        "summary": "Listar personas en monitoreo con sus perfiles de Facebook y TikTok",
+        "operationId": "get_audience_api_v1_monitoring_hub_audience_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MonitoredPersonResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Get Audience Api V1 Monitoring Hub Audience Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Monitoring & Social Scraper Hub"
+        ],
+        "summary": "Adicionar o actualizar una persona en la lista de monitoreo",
+        "operationId": "add_monitored_person_api_v1_monitoring_hub_audience_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitoredPersonCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoredPersonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/hub/audience/bulk": {
+      "post": {
+        "tags": [
+          "Monitoring & Social Scraper Hub"
+        ],
+        "summary": "Importación masiva de personas a monitorear (CSV o JSON)",
+        "operationId": "bulk_import_audience_api_v1_monitoring_hub_audience_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitoredPersonBulkImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoredPersonBulkImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/hub/sync-now": {
+      "post": {
+        "tags": [
+          "Monitoring & Social Scraper Hub"
+        ],
+        "summary": "Ejecutar extracción/scrapeo y cruce de interacciones en Facebook y TikTok",
+        "operationId": "run_social_sync_api_v1_monitoring_hub_sync_now_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunSyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSyncResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/hub/activity-matrix": {
+      "get": {
+        "tags": [
+          "Monitoring & Social Scraper Hub"
+        ],
+        "summary": "Consultar matriz cruzada de reacciones y actividades de la audiencia",
+        "operationId": "get_activity_matrix_api_v1_monitoring_hub_activity_matrix_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "publication_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrar por publicación específica",
+              "title": "Publication Id"
+            },
+            "description": "Filtrar por publicación específica"
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrar por plataforma (ALL, FACEBOOK, TIKTOK)",
+              "title": "Platform"
+            },
+            "description": "Filtrar por plataforma (ALL, FACEBOOK, TIKTOK)"
+          },
+          {
+            "name": "department",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrar por unidad organizacional",
+              "title": "Department"
+            },
+            "description": "Filtrar por unidad organizacional"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Búsqueda por nombre, CI o usuario",
+              "title": "Search"
+            },
+            "description": "Búsqueda por nombre, CI o usuario"
+          },
+          {
+            "name": "participation_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ALL, PARTICIPATED, NO_ACTIVITY",
+              "default": "ALL",
+              "title": "Participation Status"
+            },
+            "description": "ALL, PARTICIPATED, NO_ACTIVITY"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityMatrixResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/monitoring/hub/export-matrix": {
+      "get": {
+        "tags": [
+          "Monitoring & Social Scraper Hub"
+        ],
+        "summary": "Descargar informe oficial de fiscalización en formato Excel (.xlsx)",
+        "operationId": "export_matrix_excel_api_v1_monitoring_hub_export_matrix_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "publication_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Publication Id"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "department",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications/alerts": {
       "get": {
         "tags": [
@@ -3139,6 +3731,247 @@
   },
   "components": {
     "schemas": {
+      "ActivityMatrixPersonPost": {
+        "properties": {
+          "publication_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Publication Id"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "external_post_id": {
+            "type": "string",
+            "title": "External Post Id"
+          },
+          "post_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Url"
+          },
+          "post_title": {
+            "type": "string",
+            "title": "Post Title"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "reaction_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaction Type",
+            "description": "LIKE, LOVE, CARE, HAHA, WOW, SAD, ANGRY o None"
+          },
+          "comment_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Text"
+          },
+          "comment_created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Created At"
+          },
+          "verification_status": {
+            "type": "string",
+            "title": "Verification Status",
+            "description": "CONFIRMED, OBSERVED, API_RESTRICTED, NOT_FOUND",
+            "default": "NOT_FOUND"
+          },
+          "epistemic_status_display": {
+            "type": "string",
+            "title": "Epistemic Status Display"
+          }
+        },
+        "type": "object",
+        "required": [
+          "publication_id",
+          "platform",
+          "external_post_id",
+          "post_url",
+          "post_title",
+          "published_at",
+          "epistemic_status_display"
+        ],
+        "title": "ActivityMatrixPersonPost"
+      },
+      "ActivityMatrixResponse": {
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/ActivityMatrixSummary"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityMatrixRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "rows"
+        ],
+        "title": "ActivityMatrixResponse"
+      },
+      "ActivityMatrixRow": {
+        "properties": {
+          "employee_id": {
+            "type": "string",
+            "title": "Employee Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "department": {
+            "type": "string",
+            "title": "Department"
+          },
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "facebook_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facebook Handle"
+          },
+          "tiktok_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiktok Handle"
+          },
+          "total_reactions": {
+            "type": "integer",
+            "title": "Total Reactions"
+          },
+          "total_comments": {
+            "type": "integer",
+            "title": "Total Comments"
+          },
+          "has_participated": {
+            "type": "boolean",
+            "title": "Has Participated"
+          },
+          "posts": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityMatrixPersonPost"
+            },
+            "type": "array",
+            "title": "Posts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_id",
+          "full_name",
+          "department",
+          "position",
+          "facebook_handle",
+          "tiktok_handle",
+          "total_reactions",
+          "total_comments",
+          "has_participated",
+          "posts"
+        ],
+        "title": "ActivityMatrixRow"
+      },
+      "ActivityMatrixSummary": {
+        "properties": {
+          "total_monitored_persons": {
+            "type": "integer",
+            "title": "Total Monitored Persons"
+          },
+          "total_participated": {
+            "type": "integer",
+            "title": "Total Participated"
+          },
+          "participation_percentage": {
+            "type": "number",
+            "title": "Participation Percentage"
+          },
+          "total_reactions": {
+            "type": "integer",
+            "title": "Total Reactions"
+          },
+          "total_comments": {
+            "type": "integer",
+            "title": "Total Comments"
+          },
+          "reactions_by_type": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Reactions By Type"
+          },
+          "total_publications_evaluated": {
+            "type": "integer",
+            "title": "Total Publications Evaluated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_monitored_persons",
+          "total_participated",
+          "participation_percentage",
+          "total_reactions",
+          "total_comments",
+          "reactions_by_type",
+          "total_publications_evaluated"
+        ],
+        "title": "ActivityMatrixSummary"
+      },
       "AddPublicationsToCampaignRequest": {
         "properties": {
           "publication_ids": {
@@ -3344,6 +4177,159 @@
           "file"
         ],
         "title": "Body_import_employees_payroll_api_v1_employees_import_post"
+      },
+      "ConnectorConfigItem": {
+        "properties": {
+          "platform_name": {
+            "type": "string",
+            "title": "Platform Name",
+            "description": "FACEBOOK o TIKTOK"
+          },
+          "target_account_id": {
+            "type": "string",
+            "title": "Target Account Id",
+            "description": "ID o handle oficial de la página/canal",
+            "default": ""
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "description": "Nombre institucional descriptivo",
+            "default": ""
+          },
+          "access_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token",
+            "description": "Token o clave (solo para actualización)"
+          },
+          "api_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Secret",
+            "description": "Secret o clave de sesión (solo para actualización)"
+          },
+          "has_token": {
+            "type": "boolean",
+            "title": "Has Token",
+            "description": "Indica si existe un token configurado",
+            "default": false
+          },
+          "has_secret": {
+            "type": "boolean",
+            "title": "Has Secret",
+            "description": "Indica si existe un secret configurado",
+            "default": false
+          },
+          "api_version": {
+            "type": "string",
+            "title": "Api Version",
+            "default": "v20.0"
+          },
+          "extraction_mode": {
+            "type": "string",
+            "title": "Extraction Mode",
+            "description": "OFFICIAL_API, HYBRID_SCRAPER, MANUAL_ASSISTED",
+            "default": "OFFICIAL_API"
+          },
+          "rate_limit_per_minute": {
+            "type": "integer",
+            "title": "Rate Limit Per Minute",
+            "default": 60
+          },
+          "max_posts_per_sync": {
+            "type": "integer",
+            "title": "Max Posts Per Sync",
+            "default": 25
+          },
+          "max_comments_per_post": {
+            "type": "integer",
+            "title": "Max Comments Per Post",
+            "default": 200
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "last_status": {
+            "type": "string",
+            "title": "Last Status",
+            "default": "CONFIGURED"
+          },
+          "status_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform_name"
+        ],
+        "title": "ConnectorConfigItem"
+      },
+      "ConnectorConfigUpdateRequest": {
+        "properties": {
+          "configs": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorConfigItem"
+            },
+            "type": "array",
+            "title": "Configs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "configs"
+        ],
+        "title": "ConnectorConfigUpdateRequest"
+      },
+      "ConnectorConfigsResponse": {
+        "properties": {
+          "configs": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorConfigItem"
+            },
+            "type": "array",
+            "title": "Configs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "configs"
+        ],
+        "title": "ConnectorConfigsResponse"
       },
       "ConsolidatedStatusResponse": {
         "properties": {
@@ -4527,6 +5513,87 @@
         ],
         "title": "InteractionResponse"
       },
+      "InteractionUserItem": {
+        "properties": {
+          "external_author_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Author Id"
+          },
+          "external_author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Author Name"
+          },
+          "total_interactions": {
+            "type": "integer",
+            "title": "Total Interactions",
+            "default": 0
+          },
+          "comments_count": {
+            "type": "integer",
+            "title": "Comments Count",
+            "default": 0
+          },
+          "reactions_count": {
+            "type": "integer",
+            "title": "Reactions Count",
+            "default": 0
+          },
+          "shares_count": {
+            "type": "integer",
+            "title": "Shares Count",
+            "default": 0
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Platforms",
+            "default": []
+          },
+          "first_interaction_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Interaction At"
+          },
+          "last_interaction_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Interaction At"
+          }
+        },
+        "type": "object",
+        "title": "InteractionUserItem",
+        "description": "Usuario único que interactuó en redes sociales (comentario o reacción)."
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -4611,6 +5678,275 @@
         ],
         "title": "ManualVerificationRequest",
         "description": "Solicitud de verificación manual asistida efectuada por un operador o analista (REQ-VER-002)."
+      },
+      "MonitoredPersonBulkImportRequest": {
+        "properties": {
+          "raw_text": {
+            "type": "string",
+            "title": "Raw Text",
+            "description": "Texto con formato CSV o JSON de personas a monitorear"
+          },
+          "delimiter": {
+            "type": "string",
+            "title": "Delimiter",
+            "description": "Delimitador para CSV (coma, punto y coma o tab)",
+            "default": ","
+          }
+        },
+        "type": "object",
+        "required": [
+          "raw_text"
+        ],
+        "title": "MonitoredPersonBulkImportRequest"
+      },
+      "MonitoredPersonBulkImportResponse": {
+        "properties": {
+          "total_parsed": {
+            "type": "integer",
+            "title": "Total Parsed"
+          },
+          "created_count": {
+            "type": "integer",
+            "title": "Created Count"
+          },
+          "updated_count": {
+            "type": "integer",
+            "title": "Updated Count"
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_parsed",
+          "created_count",
+          "updated_count",
+          "failed_count",
+          "errors"
+        ],
+        "title": "MonitoredPersonBulkImportResponse"
+      },
+      "MonitoredPersonCreate": {
+        "properties": {
+          "ci": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 4,
+            "title": "Ci",
+            "description": "Cédula de Identidad / ID Funcionario"
+          },
+          "first_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "First Name"
+          },
+          "last_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Last Name"
+          },
+          "department": {
+            "type": "string",
+            "maxLength": 150,
+            "title": "Department",
+            "default": "Secretaría Municipal Central"
+          },
+          "position": {
+            "type": "string",
+            "maxLength": 150,
+            "title": "Position",
+            "default": "Funcionario Municipal"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "facebook_account": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facebook Account",
+            "description": "@handle, username o ID de Facebook"
+          },
+          "facebook_profile_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facebook Profile Url"
+          },
+          "tiktok_account": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiktok Account",
+            "description": "@handle o username de TikTok"
+          },
+          "tiktok_profile_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiktok Profile Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ci",
+          "first_name",
+          "last_name"
+        ],
+        "title": "MonitoredPersonCreate"
+      },
+      "MonitoredPersonResponse": {
+        "properties": {
+          "ci": {
+            "type": "string",
+            "title": "Ci"
+          },
+          "first_name": {
+            "type": "string",
+            "title": "First Name"
+          },
+          "last_name": {
+            "type": "string",
+            "title": "Last Name"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "department": {
+            "type": "string",
+            "title": "Department"
+          },
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "facebook_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facebook Account"
+          },
+          "facebook_profile_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facebook Profile Url"
+          },
+          "tiktok_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiktok Account"
+          },
+          "tiktok_profile_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiktok Profile Url"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ci",
+          "first_name",
+          "last_name",
+          "full_name",
+          "department",
+          "position",
+          "email",
+          "facebook_account",
+          "facebook_profile_url",
+          "tiktok_account",
+          "tiktok_profile_url",
+          "status",
+          "created_at"
+        ],
+        "title": "MonitoredPersonResponse"
       },
       "MonitoringCampaignCreate": {
         "properties": {
@@ -5589,8 +6925,15 @@
       "PublicationCreate": {
         "properties": {
           "platform_id": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "title": "Platform Id"
           },
           "institutional_account_id": {
@@ -5652,8 +6995,15 @@
           },
           "campaign_ids": {
             "items": {
-              "type": "string",
-              "format": "uuid"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "string"
+                }
+              ]
             },
             "type": "array",
             "title": "Campaign Ids",
@@ -5671,8 +7021,15 @@
       "PublicationResponse": {
         "properties": {
           "platform_id": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "title": "Platform Id"
           },
           "institutional_account_id": {
@@ -5917,6 +7274,101 @@
         ],
         "title": "RoleResponse"
       },
+      "RunSyncRequest": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "title": "Platform",
+            "description": "ALL, FACEBOOK, TIKTOK",
+            "default": "ALL"
+          },
+          "publication_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Ids",
+            "description": "Publicaciones específicas a evaluar"
+          },
+          "fetch_new_posts": {
+            "type": "boolean",
+            "title": "Fetch New Posts",
+            "description": "Buscar publicaciones recientes en las cuentas oficiales",
+            "default": true
+          },
+          "max_posts": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Posts",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "title": "RunSyncRequest"
+      },
+      "RunSyncResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "posts_processed": {
+            "type": "integer",
+            "title": "Posts Processed"
+          },
+          "interactions_extracted": {
+            "type": "integer",
+            "title": "Interactions Extracted"
+          },
+          "matched_interactions": {
+            "type": "integer",
+            "title": "Matched Interactions"
+          },
+          "new_interactions_created": {
+            "type": "integer",
+            "title": "New Interactions Created"
+          },
+          "execution_time_seconds": {
+            "type": "number",
+            "title": "Execution Time Seconds"
+          },
+          "details": {
+            "type": "string",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "platform",
+          "posts_processed",
+          "interactions_extracted",
+          "matched_interactions",
+          "new_interactions_created",
+          "execution_time_seconds",
+          "details"
+        ],
+        "title": "RunSyncResponse"
+      },
       "SocialAccountResponse": {
         "properties": {
           "id": {
@@ -6035,6 +7487,97 @@
           "api_version"
         ],
         "title": "SocialPlatformResponse"
+      },
+      "TestConnectionRequest": {
+        "properties": {
+          "platform_name": {
+            "type": "string",
+            "title": "Platform Name"
+          },
+          "target_account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Account Id"
+          },
+          "access_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token"
+          },
+          "api_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Secret"
+          },
+          "extraction_mode": {
+            "type": "string",
+            "title": "Extraction Mode",
+            "default": "OFFICIAL_API"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform_name"
+        ],
+        "title": "TestConnectionRequest"
+      },
+      "TestConnectionResponse": {
+        "properties": {
+          "platform_name": {
+            "type": "string",
+            "title": "Platform Name"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "account_info": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Info"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform_name",
+          "success",
+          "status",
+          "message"
+        ],
+        "title": "TestConnectionResponse"
       },
       "TokenResponse": {
         "properties": {

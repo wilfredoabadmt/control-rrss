@@ -11,6 +11,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const pageTitles: Record<ActivePage, string> = {
     dashboard: 'Panel de Control & Analítica',
+    'monitoring-hub': 'Auditoría RRSS, Conectores & Fiscalización de Actividad',
     employees: 'Directorio de Funcionarios & Estructura',
     publications: 'Publicaciones Institucionales & Campañas',
     interactions: 'Interacciones & Verificación Epistémica',
@@ -18,6 +19,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     audit: 'Pistas de Auditoría Inmutable (Principio X)',
     admin: 'Administración del Sistema & Conectores',
   };
+
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-primary)' }}>

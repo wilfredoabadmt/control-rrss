@@ -84,6 +84,7 @@ class InteractionProcessor:
             correlation_id=cid,
         )
         db.add(interaction)
+        await db.flush()
 
         # 4. Almacenar evidencia técnica forense (REQ-INT-002)
         if item.raw_payload:
@@ -95,6 +96,7 @@ class InteractionProcessor:
                 created_by_user_id=current_user_id or "INGESTION_WORKER",
             )
             db.add(evidence)
+            await db.flush()
 
         await record_audit_event(
             db=db,

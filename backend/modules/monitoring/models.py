@@ -12,6 +12,7 @@ from database import Base, TimestampMixin, UUIDPrimaryKeyMixin, utc_now
 from modules.shared.enums import SyncJobStatus
 from modules.social_accounts.models import InstitutionalAccount, SocialPlatform
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -20,6 +21,89 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+
+class SocialConnectorConfig(Base, TimestampMixin, UUIDPrimaryKeyMixin):
+    """
+    Configuración institucional de conectores y parámetros de extracción/scrapeo para Facebook y TikTok.
+    REQ-MON-003: Permite parametrizar credenciales, identificadores de página, límites y modo de extracción.
+    """
+    __tablename__ = "social_connector_configs"
+
+    platform_name: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="Identificador: FACEBOOK o TIKTOK",
+    )
+    target_account_id: Mapped[str] = mapped_column(
+        String(150),
+        nullable=False,
+        default="",
+        comment="ID de página o Handle oficial (ej. @AlcaldiaElAlto / 10006456789)",
+    )
+    display_name: Mapped[str] = mapped_column(
+        String(150),
+        nullable=False,
+        default="",
+        comment="Nombre descriptivo institucional",
+    )
+    access_token_encrypted: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Token de acceso oficial o clave de sesión cifrada",
+    )
+    api_secret_encrypted: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="App Secret o cookie/session de extracción cifrada",
+    )
+    api_version: Mapped[str] = mapped_column(
+        String(30),
+        default="v20.0",
+        nullable=False,
+    )
+    extraction_mode: Mapped[str] = mapped_column(
+        String(50),
+        default="OFFICIAL_API",
+        nullable=False,
+        comment="OFFICIAL_API, HYBRID_SCRAPER, MANUAL_ASSISTED",
+    )
+    rate_limit_per_minute: Mapped[int] = mapped_column(
+        Integer,
+        default=60,
+        nullable=False,
+    )
+    max_posts_per_sync: Mapped[int] = mapped_column(
+        Integer,
+        default=25,
+        nullable=False,
+    )
+    max_comments_per_post: Mapped[int] = mapped_column(
+        Integer,
+        default=200,
+        nullable=False,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    last_sync_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_status: Mapped[str] = mapped_column(
+        String(50),
+        default="CONFIGURED",
+        nullable=False,
+    )
+    status_message: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
 
 
 class ExternalSyncJob(Base, TimestampMixin, UUIDPrimaryKeyMixin):
