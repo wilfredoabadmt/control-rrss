@@ -9,12 +9,11 @@ from datetime import UTC, datetime
 from core.security.auth import get_current_user
 from core.security.rbac import require_roles
 from database import get_async_db
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from modules.iam.models import User
 from modules.monitoring.schemas import (
     ActivityMatrixResponse,
-    ConnectorConfigItem,
     ConnectorConfigsResponse,
     ConnectorConfigUpdateRequest,
     MonitoredPersonBulkImportRequest,
@@ -71,10 +70,9 @@ async def update_connector_configs(
 )
 async def test_connection(
     req: TestConnectionRequest,
-    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await MonitoringHubService.test_connection(db, req)
+    return await MonitoringHubService.test_connection(req)
 
 
 # -----------------------------------------------------------------------------

@@ -97,4 +97,4 @@ class TikTokClient:
         Retorna el estado de restricción epistémica aplicable a interacciones individuales en TikTok.
         Conforme a REQ-TKI-002 y Principio V, la API no expone identidad de autores de comentarios/likes.
         """
-        return VerificationStatus.API_RESTRICTED.value
+        return str(VerificationStatus.API_RESTRICTED.value)

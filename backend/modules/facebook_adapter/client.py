@@ -55,7 +55,8 @@ class FacebookGraphClient:
         if resp.status_code in (401, 403):
             raise AuthenticationException(f"Token de Meta inválido o sin permisos: {resp.text}")
         resp.raise_for_status()
-        return resp.json()
+        metadata: dict[str, Any] = resp.json()
+        return metadata
 
     async def fetch_comments(
         self,
@@ -71,7 +72,7 @@ class FacebookGraphClient:
         """
         client = await self._get_client()
         url = f"{self.base_url}/{post_id}/comments"
-        params = {
+        params: dict[str, str | int] = {
             "fields": "id,message,created_time,from{id,name},like_count",
             "limit": limit,
             "access_token": access_token,
@@ -126,7 +127,7 @@ class FacebookGraphClient:
         """
         client = await self._get_client()
         url = f"{self.base_url}/{post_id}/reactions"
-        params = {
+        params: dict[str, str | int] = {
             "fields": "id,name,type",
             "limit": limit,
             "access_token": access_token,

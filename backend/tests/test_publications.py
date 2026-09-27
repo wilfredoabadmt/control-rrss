@@ -68,6 +68,7 @@ async def test_publication_creation_and_idempotency(async_db: AsyncSession, mock
     plat = (await async_db.execute(
         SocialPlatform.__table__.select().where(SocialPlatform.name == SocialPlatformType.FACEBOOK.value)
     )).first()
+    assert plat is not None
 
     pub_in = PublicationCreate(
         platform_id=plat.id,
@@ -104,6 +105,7 @@ async def test_campaign_creation_and_publication_association(async_db: AsyncSess
     plat = (await async_db.execute(
         SocialPlatform.__table__.select().where(SocialPlatform.name == SocialPlatformType.TIKTOK.value)
     )).first()
+    assert plat is not None
 
     # Crear dos publicaciones
     pub1 = await PublicationService.create_publication(
@@ -165,6 +167,7 @@ async def test_campaign_monitoring_targets(async_db: AsyncSession, mock_user: Us
     unit = (await async_db.execute(
         OrganizationalUnit.__table__.select().where(OrganizationalUnit.code == "DIR-COM-01")
     )).first()
+    assert unit is not None
 
     # Crear campaña
     camp_in = MonitoringCampaignCreate(

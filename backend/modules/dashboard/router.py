@@ -145,7 +145,7 @@ async def get_executive_dashboard(
         .group_by(SocialPlatform.name)
     )
     plat_rows = (await db.execute(stmt_plat_dist)).fetchall()
-    platform_breakdown = dict(plat_rows)
+    platform_breakdown: dict[str, int] = {str(name): int(count) for name, count in plat_rows}
 
     return ExecutiveDashboardResponse(
         observable_coverage_rate=cov_sheet.to_dict(),

@@ -4,6 +4,7 @@ Valida conectores de Facebook/TikTok, gestión de audiencia, sincronización y m
 """
 
 import uuid
+
 import pytest
 from modules.iam.models import User
 from modules.monitoring.schemas import (
@@ -67,14 +68,14 @@ async def test_connection_validation(async_db: AsyncSession):
     """Comprueba la prueba de conectividad de Facebook y TikTok."""
     # Test Facebook
     req_fb = TestConnectionRequest(platform_name="FACEBOOK", target_account_id="10006456789")
-    res_fb = await MonitoringHubService.test_connection(async_db, req_fb)
+    res_fb = await MonitoringHubService.test_connection(req_fb)
     assert res_fb.success is True
     assert res_fb.platform_name == "FACEBOOK"
     assert "Meta Graph API" in res_fb.message
 
     # Test TikTok (con aviso normativo de restricción epistémica)
     req_tt = TestConnectionRequest(platform_name="TIKTOK", target_account_id="@alcaldia_elalto")
-    res_tt = await MonitoringHubService.test_connection(async_db, req_tt)
+    res_tt = await MonitoringHubService.test_connection(req_tt)
     assert res_tt.success is True
     assert res_tt.platform_name == "TIKTOK"
     assert "API_RESTRICTED" in res_tt.message

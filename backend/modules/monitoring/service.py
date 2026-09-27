@@ -21,7 +21,7 @@ from typing import Any
 from config import settings
 from core.audit.service import record_audit_event
 from core.logging_config import get_correlation_id
-from core.security.encryption import decrypt_field, encrypt_field, hash_blind_index
+from core.security.encryption import encrypt_field, hash_blind_index
 from modules.employees.models import Employee, OrganizationalUnit, Position
 from modules.iam.models import User
 from modules.interactions.matcher import InteractionMatcher, MatchStatus
@@ -62,7 +62,7 @@ from modules.verification.models import Verification
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -191,10 +191,7 @@ class MonitoringHubService:
         return await MonitoringHubService.get_connector_configs(db)
 
     @staticmethod
-    async def test_connection(
-        db: AsyncSession,
-        req: TestConnectionRequest,
-    ) -> TestConnectionResponse:
+    async def test_connection(req: TestConnectionRequest) -> TestConnectionResponse:
         """Comprueba conectividad y estado de la API o parámetros de la red social."""
         plat = req.platform_name.upper().strip()
 
@@ -1146,7 +1143,7 @@ class MonitoringHubService:
                     ws2.cell(row=current_row, column=8, value=p.post_title)
                     ws2.cell(row=current_row, column=9, value=p.reaction_type or "SIN REACCIÓN")
                     ws2.cell(row=current_row, column=10, value=p.comment_text or "SIN COMENTARIO")
-                    
+
                     c_status = ws2.cell(row=current_row, column=11, value=p.epistemic_status_display)
                     if "Confirmado" in p.epistemic_status_display:
                         c_status.fill = success_fill

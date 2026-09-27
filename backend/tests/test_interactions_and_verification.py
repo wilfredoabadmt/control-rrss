@@ -66,6 +66,7 @@ async def async_db():
         plat = (await session.execute(
             SocialPlatform.__table__.select().where(SocialPlatform.name == SocialPlatformType.FACEBOOK.value)
         )).first()
+        assert plat is not None
 
         # 3. Vincular cuenta social activa
         acc = SocialAccount(
@@ -117,6 +118,8 @@ async def test_interaction_ingestion_strict_idempotency(async_db: AsyncSession, 
     plat = (await async_db.execute(
         SocialPlatform.__table__.select().where(SocialPlatform.name == SocialPlatformType.FACEBOOK.value)
     )).first()
+    assert pub is not None
+    assert plat is not None
 
     raw_payload_sample = '{"comment_id": "comm_fb_12345", "text": "Excelente gestión alcaldesa", "from": {"id": "fb_author_999"}}'
 
@@ -167,6 +170,8 @@ async def test_interaction_matcher_scenarios(async_db: AsyncSession):
     plat = (await async_db.execute(
         SocialPlatform.__table__.select().where(SocialPlatform.name == SocialPlatformType.FACEBOOK.value)
     )).first()
+    assert pub is not None
+    assert plat is not None
 
     # 1. Caso Match: fb_author_999
     match_int = Interaction(
@@ -219,6 +224,8 @@ async def test_automatic_verification_flow(async_db: AsyncSession, mock_user: Us
     plat = (await async_db.execute(
         SocialPlatform.__table__.select().where(SocialPlatform.name == SocialPlatformType.FACEBOOK.value)
     )).first()
+    assert pub is not None
+    assert plat is not None
 
     # Interacción de comentario del funcionario
     item = InteractionCreate(
@@ -255,6 +262,8 @@ async def test_manual_verification_and_consolidation(async_db: AsyncSession, moc
     plat = (await async_db.execute(
         SocialPlatform.__table__.select().where(SocialPlatform.name == SocialPlatformType.FACEBOOK.value)
     )).first()
+    assert pub is not None
+    assert plat is not None
 
     # Interacción con from vacío (típico en TikTok o restricciones de Graph API)
     item = InteractionCreate(

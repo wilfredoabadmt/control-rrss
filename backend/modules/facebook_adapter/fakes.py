@@ -52,7 +52,7 @@ class FakeFacebookGraphClient:
 
         if self.simulate_empty_from:
             # Meta omite 'from' por privacidad
-            comments = [
+            comments: list[dict[str, Any]] = [
                 {
                     "external_interaction_id": f"{post_id}_comm_01",
                     "content_text": "Comentario con autor privado por Meta",
