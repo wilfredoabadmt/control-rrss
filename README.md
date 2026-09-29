@@ -19,7 +19,7 @@ docker-compose up -d
 docker-compose exec api alembic upgrade head
 
 # 5. Crear usuario super admin
-docker-compose exec api python -m scripts.seed_dev
+docker-compose exec api python -m scripts.seed_admin
 
 # 6. Acceder
 # Frontend: http://localhost:3000
