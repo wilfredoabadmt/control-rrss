@@ -65,9 +65,18 @@ class Settings(BaseSettings):
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
-    def assemble_async_db_url(cls, v: str | None) -> str:
+    def assemble_async_db_url(cls, v: str | None, info: ValidationInfo) -> str:
+        server = info.data.get("POSTGRES_SERVER")
+        user = info.data.get("POSTGRES_USER", "gamea_admin")
+        pwd = info.data.get("POSTGRES_PASSWORD", "gamea_secure_password_dev_change_in_prod")
+        port = info.data.get("POSTGRES_PORT", 5432)
+        db = info.data.get("POSTGRES_DB", "gamea_social_monitor")
+
+        if server and server != "localhost" and (not v or "localhost" in v):
+            return f"postgresql+asyncpg://{user}:{pwd}@{server}:{port}/{db}"
+
         if not v:
-            return "postgresql+asyncpg://gamea_admin:gamea_secure_password_dev_change_in_prod@localhost:5432/gamea_social_monitor"
+            return f"postgresql+asyncpg://{user}:{pwd}@{server or 'localhost'}:{port}/{db}"
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql+asyncpg://", 1)
         if v.startswith("postgresql://") and not v.startswith("postgresql+"):
@@ -86,7 +95,12 @@ class Settings(BaseSettings):
         async_url = info.data.get("DATABASE_URL")
         if async_url and "postgresql+asyncpg://" in str(async_url):
             return str(async_url).replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
-        return "postgresql+psycopg2://gamea_admin:gamea_secure_password_dev_change_in_prod@localhost:5432/gamea_social_monitor"
+        server = info.data.get("POSTGRES_SERVER", "localhost")
+        user = info.data.get("POSTGRES_USER", "gamea_admin")
+        pwd = info.data.get("POSTGRES_PASSWORD", "gamea_secure_password_dev_change_in_prod")
+        port = info.data.get("POSTGRES_PORT", 5432)
+        db = info.data.get("POSTGRES_DB", "gamea_social_monitor")
+        return f"postgresql+psycopg2://{user}:{pwd}@{server}:{port}/{db}"
 
 
     # Redis & Celery
