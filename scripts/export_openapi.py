@@ -28,7 +28,7 @@ def export_openapi():
     with open(yaml_path, "w", encoding="utf-8") as f:
         yaml.dump(schema, f, allow_unicode=True, sort_keys=False)
 
-    print(f"✅ OpenAPI specification exported successfully to {contracts_dir}")
+    print(f"[OK] OpenAPI specification exported successfully to {contracts_dir}")
     print(f"   - JSON: {json_path} ({len(schema.get('paths', {}))} paths)")
     print(f"   - YAML: {yaml_path}")
 

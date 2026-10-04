@@ -112,8 +112,13 @@
 
 ### [x] T-202: Implementar CRUD de funcionarios
 - **Reqs:** REQ-EMP-001, Principios VII, XX
-- **Entregable:** Endpoints CRUD para `employees` con PII masking dinámico según rol y validación de inmutabilidad de `employee_id`.
-- **Estado:** ✅ Completado. CRUD operativo con protección de datos personales.
+- **Entregable:** Endpoints y vistas CRUD completas para `employees` con:
+  - Formulario de edición integral (nombres, documento, cargo, email, cuentas de Facebook/TikTok y estado).
+  - Selección jerárquica en cascada: Dirección -> Unidad oficial del Organigrama GAMEA 2026.
+  - Gestión de bajas institucionalmente segura: Diálogo modal con opción dual (Baja lógica/Inactivación preservando trazabilidad vs. Eliminación física definitiva).
+  - Toggle ágil de estado Activo/Inactivo con un clic.
+  - Sincronización bidireccional automática con `SocialAccount` y vinculación directa para auditar interacciones en publicaciones institucionales (`[ 🎯 Posts ]` y `[ ⚡ Sincronizar con Posts ]`).
+- **Estado:** ✅ Completado. CRUD operativo con protección de datos personales, auditoría y trazabilidad en producción.
 
 ### [x] T-203: Implementar importación de nómina desde archivo
 - **Reqs:** REQ-EMP-003, Principio VIII
@@ -370,7 +375,7 @@
 
 ### [x] T-904: Generar y publicar contrato OpenAPI
 - **Reqs:** Principio XX
-- **Entregable:** `contracts/openapi.json` y `contracts/openapi.yaml` auto-generados desde FastAPI (47 rutas completas) + script `scripts/export_openapi.py`.
+- **Entregable:** `contracts/openapi.json` y `contracts/openapi.yaml` auto-generados desde FastAPI (59 rutas completas incluyendo CRUD de funcionarios, sincronización social y publicaciones) + script `scripts/export_openapi.py`.
 - **Estado:** ✅ Completado. Contrato OpenAPI 3.1 publicado y verificado.
 
 ### [x] T-905: Ejecutar verificación final de Constitution Check

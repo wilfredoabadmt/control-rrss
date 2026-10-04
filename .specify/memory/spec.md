@@ -35,11 +35,12 @@
 13. [Módulo 10 — Reporting & Analytics Engine](#módulo-10--reporting--analytics-engine)
 14. [Módulo 11 — Operational & Executive Dashboard](#módulo-11--operational--executive-dashboard)
 15. [Módulo 12 — System Notifications](#módulo-12--system-notifications)
-16. [Módulo 13 — Security & Audit Trail](#módulo-13--security--audit-trail)
 17. [Módulo 14 — System Administration & Configuration](#módulo-14--system-administration--configuration)
-18. [Entidades de Dominio y Relaciones](#18-entidades-de-dominio-y-relaciones)
-19. [Matriz de Trazabilidad Constitucional](#19-matriz-de-trazabilidad-constitucional)
-20. [Glosario](#20-glosario)
+18. [Módulo 15 — Centro de Ingesta, Monitoreo y Matriz de Fiscalización de Audiencia](#módulo-15--centro-de-ingesta-monitoreo-y-matriz-de-fiscalización-de-audiencia-social-scraper-hub)
+19. [Entidades de Dominio y Relaciones](#18-entidades-de-dominio-y-relaciones)
+20. [Matriz de Trazabilidad Constitucional](#19-matriz-de-trazabilidad-constitucional)
+21. [Glosario](#20-glosario)
+
 
 ---
 
@@ -210,12 +211,16 @@ El sistema implementará **tres niveles de verificación** derivados de las rest
   * `updated_at`: Timestamp UTC de última actualización.
 * **Reglas de Negocio:**
   * BR-EMP-001: El `employee_id` MUST ser inmutable tras la creación. MUST NOT reutilizarse.
-  * BR-EMP-002: Los funcionarios MUST NOT identificarse por nombre visible, username de red social ni enlace de perfil.
-  * BR-EMP-003: Los funcionarios con estado `TERMINATED` MUST conservar íntegro su historial de interacciones pasadas.
-  * BR-EMP-004: Los funcionarios MUST NOT eliminarse físicamente de la base de datos.
+  * BR-EMP-002: Los funcionarios MUST NOT identificarse por nombre visible, username de red social ni enlace de perfil como clave de identidad.
+  * BR-EMP-003: Los funcionarios con estado `TERMINATED` o `INACTIVE` MUST conservar íntegro su historial de interacciones pasadas.
+  * BR-EMP-004: Por política institucional predeterminada, la baja de funcionarios MUST realizarse mediante desactivación lógica (`status = INACTIVE`) para preservar la cadena de custodia y auditoría. De forma excepcional, un `SUPER_ADMIN` puede ejecutar eliminación física definitiva exclusivamente para subsanar registros erróneos o duplicados mediante confirmación explícita y registro en bitácora de auditoría.
+  * BR-EMP-005: Toda modificación de datos de funcionario (nombres, documento, asignación en cascada de Dirección y Unidad, cargo, cuentas sociales o estado) MUST actualizar el timestamp `updated_at` y registrar un evento de auditoría `EMPLOYEE_UPDATE/SUCCESS`.
+  * BR-EMP-006: La asignación o modificación de cuentas sociales (`facebook_account`, `tiktok_account`) MUST sincronizarse automáticamente en la entidad `SocialAccount` y propagarse al motor de cruce de interacciones con publicaciones institucionales.
 * **Criterios de Aceptación:**
   * **Given** un nuevo funcionario con `employee_id` único, **When** se registra en el sistema, **Then** se crea un registro con estado `ACTIVE`, timestamp UTC de creación y evento de auditoría `EMPLOYEE_CREATE/SUCCESS`.
   * **Given** un funcionario existente, **When** se intenta modificar su `employee_id`, **Then** el sistema rechaza la operación con error `IMMUTABLE_FIELD`.
+  * **Given** un funcionario registrado, **When** un administrador modifica sus datos o cuentas sociales, **Then** los cambios se persisten, las cuentas de Facebook/TikTok se vinculan para monitoreo y se emite `EMPLOYEE_UPDATE/SUCCESS`.
+  * **Given** una solicitud de eliminación, **When** el usuario selecciona baja institucional, **Then** el funcionario pasa a `INACTIVE` manteniendo su historial; **When** se confirma eliminación física permanente (`permanent=true`), **Then** el registro se remueve de la base de datos con registro en auditoría.
 
 ### REQ-EMP-002 — Estructura Organizacional
 * **Descripción:** El sistema MUST modelar la estructura organizacional del GAMEA como entidades independientes de los funcionarios.
@@ -868,7 +873,56 @@ Interacción capturada
 
 ---
 
+## Módulo 15 — Centro de Ingesta, Monitoreo y Matriz de Fiscalización de Audiencia (Social Scraper Hub)
+
+> **Bounded Context:** Ingesta asistida, administración de conectores dinámicos, directorio de audiencia y matriz de fiscalización.
+> **Principios Constitucionales:** I (Specification First), IV (APIs Oficiales y Resiliencia), V (No Inventar Datos), VII (Identidad Única), IX (Modelo Normalizado), XV (Idempotencia), XX (Cifrado PII).
+
+### REQ-MON-003 — Configuración Dinámica de Conectores (Facebook & TikTok)
+* **Descripción:** El sistema MUST permitir parametrizar y actualizar dinámicamente las credenciales, identificadores de páginas/canales y cuotas de tasa para Facebook Meta Graph API y TikTok Display API.
+* **Atributos gestionados:**
+  * Identificador o handle oficial de la cuenta/página objetivo (ej. `@AlcaldiaElAlto`, `@alcaldia_elalto`).
+  * Tokens de acceso oficial o claves de sesión protegidas.
+  * Secrets de aplicación o cookies de extracción.
+  * Modo de extracción (`OFFICIAL_API`, `HYBRID_SCRAPER`, `MANUAL_ASSISTED`).
+  * Límites operativos por minuto, volumen máximo de publicaciones y comentarios por lote.
+* **Reglas de Negocio:**
+  * BR-MON-001: Todas las credenciales y tokens MUST ser cifrados en reposo utilizando Fernet / AES-256 antes de persistir en base de datos.
+  * BR-MON-002: El sistema MUST proveer endpoints de verificación de handshake (`test-connection`) para comprobar la latencia y vigencia de las credenciales sin comprometer la operación del sistema.
+
+### REQ-MON-004 — Ingesta Asistida y Disparo de Scrapeo de Redes Sociales
+* **Descripción:** El sistema MUST permitir a operadores autorizados y administradores de comunicaciones ejecutar la extracción asistida o sincrónica de publicaciones e interacciones sobre las cuentas institucionales configuradas.
+* **Reglas de Negocio:**
+  * BR-MON-003: Toda ingesta MUST ser estrictamente idempotente. Múltiples disparos sobre el mismo post o interacción no duplicarán datos ni recalcularán métricas con sesgo.
+  * BR-MON-004: Cada interacción extraída MUST generar su respectivo payload inmutable en `InteractionEvidence` con su hash criptográfico SHA-256.
+
+### REQ-MON-005 — Directorio de Audiencia Monitoreada e Importación Masiva
+* **Descripción:** El sistema MUST permitir gestionar la nómina de funcionarios o personas sujetas a fiscalización digital mediante carga individual o importación masiva por texto delimitado (CSV) o formato JSON.
+* **Reglas de Negocio:**
+  * BR-MON-005: La carga de audiencia MUST crear o actualizar la entidad `Employee` con su blind index determinista (`document_hash`) y vincular atómicamente sus cuentas en `SocialAccount` para Facebook y TikTok.
+
+### REQ-MON-006 — Matriz de Auditoría y Verificación de Actividades y Reacciones
+* **Descripción:** El sistema MUST consolidar y renderizar en tiempo real una matriz cruzada multidimensional que relacione a cada persona monitoreada con las publicaciones institucionales evaluadas.
+* **Columnas de la Matriz:**
+  * Funcionario / Persona Monitoreada (Nombre completo, C.I., Unidad Organizacional, Cargo).
+  * Cuentas Vinculadas (Facebook y TikTok con enlaces verificados).
+  * Publicación Institucional (ID, enlace, red social, fecha).
+  * Reacción Registrada (`LIKE`, `LOVE`, `CARE`, `HAHA`, `WOW`, `SAD`, `ANGRY` o `SIN_REACCION`).
+  * Comentario Registrado (Texto del comentario, fecha y hora de emisión o `SIN_COMENTARIO`).
+  * Estado Epistémico (`DATO_CONFIRMADO`, `DATO_OBSERVADO`, `API_RESTRICTED`, `NO_DETECTADO`).
+  * Indicador de Participación (`SÍ` / `NO`).
+* **Reglas de Negocio:**
+  * BR-MON-006: En TikTok, ante la restricción de privacidad externa sobre identidades individuales en likes, el sistema MUST clasificar la condición con el estado epistémico `API_RESTRICTED` (Principio V), sin imputar falsos negativos.
+
+### REQ-MON-007 — Generación y Custodia de Informes de Fiscalización en Excel (.xlsx)
+* **Descripción:** El sistema MUST generar bajo demanda el informe oficial de fiscalización digital en formato Microsoft Excel (.xlsx), formateado con encabezados oficiales del GAMEA, métricas de cumplimiento porcentual, resumen ejecutivo y detalle celda por celda para presentación inmediata ante autoridades del municipio.
+* **Reglas de Negocio:**
+  * BR-MON-007: La generación del informe oficial MUST registrar un evento inmutable en el log de auditoría (`AuditAction.EXPORT`).
+
+---
+
 ## 18. Entidades de Dominio y Relaciones
+
 
 ```mermaid
 erDiagram
