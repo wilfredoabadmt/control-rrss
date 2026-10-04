@@ -28,6 +28,16 @@ export interface PublicationItem {
   total_shares?: number;
 }
 
+export interface FacebookRecentPostItem {
+  id: string;
+  message?: string;
+  created_time?: string;
+  permalink_url?: string;
+  shares_count: number;
+  is_monitored: boolean;
+  existing_id?: string;
+}
+
 export const listCampaignsApi = async (): Promise<CampaignItem[]> => {
   const res = await apiClient.get('/campaigns/');
   return res.data;
@@ -61,7 +71,25 @@ export const createPublicationApi = async (data: {
   published_at?: string;
   campaign_ids?: string[];
 }): Promise<PublicationItem> => {
-  const res = await apiClient.post('/publications/', data);
+  const res = await apiClient.post('/publications/', {
+    ...data,
+    content_text: data.title || 'Publicación Institucional GAMEA',
+  });
+  return res.data;
+};
+
+export const importPublicationFromUrlApi = async (data: {
+  url: string;
+  title?: string;
+  platform?: string;
+  campaign_id?: string;
+}): Promise<PublicationItem> => {
+  const res = await apiClient.post('/publications/import-from-url', data);
+  return res.data;
+};
+
+export const getFacebookRecentPostsApi = async (): Promise<FacebookRecentPostItem[]> => {
+  const res = await apiClient.get('/publications/facebook/page-posts');
   return res.data;
 };
 
@@ -74,3 +102,4 @@ export const bindPublicationsToCampaignApi = async (
   });
   return res.data;
 };
+

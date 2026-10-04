@@ -17,6 +17,7 @@ class PublicationBase(BaseModel):
     post_url: str | None = Field(None, max_length=500)
     published_at: datetime = Field(default_factory=datetime.utcnow)
     content_text: str | None = None
+    title: str | None = None
     media_type: str = Field(default="POST")
     is_monitored: bool = Field(default=True)
 
@@ -33,16 +34,39 @@ class PublicationUpdate(BaseModel):
 
 class PublicationResponse(PublicationBase):
     id: uuid.UUID
+    title: str | None = None
+    platform_name: str | None = None
     last_sync_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     platform: SocialPlatformResponse | None = None
+    total_reactions: int = 0
+    total_comments: int = 0
+    total_shares: int = 0
 
     model_config = {"from_attributes": True}
 
 
+class FacebookRecentPostItem(BaseModel):
+    id: str
+    message: str | None = None
+    created_time: str | None = None
+    permalink_url: str | None = None
+    shares_count: int = 0
+    is_monitored: bool = False
+    existing_id: uuid.UUID | None = None
+
+
+class ImportPostFromUrlRequest(BaseModel):
+    url: str = Field(..., description="Enlace completo de la publicación en Facebook o TikTok")
+    title: str | None = Field(None, description="Título o descripción personalizada opcional")
+    platform: str = Field(default="FACEBOOK", description="FACEBOOK o TIKTOK")
+    campaign_id: uuid.UUID | None = None
+
+
 class MonitoringTargetBase(BaseModel):
     organizational_unit_id: uuid.UUID
+
     target_percentage: float = Field(default=80.0, ge=0.0, le=100.0, description="Meta porcentual de cumplimiento")
     target_count: int | None = Field(None, ge=0, description="Meta en cantidad absoluta de funcionarios")
     description: str | None = Field(None, max_length=255)

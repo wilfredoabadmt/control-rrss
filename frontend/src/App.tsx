@@ -42,7 +42,7 @@ const AppContent: React.FC = () => {
 
   return (
     <MainLayout>
-      {(activePage: ActivePage) => {
+      {(activePage: ActivePage, onNavigate: (page: ActivePage) => void) => {
         switch (activePage) {
           case 'dashboard':
             return <DashboardPage onLogout={logout} />;
@@ -52,7 +52,7 @@ const AppContent: React.FC = () => {
             return <EmployeesPage />;
 
           case 'publications':
-            return <PublicationsPage />;
+            return <PublicationsPage onNavigate={onNavigate} />;
           case 'interactions':
             return <InteractionsPage />;
           case 'reports':

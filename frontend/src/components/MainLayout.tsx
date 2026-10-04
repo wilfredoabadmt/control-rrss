@@ -3,7 +3,7 @@ import { Sidebar, ActivePage } from './Sidebar';
 import { Header } from './Header';
 
 interface MainLayoutProps {
-  children: (activePage: ActivePage) => React.ReactNode;
+  children: (activePage: ActivePage, onNavigate: (page: ActivePage) => void) => React.ReactNode;
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
@@ -14,12 +14,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     'monitoring-hub': 'Auditoría RRSS, Conectores & Fiscalización de Actividad',
     employees: 'Directorio de Funcionarios & Estructura',
     publications: 'Publicaciones Institucionales & Campañas',
-    interactions: 'Interacciones & Verificación Epistémica',
+    interactions: 'Control de Reacciones & Verificación de Funcionarios',
     reports: 'Generación & Custodia de Reportes Oficiales',
     audit: 'Pistas de Auditoría Inmutable (Principio X)',
     admin: 'Administración del Sistema & Conectores',
   };
-
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-primary)' }}>
@@ -27,7 +26,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowX: 'hidden' }}>
         <Header title={pageTitles[activePage]} />
         <main style={{ flex: 1, padding: '28px 32px', maxWidth: '1440px', width: '100%', margin: '0 auto' }}>
-          {children(activePage)}
+          {children(activePage, setActivePage)}
         </main>
       </div>
     </div>

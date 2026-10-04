@@ -14,6 +14,8 @@ from modules.iam.models import User
 from modules.publications.models import MonitoringCampaign, Publication
 from modules.publications.schemas import (
     AddPublicationsToCampaignRequest,
+    FacebookRecentPostItem,
+    ImportPostFromUrlRequest,
     MonitoringCampaignCreate,
     MonitoringCampaignDetailResponse,
     MonitoringCampaignResponse,
@@ -46,7 +48,7 @@ async def list_publications(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Consulta paginada de publicaciones institucionales sujetas a monitoreo."""
+    """Consulta paginada de publicaciones institucionales sujetas a monitoreo con métricas calculadas."""
     pubs, total = await PublicationService.list_publications(
         db=db,
         platform_id=platform_id,
@@ -55,8 +57,71 @@ async def list_publications(
         offset=pagination.offset,
         limit=pagination.limit,
     )
-    items = [PublicationResponse.model_validate(p) for p in pubs]
+    metrics_by_pub = await PublicationService.get_publication_metrics(db, [p.id for p in pubs])
+    items = []
+    for p in pubs:
+        m = metrics_by_pub.get(p.id, {"reactions": 0, "comments": 0, "shares": 0})
+        item = PublicationResponse(
+            id=p.id,
+            platform_id=p.platform_id,
+            institutional_account_id=p.institutional_account_id,
+            external_post_id=p.external_post_id,
+            post_url=p.post_url,
+            published_at=p.published_at,
+            content_text=p.content_text,
+            title=p.content_text,
+            platform_name=p.platform.name if p.platform else "FACEBOOK",
+            media_type=p.media_type,
+            is_monitored=p.is_monitored,
+            last_sync_at=p.last_sync_at,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+            platform=p.platform,
+            total_reactions=m["reactions"],
+            total_comments=m["comments"],
+            total_shares=m["shares"],
+        )
+        items.append(item)
     return PageResponse.create(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@publications_router.get("/facebook/page-posts", response_model=list[FacebookRecentPostItem])
+async def get_facebook_recent_posts(
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retorna las publicaciones más recientes de la página oficial de Facebook GAMEA para importación rápida."""
+    return await PublicationService.get_facebook_recent_posts(db)
+
+
+@publications_router.post("/import-from-url", response_model=PublicationResponse)
+async def import_publication_from_url(
+    req: ImportPostFromUrlRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.COMMUNICATIONS_LEAD, UserRole.OPERATOR)),
+):
+    """Extrae el ID y registra automáticamente un post desde un link de Facebook o TikTok para monitoreo."""
+    pub = await PublicationService.import_from_url(db, req, current_user)
+    return PublicationResponse(
+        id=pub.id,
+        platform_id=pub.platform_id,
+        institutional_account_id=pub.institutional_account_id,
+        external_post_id=pub.external_post_id,
+        post_url=pub.post_url,
+        published_at=pub.published_at,
+        content_text=pub.content_text,
+        title=pub.content_text,
+        platform_name=pub.platform.name if pub.platform else "FACEBOOK",
+        media_type=pub.media_type,
+        is_monitored=pub.is_monitored,
+        last_sync_at=pub.last_sync_at,
+        created_at=pub.created_at,
+        updated_at=pub.updated_at,
+        platform=pub.platform,
+        total_reactions=0,
+        total_comments=0,
+        total_shares=0,
+    )
 
 
 @publications_router.post("/", response_model=PublicationResponse, status_code=status.HTTP_201_CREATED)
@@ -71,7 +136,26 @@ async def create_publication(
     """
     try:
         pub = await PublicationService.create_publication(db, pub_in, current_user)
-        return PublicationResponse.model_validate(pub)
+        return PublicationResponse(
+            id=pub.id,
+            platform_id=pub.platform_id,
+            institutional_account_id=pub.institutional_account_id,
+            external_post_id=pub.external_post_id,
+            post_url=pub.post_url,
+            published_at=pub.published_at,
+            content_text=pub.content_text,
+            title=pub.content_text,
+            platform_name=pub.platform.name if pub.platform else "FACEBOOK",
+            media_type=pub.media_type,
+            is_monitored=pub.is_monitored,
+            last_sync_at=pub.last_sync_at,
+            created_at=pub.created_at,
+            updated_at=pub.updated_at,
+            platform=pub.platform,
+            total_reactions=0,
+            total_comments=0,
+            total_shares=0,
+        )
     except EntityNotFoundException as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message) from e
 
@@ -91,7 +175,29 @@ async def get_publication(
     pub = (await db.execute(stmt)).scalar_one_or_none()
     if not pub:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Publicación no encontrada.")
-    return PublicationResponse.model_validate(pub)
+    metrics = await PublicationService.get_publication_metrics(db, [pub.id])
+    m = metrics.get(pub.id, {"reactions": 0, "comments": 0, "shares": 0})
+    return PublicationResponse(
+        id=pub.id,
+        platform_id=pub.platform_id,
+        institutional_account_id=pub.institutional_account_id,
+        external_post_id=pub.external_post_id,
+        post_url=pub.post_url,
+        published_at=pub.published_at,
+        content_text=pub.content_text,
+        title=pub.content_text,
+        platform_name=pub.platform.name if pub.platform else "FACEBOOK",
+        media_type=pub.media_type,
+        is_monitored=pub.is_monitored,
+        last_sync_at=pub.last_sync_at,
+        created_at=pub.created_at,
+        updated_at=pub.updated_at,
+        platform=pub.platform,
+        total_reactions=m["reactions"],
+        total_comments=m["comments"],
+        total_shares=m["shares"],
+    )
+
 
 
 # -----------------------------------------------------------------------------
