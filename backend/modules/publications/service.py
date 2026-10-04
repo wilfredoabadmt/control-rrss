@@ -318,7 +318,11 @@ class PublicationService:
 
         items: list[FacebookRecentPostItem] = []
 
-        if fb_token and "mock" not in fb_token.lower() and len(fb_token) > 20:
+        env_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "").strip()
+
+        async def _fetch_from_meta(tok: str) -> list[dict[str, Any]]:
+            if not tok or len(tok) < 20 or "mock" in tok.lower():
+                return []
             try:
                 async with httpx.AsyncClient(timeout=12.0) as client:
                     resp = await client.get(
@@ -326,28 +330,44 @@ class PublicationService:
                         params={
                             "fields": "id,message,created_time,permalink_url,shares",
                             "limit": 15,
-                            "access_token": fb_token,
+                            "access_token": tok,
                         },
                     )
                     if resp.status_code == 200:
-                        data = resp.json().get("data", [])
-                        for p in data:
-                            p_id = p.get("id", "")
-                            shares_info = p.get("shares", {}) or {}
-                            is_mon = (p_id in existing_map)
-                            items.append(
-                                FacebookRecentPostItem(
-                                    id=p_id,
-                                    message=p.get("message") or "Publicación institucional GAMEA",
-                                    created_time=p.get("created_time"),
-                                    permalink_url=p.get("permalink_url") or f"https://facebook.com/{p_id}",
-                                    shares_count=shares_info.get("count", 0),
-                                    is_monitored=is_mon,
-                                    existing_id=existing_map.get(p_id),
-                                )
-                            )
+                        return resp.json().get("data", [])
             except Exception:
                 pass
+            return []
+
+        posts_data = await _fetch_from_meta(fb_token)
+        if not posts_data and env_token and env_token != fb_token:
+            posts_data = await _fetch_from_meta(env_token)
+            if posts_data and fb_cfg:
+                try:
+                    from core.security.encryption import encrypt_field
+                    fb_cfg.access_token_encrypted = encrypt_field(env_token)
+                    fb_cfg.is_active = True
+                    fb_cfg.updated_at = datetime.now(UTC)
+                    db.add(fb_cfg)
+                    await db.commit()
+                except Exception:
+                    pass
+
+        for p in posts_data:
+            p_id = p.get("id", "")
+            shares_info = p.get("shares", {}) or {}
+            is_mon = (p_id in existing_map)
+            items.append(
+                FacebookRecentPostItem(
+                    id=p_id,
+                    message=p.get("message") or "Publicación institucional GAMEA",
+                    created_time=p.get("created_time"),
+                    permalink_url=p.get("permalink_url") or f"https://facebook.com/{p_id}",
+                    shares_count=shares_info.get("count", 0),
+                    is_monitored=is_mon,
+                    existing_id=existing_map.get(p_id),
+                )
+            )
 
         # Si la API de Meta no está disponible (token pendiente de renovación),
         # listar las publicaciones de Facebook ya registradas en la base de datos local

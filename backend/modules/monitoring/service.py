@@ -285,6 +285,22 @@ class MonitoringHubService:
                 app_id=app_id,
                 app_secret=app_secret,
             )
+
+            # Si el token de DB era inválido o caducó pero hay un token de entorno válido, auto-sanar
+            if not val_result.get("is_valid"):
+                env_tok = (os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN") or getattr(settings, "FACEBOOK_PAGE_ACCESS_TOKEN", "") or "").strip()
+                if env_tok and env_tok != token:
+                    val_env = await fb_client.validate_token(access_token=env_tok, app_id=app_id, app_secret=app_secret)
+                    if val_env.get("is_valid"):
+                        token = env_tok
+                        val_result = val_env
+                        if fb_cfg and db:
+                            fb_cfg.access_token_encrypted = encrypt_field(env_tok)
+                            fb_cfg.is_active = True
+                            fb_cfg.last_sync_status = "OPERATIONAL"
+                            db.add(fb_cfg)
+                            await db.commit()
+
             latency_ms = int((time.perf_counter() - t0) * 1000)
 
             if val_result.get("is_valid"):
@@ -1240,6 +1256,25 @@ class MonitoringHubService:
                         app_id = (os.environ.get("FACEBOOK_APP_ID") or settings.FACEBOOK_APP_ID or "").strip()
                         app_sec = (os.environ.get("FACEBOOK_APP_SECRET") or settings.FACEBOOK_APP_SECRET or "").strip()
                         val_res = await fb_client.validate_token(fb_token, app_id, app_sec)
+
+                        # Si el token guardado en DB falló o expiró, verificar si el token de entorno (ENV) es válido y auto-actualizar
+                        env_token = (
+                            os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+                            or getattr(settings, "FACEBOOK_PAGE_ACCESS_TOKEN", "")
+                            or ""
+                        ).strip()
+                        if not val_res.get("is_valid") and env_token and env_token != fb_token:
+                            val_env = await fb_client.validate_token(env_token, app_id, app_sec)
+                            if val_env.get("is_valid"):
+                                fb_token = env_token
+                                val_res = val_env
+                                if fb_cfg:
+                                    fb_cfg.access_token_encrypted = encrypt_field(env_token)
+                                    fb_cfg.is_active = True
+                                    fb_cfg.updated_at = datetime.now(UTC)
+                                    db.add(fb_cfg)
+                                    await db.commit()
+
                         if not val_res.get("is_valid"):
                             err_msg = val_res.get("error_message") or "Token inválido"
                             sync_job.status = SyncJobStatus.FAILED_FATAL.value
@@ -1250,7 +1285,7 @@ class MonitoringHubService:
                                 status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=(
                                     f"CONEXIÓN FALLIDA: El Token de Meta Graph API ha caducado ({err_msg}). "
-                                    "Por favor, genere un nuevo Token de Página en Graph API Explorer y guárdelo en la pestaña 'Conectores & Scraper' para poder sincronizar."
+                                    "Por favor, configure el nuevo Token de Página Permanente en 'Conectores & Scraper' para poder sincronizar."
                                 ),
                             )
 
