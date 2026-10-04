@@ -201,7 +201,11 @@ export const MonitoringHubPage: React.FC = () => {
         fetch_new_posts: true,
       });
       setSyncResult(res);
-      setSuccessMessage('Extracción y cruce de interacciones completado exitosamente.');
+      if (res.status === 'FAILED') {
+        setErrorMessage(res.details || 'La sincronización no pudo completarse. Revise la conexión con la red social.');
+      } else {
+        setSuccessMessage('Extracción y cruce de interacciones completado exitosamente.');
+      }
       await fetchMatrix();
       await fetchAudience();
     } catch (err: any) {

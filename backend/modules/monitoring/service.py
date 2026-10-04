@@ -1224,19 +1224,13 @@ class MonitoringHubService:
                             ).strip()
 
                         if not fb_token:
-                            sync_job.status = SyncJobStatus.FAILED.value
-                            sync_job.error_message = "Token de Facebook no configurado."
+                            sync_job.status = SyncJobStatus.FAILED_FATAL.value
+                            sync_job.error_details = "Token de Facebook no configurado."
+                            sync_job.completed_at = datetime.now(UTC)
                             await db.commit()
-                            return RunSyncResponse(
-                                job_id=sync_job.id,
-                                status="FAILED",
-                                platform=req.platform,
-                                posts_processed=posts_processed,
-                                interactions_extracted=0,
-                                matched_interactions=0,
-                                new_interactions_created=0,
-                                execution_time_seconds=round(time.perf_counter() - start_time, 2),
-                                details="FALTA DE DATOS: No se encontró ningún Access Token de Facebook configurado para realizar la extracción.",
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="FALTA DE DATOS: No se encontró ningún Access Token de Facebook configurado en el servidor para realizar la extracción en vivo.",
                             )
 
                         from modules.facebook_adapter.client import FacebookGraphClient
@@ -1248,19 +1242,16 @@ class MonitoringHubService:
                         val_res = await fb_client.validate_token(fb_token, app_id, app_sec)
                         if not val_res.get("is_valid"):
                             err_msg = val_res.get("error_message") or "Token inválido"
-                            sync_job.status = SyncJobStatus.FAILED.value
-                            sync_job.error_message = f"Token de Facebook expirado o no válido: {err_msg}"
+                            sync_job.status = SyncJobStatus.FAILED_FATAL.value
+                            sync_job.error_details = f"Token de Facebook expirado o no válido: {err_msg}"
+                            sync_job.completed_at = datetime.now(UTC)
                             await db.commit()
-                            return RunSyncResponse(
-                                job_id=sync_job.id,
-                                status="FAILED",
-                                platform=req.platform,
-                                posts_processed=posts_processed,
-                                interactions_extracted=0,
-                                matched_interactions=0,
-                                new_interactions_created=0,
-                                execution_time_seconds=round(time.perf_counter() - start_time, 2),
-                                details=f"CONEXIÓN FALLIDA: El Token de Meta Graph API ha expirado ({err_msg}). Renueve el Token en Conectores para continuar.",
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=(
+                                    f"CONEXIÓN FALLIDA: El Token de Meta Graph API ha caducado ({err_msg}). "
+                                    "Por favor, genere un nuevo Token de Página en Graph API Explorer y guárdelo en la pestaña 'Conectores & Scraper' para poder sincronizar."
+                                ),
                             )
 
                         # Extraer comentarios REALES de Meta
@@ -1275,10 +1266,10 @@ class MonitoringHubService:
                                     "reaction": None,
                                     "content": c.get("content_text"),
                                     "created_at": datetime.now(UTC),
-                                    "origin": DataOriginType.CITIZEN_INTERACTION_RAW.value,
+                                    "origin": DataOriginType.CITIZEN_COMMENT_ON_OFFICIAL.value,
                                 })
                         except Exception as e:
-                            sync_job.status_message = f"Aviso al extraer comentarios: {str(e)}"
+                            sync_job.error_details = f"Aviso al extraer comentarios: {str(e)}"
 
                         # Extraer reacciones REALES de Meta
                         try:
@@ -1292,9 +1283,9 @@ class MonitoringHubService:
                                     "reaction": r.get("reaction_type", "LIKE"),
                                     "content": None,
                                     "created_at": datetime.now(UTC),
-                                    "origin": DataOriginType.CITIZEN_INTERACTION_RAW.value,
+                                    "origin": DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
                                 })
-                        except Exception as e:
+                        except Exception:
                             pass
 
                 # B) Procesar e ingerir cada interacción
