@@ -160,47 +160,6 @@ class PublicationService:
 
         total = (await db.execute(count_query)).scalar_one()
 
-        # Si aún no hay publicaciones registradas, auto-inicializar 2 posts oficiales del GAMEA
-        if total == 0 and not platform_id and not campaign_id:
-            stmt_plats = select(SocialPlatform)
-            plats = list((await db.execute(stmt_plats)).scalars().all())
-            fb_plat = next((p for p in plats if p.name == "FACEBOOK"), plats[0] if plats else None)
-            tt_plat = next((p for p in plats if p.name == "TIKTOK"), plats[0] if plats else None)
-
-            if fb_plat:
-                p1 = Publication(
-                    platform_id=fb_plat.id,
-                    external_post_id="post_fb_gamea_obras_001",
-                    post_url="https://facebook.com/AlcaldiaElAlto/posts/1416238814024091",
-                    published_at=datetime.now(UTC),
-                    content_text="Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8 de El Alto. #ElAltoAvanza",
-                    media_type="VIDEO",
-                    is_monitored=True,
-                )
-                p2 = Publication(
-                    platform_id=fb_plat.id,
-                    external_post_id="post_fb_gamea_salud_002",
-                    post_url="https://facebook.com/AlcaldiaElAlto/posts/1416229634025009",
-                    published_at=datetime.now(UTC),
-                    content_text="Gran Campaña de Vacunación y Atención Médica Gratuita en la Plaza del Tinku - Ciudad Satélite. #SaludElAlto",
-                    media_type="IMAGE",
-                    is_monitored=True,
-                )
-                db.add_all([p1, p2])
-                if tt_plat:
-                    p3 = Publication(
-                        platform_id=tt_plat.id,
-                        external_post_id="video_tt_gamea_feria_003",
-                        post_url="https://tiktok.com/@alcaldia_elalto/video/7382910291",
-                        published_at=datetime.now(UTC),
-                        content_text="Feria de la Juventud y Tecnología alteña en el Centro de Convenciones. #GAMEA #JovenesElAlto",
-                        media_type="VIDEO",
-                        is_monitored=True,
-                    )
-                    db.add(p3)
-                await db.commit()
-                total = (await db.execute(count_query)).scalar_one()
-
         query = (
             query.order_by(Publication.published_at.desc())
             .offset(offset)

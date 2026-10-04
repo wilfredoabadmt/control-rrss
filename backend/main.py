@@ -91,6 +91,18 @@ async def lifespan(app: FastAPI):
                 session.add(admin_user)
                 await session.commit()
                 logger.info("superadmin_seeded_successfully", email=admin_email)
+
+            # Limpieza de publicaciones sintéticas heredadas para garantizar datos reales (Principio V)
+            try:
+                await session.execute(
+                    text("DELETE FROM interactions WHERE publication_id IN (SELECT id FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%')")
+                )
+                await session.execute(
+                    text("DELETE FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%'")
+                )
+                await session.commit()
+            except Exception as e_clean:
+                logger.warning("legacy_publications_cleanup_skipped", error=str(e_clean))
     except Exception as e:
         logger.error("startup_seeding_failed", error=str(e), exc_info=True)
 

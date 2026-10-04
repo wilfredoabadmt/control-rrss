@@ -314,6 +314,21 @@ class MonitoringHubService:
                     else f"Expira el {datetime.fromtimestamp(exp, UTC).strftime('%Y-%m-%d %H:%M UTC')}"
                 )
                 target = req.target_account_id or val_result.get("id") or "Oficial"
+
+                # Sincronizar en la base de datos si existe sesión
+                if db:
+                    try:
+                        stmt_fb = select(SocialConnectorConfig).where(SocialConnectorConfig.platform_name == "FACEBOOK")
+                        fb_rec = (await db.execute(stmt_fb)).scalar_one_or_none()
+                        if fb_rec:
+                            fb_rec.last_status = "ONLINE"
+                            fb_rec.status_message = f"Conexión verificada en vivo con Meta Graph API. {exp_str}"
+                            if req.access_token:
+                                fb_rec.access_token_encrypted = encrypt_field(req.access_token.strip())
+                            await db.commit()
+                    except Exception:
+                        pass
+
                 return TestConnectionResponse(
                     platform_name="FACEBOOK",
                     success=True,
@@ -372,13 +387,16 @@ class MonitoringHubService:
             if not token:
                 token = (os.environ.get("TIKTOK_ACCESS_TOKEN") or getattr(settings, "TIKTOK_ACCESS_TOKEN", "") or "").strip()
 
-            if not token and not client_key:
+            is_mock_key = not client_key or client_key.lower().startswith("mock_") or "sample" in client_key.lower()
+
+            # Principio V: No Inventar Datos. Si no hay credenciales reales, reportar no configurado con total honestidad
+            if not token or is_mock_key:
                 return TestConnectionResponse(
                     platform_name="TIKTOK",
                     success=False,
                     status="NOT_CONFIGURED",
-                    message="FALTA DE DATOS: No se encontraron credenciales de TikTok Display API configuradas en el servidor.",
-                    account_info={"is_valid": False, "reason": "CREDENTIALS_MISSING"},
+                    message="FALTA DE DATOS: No se encontraron credenciales reales de TikTok Display API configuradas en el servidor. Configure TIKTOK_CLIENT_KEY y TIKTOK_ACCESS_TOKEN válidos.",
+                    account_info={"is_valid": False, "reason": "CREDENTIALS_MISSING_OR_MOCK"},
                 )
 
             latency_ms = int((time.perf_counter() - t0) * 1000)
@@ -1558,51 +1576,6 @@ class MonitoringHubService:
 
         stmt_pubs = stmt_pubs.order_by(Publication.published_at.desc()).limit(15)
         publications = list((await db.execute(stmt_pubs)).scalars().all())
-
-        # Si aún no hay publicaciones en la BD, auto-inicializar publicaciones institucionales GAMEA
-        if not publications and not publication_id:
-            stmt_plats = select(SocialPlatform)
-            platforms = list((await db.execute(stmt_plats)).scalars().all())
-            fb_plat = next((p for p in platforms if p.name == "FACEBOOK"), None)
-            tt_plat = next((p for p in platforms if p.name == "TIKTOK"), None)
-            if not fb_plat and platforms:
-                fb_plat = platforms[0]
-            if not tt_plat and platforms:
-                tt_plat = platforms[0]
-
-            if fb_plat:
-                p1 = Publication(
-                    platform_id=fb_plat.id,
-                    external_post_id="post_fb_gamea_obras_001",
-                    post_url="https://facebook.com/AlcaldiaElAlto/posts/1416238814024091",
-                    published_at=datetime.now(UTC),
-                    content_text="Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8 de El Alto. #ElAltoAvanza",
-                    media_type="VIDEO",
-                    is_monitored=True,
-                )
-                p2 = Publication(
-                    platform_id=fb_plat.id,
-                    external_post_id="post_fb_gamea_salud_002",
-                    post_url="https://facebook.com/AlcaldiaElAlto/posts/1416229634025009",
-                    published_at=datetime.now(UTC),
-                    content_text="Gran Campaña de Vacunación y Atención Médica Gratuita en la Plaza del Tinku - Ciudad Satélite. #SaludElAlto",
-                    media_type="IMAGE",
-                    is_monitored=True,
-                )
-                db.add_all([p1, p2])
-                if tt_plat:
-                    p3 = Publication(
-                        platform_id=tt_plat.id,
-                        external_post_id="video_tt_gamea_feria_003",
-                        post_url="https://tiktok.com/@alcaldia_elalto/video/7382910291",
-                        published_at=datetime.now(UTC),
-                        content_text="Feria de la Juventud y Tecnología alteña en el Centro de Convenciones. #GAMEA #JovenesElAlto",
-                        media_type="VIDEO",
-                        is_monitored=True,
-                    )
-                    db.add(p3)
-                await db.commit()
-                publications = list((await db.execute(stmt_pubs)).scalars().all())
 
         pub_ids = [p.id for p in publications]
 
