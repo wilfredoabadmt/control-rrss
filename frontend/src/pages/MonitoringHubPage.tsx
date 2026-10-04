@@ -3,6 +3,7 @@ import {
   Activity,
   AlertCircle,
   CheckCircle,
+  Edit3,
   ExternalLink,
   Facebook,
   FileSpreadsheet,
@@ -25,14 +26,47 @@ import {
 } from 'lucide-react';
 
 import { monitoringApi } from '../api/monitoring';
+import { LISTA_DIRECCIONES, ORGANIGRAMA_GAMEA } from '../data/organigrama';
 import {
   ActivityMatrixResponse,
   ConnectorConfigItem,
   MonitoredPerson,
-  MonitoredPersonCreateInput,
   RunSyncResponse,
   TestConnectionResponse,
 } from '../types';
+
+// Ícono SVG estilizado de TikTok
+const TikTokIcon: React.FC<{ size?: number; color?: string }> = ({ size = 14, color = 'currentColor' }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ display: 'inline-block', verticalAlign: 'middle' }}
+  >
+    <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+  </svg>
+);
+
+// Cargos normalizados oficiales del Gobierno Autónomo Municipal de El Alto
+export const CARGOS_GAMEA = [
+  'Especialista en Redes Sociales',
+  'Community Manager',
+  'Responsable de Medios Digitales',
+  'Diseñador Gráfico & Contenido',
+  'Periodista / Redactor Institucional',
+  'Jefe de Unidad',
+  'Director / Directora Municipal',
+  'Secretario / Secretaria Municipal',
+  'Técnico de Monitoreo & Comunicación',
+  'Servidor Público',
+  'Apoyo Administrativo',
+  'Personal Técnico Especializado',
+];
 
 export const MonitoringHubPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'matrix' | 'audience' | 'connectors'>('matrix');
@@ -59,18 +93,28 @@ export const MonitoringHubPage: React.FC = () => {
   const [showBulkImportModal, setShowBulkImportModal] = useState<boolean>(false);
   const [showSyncModal, setShowSyncModal] = useState<boolean>(false);
 
-  // Formulario de Adición de Persona
-  const [newPerson, setNewPerson] = useState<MonitoredPersonCreateInput>({
-    ci: '',
-    first_name: '',
-    last_name: '',
-    department: 'Secretaría Municipal de Comunicación',
-    position: 'Servidor Público',
-    facebook_account: '',
-    facebook_profile_url: '',
-    tiktok_account: '',
-    tiktok_profile_url: '',
-  });
+  // Formulario de Adición de Persona (Estructura Organigrama GAMEA 2026)
+  const [newPersonCi, setNewPersonCi] = useState<string>('');
+  const [newPersonFirstName, setNewPersonFirstName] = useState<string>('');
+  const [newPersonLastName, setNewPersonLastName] = useState<string>('');
+  const [newPersonDirection, setNewPersonDirection] = useState<string>(LISTA_DIRECCIONES[1] || 'Dirección de Comunicación');
+  const [newPersonUnit, setNewPersonUnit] = useState<string>('Unidad de Prensa');
+  const [newPersonPosition, setNewPersonPosition] = useState<string>('Especialista en Redes Sociales');
+  const [newPersonCustomPosition, setNewPersonCustomPosition] = useState<string>('');
+  const [newPersonFacebook, setNewPersonFacebook] = useState<string>('');
+  const [newPersonTiktok, setNewPersonTiktok] = useState<string>('');
+
+  // Formulario de Edición de Persona (Modificaciones en Monitoreo)
+  const [showEditPersonModal, setShowEditPersonModal] = useState<boolean>(false);
+  const [editingPersonCi, setEditingPersonCi] = useState<string>('');
+  const [editingPersonFirstName, setEditingPersonFirstName] = useState<string>('');
+  const [editingPersonLastName, setEditingPersonLastName] = useState<string>('');
+  const [editingPersonDirection, setEditingPersonDirection] = useState<string>('');
+  const [editingPersonUnit, setEditingPersonUnit] = useState<string>('');
+  const [editingPersonPosition, setEditingPersonPosition] = useState<string>('');
+  const [editingPersonCustomPosition, setEditingPersonCustomPosition] = useState<string>('');
+  const [editingPersonFacebook, setEditingPersonFacebook] = useState<string>('');
+  const [editingPersonTiktok, setEditingPersonTiktok] = useState<string>('');
 
   // Formulario de Importación Masiva
   const [bulkCsvText, setBulkCsvText] = useState<string>('');
@@ -176,31 +220,112 @@ export const MonitoringHubPage: React.FC = () => {
 
   const handleAddPersonSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPerson.ci.trim() || !newPerson.first_name.trim() || !newPerson.last_name.trim()) {
+    if (!newPersonCi.trim() || !newPersonFirstName.trim() || !newPersonLastName.trim()) {
       setErrorMessage('C.I., Nombres y Apellidos son obligatorios.');
       return;
     }
 
+    const finalDepartment = newPersonUnit || newPersonDirection;
+    const finalPosition =
+      newPersonPosition === 'OTRO'
+        ? newPersonCustomPosition.trim() || 'Servidor Público'
+        : newPersonPosition;
+
     try {
-      await monitoringApi.addMonitoredPerson(newPerson);
-      setShowAddPersonModal(false);
-      setSuccessMessage(`Persona ${newPerson.first_name} ${newPerson.last_name} añadida exitosamente al monitoreo.`);
-      setNewPerson({
-        ci: '',
-        first_name: '',
-        last_name: '',
-        department: 'Secretaría Municipal de Comunicación',
-        position: 'Servidor Público',
-        facebook_account: '',
-        facebook_profile_url: '',
-        tiktok_account: '',
-        tiktok_profile_url: '',
+      await monitoringApi.addMonitoredPerson({
+        ci: newPersonCi.trim(),
+        first_name: newPersonFirstName.trim(),
+        last_name: newPersonLastName.trim(),
+        department: finalDepartment,
+        position: finalPosition,
+        facebook_account: newPersonFacebook.trim(),
+        tiktok_account: newPersonTiktok.trim(),
       });
+      setShowAddPersonModal(false);
+      setSuccessMessage(
+        `Persona ${newPersonFirstName} ${newPersonLastName} registrada correctamente en ${finalDepartment}.`
+      );
+      // Limpiar formulario
+      setNewPersonCi('');
+      setNewPersonFirstName('');
+      setNewPersonLastName('');
+      setNewPersonFacebook('');
+      setNewPersonTiktok('');
       await fetchAudience();
       await fetchMatrix();
     } catch (err: any) {
       console.error(err);
-      setErrorMessage(err.response?.data?.detail || 'Error al adicionar la persona al monitoreo.');
+      setErrorMessage(err.response?.data?.detail || err.message || 'Error al adicionar la persona al monitoreo.');
+    }
+  };
+
+  const handleOpenEditPerson = (person: MonitoredPerson) => {
+    setEditingPersonCi(person.ci);
+    setEditingPersonFirstName(person.first_name);
+    setEditingPersonLastName(person.last_name);
+
+    // Resolver Dirección y Unidad desde el Organigrama Oficial
+    let foundDir = '';
+    let foundUnit = person.department || '';
+    for (const [dir, units] of Object.entries(ORGANIGRAMA_GAMEA)) {
+      if (
+        units.some((u) => u.toLowerCase() === foundUnit.toLowerCase()) ||
+        dir.toLowerCase() === foundUnit.toLowerCase()
+      ) {
+        foundDir = dir;
+        const matchingUnit = units.find((u) => u.toLowerCase() === foundUnit.toLowerCase());
+        if (matchingUnit) foundUnit = matchingUnit;
+        break;
+      }
+    }
+    if (!foundDir) {
+      foundDir = LISTA_DIRECCIONES[1] || 'Dirección de Comunicación';
+    }
+    setEditingPersonDirection(foundDir);
+    setEditingPersonUnit(foundUnit || ORGANIGRAMA_GAMEA[foundDir]?.[0] || '');
+
+    // Resolver Cargo
+    const isStandardPos = CARGOS_GAMEA.includes(person.position);
+    if (isStandardPos) {
+      setEditingPersonPosition(person.position);
+      setEditingPersonCustomPosition('');
+    } else {
+      setEditingPersonPosition('OTRO');
+      setEditingPersonCustomPosition(person.position || '');
+    }
+
+    setEditingPersonFacebook(person.facebook_account || '');
+    setEditingPersonTiktok(person.tiktok_account || '');
+    setShowEditPersonModal(true);
+  };
+
+  const handleEditPersonSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalDepartment = editingPersonUnit || editingPersonDirection;
+    const finalPosition =
+      editingPersonPosition === 'OTRO'
+        ? editingPersonCustomPosition.trim() || 'Servidor Público'
+        : editingPersonPosition;
+
+    try {
+      await monitoringApi.addMonitoredPerson({
+        ci: editingPersonCi.trim(),
+        first_name: editingPersonFirstName.trim(),
+        last_name: editingPersonLastName.trim(),
+        department: finalDepartment,
+        position: finalPosition,
+        facebook_account: editingPersonFacebook.trim(),
+        tiktok_account: editingPersonTiktok.trim(),
+      });
+      setShowEditPersonModal(false);
+      setSuccessMessage(
+        `Datos de ${editingPersonFirstName} ${editingPersonLastName} actualizados exitosamente en el Centro de Monitoreo.`
+      );
+      await fetchAudience();
+      await fetchMatrix();
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.response?.data?.detail || err.message || 'Error al actualizar la persona.');
     }
   };
 
@@ -1055,6 +1180,7 @@ export const MonitoringHubPage: React.FC = () => {
                   <th style={{ padding: '14px 18px', color: 'var(--text-muted)', fontWeight: 600 }}>Cuenta Facebook</th>
                   <th style={{ padding: '14px 18px', color: 'var(--text-muted)', fontWeight: 600 }}>Cuenta TikTok</th>
                   <th style={{ padding: '14px 18px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>Estado</th>
+                  <th style={{ padding: '14px 18px', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -1086,7 +1212,7 @@ export const MonitoringHubPage: React.FC = () => {
                           rel="noreferrer"
                           style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#f43f5e', textDecoration: 'none' }}
                         >
-                          <Video size={14} /> {person.tiktok_account}
+                          <TikTokIcon size={14} color="#f43f5e" /> {person.tiktok_account}
                         </a>
                       ) : (
                         <span style={{ color: 'var(--text-faint)' }}>-</span>
@@ -1096,6 +1222,29 @@ export const MonitoringHubPage: React.FC = () => {
                       <span style={{ padding: '3px 8px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', fontSize: '0.75rem', fontWeight: 700 }}>
                         {person.status}
                       </span>
+                    </td>
+                    <td style={{ padding: '12px 18px', textAlign: 'center' }}>
+                      <button
+                        onClick={() => handleOpenEditPerson(person)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '6px 12px',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid rgba(56, 189, 248, 0.4)',
+                          background: 'rgba(56, 189, 248, 0.1)',
+                          color: '#38bdf8',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        }}
+                        title="Modificar persona y estructura institucional"
+                      >
+                        <Edit3 size={13} />
+                        <span>Editar</span>
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1476,8 +1625,8 @@ export const MonitoringHubPage: React.FC = () => {
                   type="text"
                   required
                   placeholder="ej. 8492019 LP"
-                  value={newPerson.ci}
-                  onChange={(e) => setNewPerson({ ...newPerson, ci: e.target.value })}
+                  value={newPersonCi}
+                  onChange={(e) => setNewPersonCi(e.target.value)}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
                 />
               </div>
@@ -1491,8 +1640,8 @@ export const MonitoringHubPage: React.FC = () => {
                     type="text"
                     required
                     placeholder="ej. Ramiro"
-                    value={newPerson.first_name}
-                    onChange={(e) => setNewPerson({ ...newPerson, first_name: e.target.value })}
+                    value={newPersonFirstName}
+                    onChange={(e) => setNewPersonFirstName(e.target.value)}
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
                   />
                 </div>
@@ -1504,38 +1653,101 @@ export const MonitoringHubPage: React.FC = () => {
                     type="text"
                     required
                     placeholder="ej. Mamani Quispe"
-                    value={newPerson.last_name}
-                    onChange={(e) => setNewPerson({ ...newPerson, last_name: e.target.value })}
+                    value={newPersonLastName}
+                    onChange={(e) => setNewPersonLastName(e.target.value)}
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Unidad / Secretaría
-                  </label>
+              {/* Dirección / Dependencia Superior (Desplegable Padre) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Dirección / Dependencia Superior *
+                </label>
+                <select
+                  required
+                  value={newPersonDirection}
+                  onChange={(e) => {
+                    const selDir = e.target.value;
+                    setNewPersonDirection(selDir);
+                    setNewPersonUnit(ORGANIGRAMA_GAMEA[selDir]?.[0] || '');
+                  }}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                >
+                  <option value="">-- Seleccionar Dirección / Dependencia --</option>
+                  {LISTA_DIRECCIONES.map((dir) => (
+                    <option key={dir} value={dir}>
+                      {dir}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Unidad Organizacional (Desplegable Hijo en Cascada) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Unidad Organizacional Oficial (Organigrama GAMEA 2026) *
+                </label>
+                <select
+                  required
+                  value={newPersonUnit}
+                  onChange={(e) => setNewPersonUnit(e.target.value)}
+                  disabled={!newPersonDirection}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '6px',
+                    background: 'var(--bg-input)',
+                    border: `1px solid ${newPersonUnit ? '#10b981' : 'var(--border-subtle)'}`,
+                    color: !newPersonDirection ? 'var(--text-faint)' : '#fff',
+                    fontSize: '0.85rem',
+                    cursor: !newPersonDirection ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <option value="">
+                    {!newPersonDirection
+                      ? '-- Primero seleccione una Dirección / Dependencia --'
+                      : '-- Seleccione Unidad correspondiente --'}
+                  </option>
+                  {newPersonDirection &&
+                    (ORGANIGRAMA_GAMEA[newPersonDirection] || []).map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* Cargo Institucional (Desplegable Normalizado) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Cargo Institucional *
+                </label>
+                <select
+                  required
+                  value={newPersonPosition}
+                  onChange={(e) => setNewPersonPosition(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                >
+                  {CARGOS_GAMEA.map((cargo) => (
+                    <option key={cargo} value={cargo}>
+                      {cargo}
+                    </option>
+                  ))}
+                  <option value="OTRO">Otro cargo (especificar manualmente)...</option>
+                </select>
+
+                {newPersonPosition === 'OTRO' && (
                   <input
                     type="text"
-                    placeholder="ej. Dirección de Comunicación"
-                    value={newPerson.department}
-                    onChange={(e) => setNewPerson({ ...newPerson, department: e.target.value })}
-                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                    required
+                    placeholder="Escriba el cargo institucional exacto..."
+                    value={newPersonCustomPosition}
+                    onChange={(e) => setNewPersonCustomPosition(e.target.value)}
+                    style={{ width: '100%', marginTop: '6px', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
                   />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Cargo
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="ej. Responsable de Medios"
-                    value={newPerson.position}
-                    onChange={(e) => setNewPerson({ ...newPerson, position: e.target.value })}
-                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
-                  />
-                </div>
+                )}
               </div>
 
               <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
@@ -1547,25 +1759,25 @@ export const MonitoringHubPage: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Usuario / Handle de Facebook
+                    <Facebook size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> Usuario Facebook
                   </label>
                   <input
                     type="text"
                     placeholder="ej. ramiro.mamani.elalto"
-                    value={newPerson.facebook_account}
-                    onChange={(e) => setNewPerson({ ...newPerson, facebook_account: e.target.value })}
+                    value={newPersonFacebook}
+                    onChange={(e) => setNewPersonFacebook(e.target.value)}
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
                   />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Usuario / Handle de TikTok
+                    <TikTokIcon size={13} color="#f43f5e" /> Usuario TikTok
                   </label>
                   <input
                     type="text"
                     placeholder="ej. @ramiro_elalto"
-                    value={newPerson.tiktok_account}
-                    onChange={(e) => setNewPerson({ ...newPerson, tiktok_account: e.target.value })}
+                    value={newPersonTiktok}
+                    onChange={(e) => setNewPersonTiktok(e.target.value)}
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
                   />
                 </div>
@@ -1581,6 +1793,216 @@ export const MonitoringHubPage: React.FC = () => {
                 </button>
                 <button type="submit" className="btn-primary" style={{ padding: '9px 20px', fontSize: '0.85rem' }}>
                   Guardar Persona
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --------------------------------------------------------------------- */}
+      {/* MODAL: Modificar Persona Monitoreada                                 */}
+      {/* --------------------------------------------------------------------- */}
+      {showEditPersonModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: '580px',
+              padding: '26px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '18px',
+              background: 'rgba(15, 23, 42, 0.98)',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Edit3 size={20} color="#38bdf8" />
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', margin: 0 }}>Modificar Datos de Persona</h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>C.I. {editingPersonCi} — Estructura Organigrama GAMEA 2026</span>
+                </div>
+              </div>
+              <button onClick={() => setShowEditPersonModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditPersonSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Nombres *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPersonFirstName}
+                    onChange={(e) => setEditingPersonFirstName(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Apellidos *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPersonLastName}
+                    onChange={(e) => setEditingPersonLastName(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                  />
+                </div>
+              </div>
+
+              {/* Dirección / Dependencia Superior */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Dirección / Dependencia Superior *
+                </label>
+                <select
+                  required
+                  value={editingPersonDirection}
+                  onChange={(e) => {
+                    const selDir = e.target.value;
+                    setEditingPersonDirection(selDir);
+                    setEditingPersonUnit(ORGANIGRAMA_GAMEA[selDir]?.[0] || '');
+                  }}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                >
+                  <option value="">-- Seleccionar Dirección / Dependencia --</option>
+                  {LISTA_DIRECCIONES.map((dir) => (
+                    <option key={dir} value={dir}>
+                      {dir}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Unidad Organizacional en cascada */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Unidad Organizacional Oficial (Organigrama GAMEA 2026) *
+                </label>
+                <select
+                  required
+                  value={editingPersonUnit}
+                  onChange={(e) => setEditingPersonUnit(e.target.value)}
+                  disabled={!editingPersonDirection}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '6px',
+                    background: 'var(--bg-input)',
+                    border: `1px solid ${editingPersonUnit ? '#10b981' : 'var(--border-subtle)'}`,
+                    color: !editingPersonDirection ? 'var(--text-faint)' : '#fff',
+                    fontSize: '0.85rem',
+                    cursor: !editingPersonDirection ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <option value="">-- Seleccione Unidad correspondiente --</option>
+                  {editingPersonDirection &&
+                    (ORGANIGRAMA_GAMEA[editingPersonDirection] || []).map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* Cargo */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Cargo Institucional *
+                </label>
+                <select
+                  required
+                  value={editingPersonPosition}
+                  onChange={(e) => setEditingPersonPosition(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                >
+                  {CARGOS_GAMEA.map((cargo) => (
+                    <option key={cargo} value={cargo}>
+                      {cargo}
+                    </option>
+                  ))}
+                  <option value="OTRO">Otro cargo (especificar)...</option>
+                </select>
+
+                {editingPersonPosition === 'OTRO' && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Escriba el cargo institucional..."
+                    value={editingPersonCustomPosition}
+                    onChange={(e) => setEditingPersonCustomPosition(e.target.value)}
+                    style={{ width: '100%', marginTop: '6px', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                  />
+                )}
+              </div>
+
+              {/* Redes Sociales */}
+              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#22d3ee', textTransform: 'uppercase' }}>
+                  Cuentas de Redes Sociales Vinculadas
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    <Facebook size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> Usuario Facebook
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ej. ramiro.mamani.elalto"
+                    value={editingPersonFacebook}
+                    onChange={(e) => setEditingPersonFacebook(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    <TikTokIcon size={13} color="#f43f5e" /> Usuario TikTok
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ej. @ramiro_elalto"
+                    value={editingPersonTiktok}
+                    onChange={(e) => setEditingPersonTiktok(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: '#fff', fontSize: '0.85rem' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowEditPersonModal(false)}
+                  style={{ padding: '9px 16px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary" style={{ padding: '9px 20px', fontSize: '0.85rem' }}>
+                  Guardar Modificaciones
                 </button>
               </div>
             </form>
