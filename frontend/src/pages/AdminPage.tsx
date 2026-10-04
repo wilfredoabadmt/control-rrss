@@ -1074,7 +1074,7 @@ export const AdminPage: React.FC = () => {
                       </thead>
                       <tbody>
                         {c.variables.map((v) => {
-                          const isVarOk = v.status_badge === 'CONFIGURADO';
+                          const isVarOk = v.configured || v.status_badge === 'CONFIGURADO' || v.status_badge.includes('VERIFICADO');
                           const isVarMock = v.status_badge === 'MOCK_DEMO';
                           return (
                             <tr key={v.key} style={{ borderBottom: '1px solid var(--border-subtle)', background: 'rgba(31, 41, 55, 0.15)' }}>
@@ -1104,7 +1104,7 @@ export const AdminPage: React.FC = () => {
                               <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                                 {isVarOk && (
                                   <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
-                                    PRESENTE
+                                    {v.status_badge.includes('VERIFICADO') ? 'VERIFICADO EN VIVO' : 'PRESENTE'}
                                   </span>
                                 )}
                                 {isVarMock && (

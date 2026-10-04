@@ -180,7 +180,7 @@ export interface ConnectorVariableDetail {
   configured: boolean;
   is_mock: boolean;
   masked_value: string;
-  status_badge: 'CONFIGURADO' | 'MOCK_DEMO' | 'FALTANTE';
+  status_badge: string;
   source: string;
   required: boolean;
   description: string;
