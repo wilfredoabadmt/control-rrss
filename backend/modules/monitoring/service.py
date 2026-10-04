@@ -21,7 +21,7 @@ from typing import Any
 from config import settings
 from core.audit.service import record_audit_event
 from core.logging_config import get_correlation_id
-from core.security.encryption import encrypt_field, hash_blind_index
+from core.security.encryption import decrypt_field, encrypt_field, hash_blind_index
 from modules.employees.models import Employee, OrganizationalUnit, Position
 from modules.iam.models import User
 from modules.interactions.matcher import InteractionMatcher, MatchStatus
@@ -36,6 +36,10 @@ from modules.monitoring.schemas import (
     ActivityMatrixSummary,
     ConnectorConfigItem,
     ConnectorConfigUpdateRequest,
+    ConnectorDiagnosticDetail,
+    ConnectorsDiagnosticResponse,
+    ConnectorVariableDetail,
+    MissingDataNotice,
     MonitoredPersonBulkImportRequest,
     MonitoredPersonBulkImportResponse,
     MonitoredPersonCreate,
@@ -236,6 +240,293 @@ class MonitoringHubService:
                 status="UNKNOWN_PLATFORM",
                 message=f"Plataforma '{plat}' no reconocida.",
             )
+
+    @staticmethod
+    async def get_connectors_diagnostics(db: AsyncSession) -> ConnectorsDiagnosticResponse:
+        """
+        Inspecciona exhaustivamente el estado real de las variables y credenciales de los conectores
+        tanto en las variables de entorno del sistema (.env / os.environ) como en la base de datos.
+        """
+        import os
+        from sqlalchemy import select
+
+        # 1. Obtener configuraciones de la BD
+        stmt = select(SocialConnectorConfig)
+        db_configs = {c.platform_name.upper(): c for c in (await db.execute(stmt)).scalars().all()}
+
+        def eval_var(
+            key: str,
+            label: str,
+            val: str,
+            is_secret: bool,
+            required: bool,
+            desc: str,
+            impact: str,
+            fix: str,
+        ) -> tuple[ConnectorVariableDetail, MissingDataNotice | None]:
+            val_clean = (val or "").strip()
+            if not val_clean:
+                v = ConnectorVariableDetail(
+                    key=key,
+                    label=label,
+                    configured=False,
+                    is_mock=False,
+                    masked_value="<NO DETECTADO / VACÍO>",
+                    status_badge="FALTANTE",
+                    source="NINGUNO",
+                    required=required,
+                    description=desc,
+                )
+                n = MissingDataNotice(variable_name=key, impact=impact, instructions=fix) if required else None
+                return v, n
+            elif val_clean.lower().startswith("mock_") or "sample" in val_clean.lower():
+                v = ConnectorVariableDetail(
+                    key=key,
+                    label=label,
+                    configured=False,
+                    is_mock=True,
+                    masked_value=f"VALOR DEMO / MOCK ({val_clean})",
+                    status_badge="MOCK_DEMO",
+                    source="PREDETERMINADO / MOCK",
+                    required=required,
+                    description=desc,
+                )
+                n = MissingDataNotice(
+                    variable_name=key,
+                    impact=f"Utiliza un valor ficticio ('{val_clean}') que no permite la conexión real.",
+                    instructions=fix,
+                ) if required else None
+                return v, n
+            else:
+                if is_secret:
+                    masked = f"{val_clean[:4]}••••••••{val_clean[-4:]} ({len(val_clean)} caracteres)" if len(val_clean) >= 8 else "•••••••• (Configurado)"
+                else:
+                    masked = f"{val_clean[:4]}****{val_clean[-4:]}" if len(val_clean) >= 8 else val_clean
+                v = ConnectorVariableDetail(
+                    key=key,
+                    label=label,
+                    configured=True,
+                    is_mock=False,
+                    masked_value=masked,
+                    status_badge="CONFIGURADO",
+                    source="SISTEMA / ENV",
+                    required=required,
+                    description=desc,
+                )
+                return v, None
+
+        # 2. Diagnóstico de Facebook (Meta Graph API)
+        fb_db = db_configs.get("FACEBOOK")
+        fb_token_db = ""
+        fb_secret_db = ""
+        if fb_db:
+            try:
+                if fb_db.access_token_encrypted:
+                    fb_token_db = decrypt_field(fb_db.access_token_encrypted)
+                if fb_db.api_secret_encrypted:
+                    fb_secret_db = decrypt_field(fb_db.api_secret_encrypted)
+            except Exception:
+                pass
+
+        fb_app_id = (os.environ.get("FACEBOOK_APP_ID") or settings.FACEBOOK_APP_ID or "").strip()
+        fb_app_secret = (os.environ.get("FACEBOOK_APP_SECRET") or settings.FACEBOOK_APP_SECRET or fb_secret_db or "").strip()
+        fb_page_token = (
+            os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+            or os.environ.get("META_PAGE_ACCESS_TOKEN")
+            or getattr(settings, "FACEBOOK_PAGE_ACCESS_TOKEN", "")
+            or fb_token_db
+            or ""
+        ).strip()
+        fb_page_id = (
+            os.environ.get("FACEBOOK_PAGE_ID")
+            or getattr(settings, "FACEBOOK_PAGE_ID", "")
+            or (fb_db.target_account_id if fb_db else "")
+            or ""
+        ).strip()
+        fb_verify_token = (os.environ.get("FACEBOOK_VERIFY_TOKEN") or settings.FACEBOOK_VERIFY_TOKEN or "").strip()
+        fb_version = (os.environ.get("FACEBOOK_GRAPH_VERSION") or settings.FACEBOOK_GRAPH_VERSION or "v20.0").strip()
+
+        fb_vars: list[ConnectorVariableDetail] = []
+        fb_missing: list[MissingDataNotice] = []
+
+        v1, n1 = eval_var(
+            "FACEBOOK_APP_ID", "Meta App ID", fb_app_id, False, True,
+            "Identificador numérico de la aplicación institucional en Meta for Developers.",
+            "Impide la autenticación e integración del conector de Meta.",
+            "Obtener el App ID desde developers.facebook.com y configurarlo en las variables de entorno de Coolify o archivo .env."
+        )
+        fb_vars.append(v1)
+        if n1: fb_missing.append(n1)
+
+        v2, n2 = eval_var(
+            "FACEBOOK_APP_SECRET", "Meta App Secret", fb_app_secret, True, True,
+            "Clave secreta criptográfica de la aplicación institucional de Meta.",
+            "Impide validar la firma de Webhooks x-hub-signature-256 y renovar tokens de larga duración.",
+            "Copiar el App Secret desde el portal Meta Developers y asignarlo a FACEBOOK_APP_SECRET."
+        )
+        fb_vars.append(v2)
+        if n2: fb_missing.append(n2)
+
+        v3, n3 = eval_var(
+            "FACEBOOK_PAGE_ACCESS_TOKEN", "Page Access Token", fb_page_token, True, True,
+            "Token de acceso de página con permisos pages_read_engagement y pages_read_user_content.",
+            "Impide consultar publicaciones, comentarios y reacciones de la página de Facebook en tiempo real.",
+            "Generar un Token de Página permanente en el Explorador de la Graph API de Meta y colocarlo en FACEBOOK_PAGE_ACCESS_TOKEN."
+        )
+        fb_vars.append(v3)
+        if n3: fb_missing.append(n3)
+
+        v4, n4 = eval_var(
+            "FACEBOOK_PAGE_ID", "ID de Fanpage Oficial", fb_page_id, False, False,
+            "Identificador numérico de la página oficial del GAMEA en Facebook.",
+            "Si no se define, se utilizará el ID predeterminado de la base de datos.",
+            "Ingresar el ID numérico de la fanpage en FACEBOOK_PAGE_ID."
+        )
+        fb_vars.append(v4)
+        if n4: fb_missing.append(n4)
+
+        v5, n5 = eval_var(
+            "FACEBOOK_VERIFY_TOKEN", "Webhook Verify Token", fb_verify_token, False, True,
+            "Frase de verificación para el handshake del Webhook institucional de Meta.",
+            "Impide la validación y suscripción a eventos de Webhooks de Meta.",
+            "Definir una frase secreta segura en FACEBOOK_VERIFY_TOKEN y sincronizarla en la consola de Meta."
+        )
+        fb_vars.append(v5)
+        if n5: fb_missing.append(n5)
+
+        fb_configured_count = sum(1 for v in fb_vars if v.configured and v.required)
+        fb_required_count = sum(1 for v in fb_vars if v.required)
+        if fb_configured_count == fb_required_count:
+            fb_overall = "OPERATIONAL"
+            fb_status_label = "CONECTADO / OPERATIVO"
+            fb_summary = "Todas las credenciales requeridas de Meta Graph API están presentes en el sistema. Conector habilitado para ingesta oficial."
+        elif fb_configured_count > 0:
+            fb_overall = "PARTIAL"
+            fb_status_label = "CONFIGURACIÓN INCOMPLETA"
+            fb_summary = f"FALTA DE DATOS: Se detectaron {fb_required_count - fb_configured_count} variable(s) faltantes o con valores de plantilla demo."
+        else:
+            fb_overall = "NOT_CONFIGURED"
+            fb_status_label = "FALTA DE DATOS / NO CONFIGURADO"
+            fb_summary = "FALTA TOTAL DE CREDENCIALES: No se encontraron claves reales de Meta en las variables del sistema. El conector se encuentra inactivo."
+
+        fb_diagnostic = ConnectorDiagnosticDetail(
+            platform_name="FACEBOOK",
+            display_name="Meta Graph API (Facebook)",
+            icon_type="facebook",
+            api_version=fb_version,
+            overall_status=fb_overall,
+            status_label=fb_status_label,
+            target_account=fb_page_id or "Gobierno Autónomo Municipal de El Alto",
+            rate_limit_display="60 req / min (Controlado por Policy)",
+            variables=fb_vars,
+            missing_variables=fb_missing,
+            has_missing_data=len(fb_missing) > 0,
+            diagnostic_summary=fb_summary,
+            last_checked_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        )
+
+        # 3. Diagnóstico de TikTok (Display / Business API)
+        tt_db = db_configs.get("TIKTOK")
+        tt_token_db = ""
+        tt_secret_db = ""
+        if tt_db:
+            try:
+                if tt_db.access_token_encrypted:
+                    tt_token_db = decrypt_field(tt_db.access_token_encrypted)
+                if tt_db.api_secret_encrypted:
+                    tt_secret_db = decrypt_field(tt_db.api_secret_encrypted)
+            except Exception:
+                pass
+
+        tt_client_key = (os.environ.get("TIKTOK_CLIENT_KEY") or settings.TIKTOK_CLIENT_KEY or "").strip()
+        tt_client_secret = (os.environ.get("TIKTOK_CLIENT_SECRET") or settings.TIKTOK_CLIENT_SECRET or tt_secret_db or "").strip()
+        tt_access_token = (
+            os.environ.get("TIKTOK_ACCESS_TOKEN")
+            or getattr(settings, "TIKTOK_ACCESS_TOKEN", "")
+            or tt_token_db
+            or ""
+        ).strip()
+        tt_account_handle = (tt_db.target_account_id if tt_db else "@alcaldia_elalto").strip()
+
+        tt_vars: list[ConnectorVariableDetail] = []
+        tt_missing: list[MissingDataNotice] = []
+
+        tv1, tn1 = eval_var(
+            "TIKTOK_CLIENT_KEY", "TikTok Client Key", tt_client_key, False, True,
+            "Client Key asignado a la aplicación en TikTok for Developers.",
+            "Impide iniciar el flujo OAuth 2.0 y realizar peticiones oficiales a la API de TikTok.",
+            "Obtener el Client Key en developers.tiktok.com y agregarlo a las variables del servidor en TIKTOK_CLIENT_KEY."
+        )
+        tt_vars.append(tv1)
+        if tn1: tt_missing.append(tn1)
+
+        tv2, tn2 = eval_var(
+            "TIKTOK_CLIENT_SECRET", "TikTok Client Secret", tt_client_secret, True, True,
+            "Clave secreta asignada a la aplicación en TikTok for Developers.",
+            "Impide el intercambio y validación de tokens OAuth 2.0.",
+            "Copiar el Client Secret de TikTok Developers y configurarlo en TIKTOK_CLIENT_SECRET."
+        )
+        tt_vars.append(tv2)
+        if tn2: tt_missing.append(tn2)
+
+        tv3, tn3 = eval_var(
+            "TIKTOK_ACCESS_TOKEN", "TikTok Access Token", tt_access_token, True, True,
+            "Token de acceso OAuth 2.0 para lectura de publicaciones institucionales.",
+            "Impide la sincronización periódica de estadísticas agregadas de videos y comentarios de TikTok.",
+            "Completar la autorización OAuth en TikTok for Developers y definir TIKTOK_ACCESS_TOKEN."
+        )
+        tt_vars.append(tv3)
+        if tn3: tt_missing.append(tn3)
+
+        tv4, tn4 = eval_var(
+            "TIKTOK_ACCOUNT_HANDLE", "Cuenta Oficial TikTok", tt_account_handle, False, False,
+            "Nombre de usuario oficial del municipio en TikTok (@alcaldia_elalto).",
+            "Identificador del canal oficial del municipio en TikTok.",
+            "Configurar el handle en la base de datos o módulo de conectores."
+        )
+        tt_vars.append(tv4)
+        if tn4: tt_missing.append(tn4)
+
+        tt_configured_count = sum(1 for v in tt_vars if v.configured and v.required)
+        tt_required_count = sum(1 for v in tt_vars if v.required)
+        if tt_configured_count == tt_required_count:
+            tt_overall = "OPERATIONAL"
+            tt_status_label = "CONECTADO / OPERATIVO"
+            tt_summary = "Todas las credenciales requeridas de TikTok Display API están presentes en el sistema."
+        elif tt_configured_count > 0:
+            tt_overall = "PARTIAL"
+            tt_status_label = "CONFIGURACIÓN INCOMPLETA"
+            tt_summary = f"FALTA DE DATOS: Se detectaron {tt_required_count - tt_configured_count} variable(s) faltantes o en modo prueba."
+        else:
+            tt_overall = "NOT_CONFIGURED"
+            tt_status_label = "FALTA DE DATOS / NO CONFIGURADO"
+            tt_summary = "FALTA TOTAL DE CREDENCIALES: No se encontraron claves reales de TikTok en las variables del servidor. El conector se encuentra inactivo."
+
+        tt_diagnostic = ConnectorDiagnosticDetail(
+            platform_name="TIKTOK",
+            display_name="TikTok Display & Business API",
+            icon_type="tiktok",
+            api_version="v2.0",
+            overall_status=tt_overall,
+            status_label=tt_status_label,
+            target_account=tt_account_handle,
+            rate_limit_display="45 req / min (Controlado por Policy)",
+            variables=tt_vars,
+            missing_variables=tt_missing,
+            has_missing_data=len(tt_missing) > 0,
+            diagnostic_summary=tt_summary,
+            last_checked_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        )
+
+        all_ok = (fb_overall == "OPERATIONAL") and (tt_overall == "OPERATIONAL")
+        total_missing = len(fb_missing) + len(tt_missing)
+
+        return ConnectorsDiagnosticResponse(
+            connectors=[fb_diagnostic, tt_diagnostic],
+            system_env=settings.ENVIRONMENT,
+            all_operational=all_ok,
+            total_missing_variables=total_missing,
+        )
 
     # -------------------------------------------------------------------------
     # 2. Gestión de Audiencia Monitoreada (Lista de Personas)

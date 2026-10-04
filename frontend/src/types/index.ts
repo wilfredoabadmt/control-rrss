@@ -174,6 +174,47 @@ export interface TestConnectionResponse {
   account_info?: Record<string, any>;
 }
 
+export interface ConnectorVariableDetail {
+  key: string;
+  label: string;
+  configured: boolean;
+  is_mock: boolean;
+  masked_value: string;
+  status_badge: 'CONFIGURADO' | 'MOCK_DEMO' | 'FALTANTE';
+  source: string;
+  required: boolean;
+  description: string;
+}
+
+export interface MissingDataNotice {
+  variable_name: string;
+  impact: string;
+  instructions: string;
+}
+
+export interface ConnectorDiagnosticDetail {
+  platform_name: string;
+  display_name: string;
+  icon_type: string;
+  api_version: string;
+  overall_status: 'OPERATIONAL' | 'PARTIAL' | 'NOT_CONFIGURED';
+  status_label: string;
+  target_account: string;
+  rate_limit_display: string;
+  variables: ConnectorVariableDetail[];
+  missing_variables: MissingDataNotice[];
+  has_missing_data: boolean;
+  diagnostic_summary: string;
+  last_checked_at: string;
+}
+
+export interface ConnectorsDiagnosticResponse {
+  connectors: ConnectorDiagnosticDetail[];
+  system_env: string;
+  all_operational: boolean;
+  total_missing_variables: number;
+}
+
 export interface MonitoredPerson {
   ci: string;
   first_name: string;

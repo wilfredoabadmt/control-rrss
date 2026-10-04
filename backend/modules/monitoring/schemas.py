@@ -161,3 +161,44 @@ class ActivityMatrixSummary(BaseModel):
 class ActivityMatrixResponse(BaseModel):
     summary: ActivityMatrixSummary
     rows: list[ActivityMatrixRow]
+
+
+class ConnectorVariableDetail(BaseModel):
+    key: str = Field(..., description="Nombre de la variable en el sistema, ej. FACEBOOK_APP_ID")
+    label: str = Field(..., description="Nombre legible del parámetro")
+    configured: bool = Field(..., description="Indica si existe un valor real")
+    is_mock: bool = Field(default=False, description="Indica si el valor configurado es solo una plantilla/mock")
+    masked_value: str = Field(..., description="Valor con máscara de seguridad o indicación de faltante")
+    status_badge: str = Field(..., description="CONFIGURADO, MOCK_DEMO, o FALTANTE")
+    source: str = Field(default="ENV", description="ENV, DATABASE, o NONE")
+    required: bool = Field(default=True)
+    description: str = Field(default="")
+
+
+class MissingDataNotice(BaseModel):
+    variable_name: str
+    impact: str
+    instructions: str
+
+
+class ConnectorDiagnosticDetail(BaseModel):
+    platform_name: str
+    display_name: str
+    icon_type: str
+    api_version: str
+    overall_status: str  # "OPERATIONAL", "PARTIAL", "NOT_CONFIGURED"
+    status_label: str  # "CONECTADO / OPERATIVO", "CONFIGURACIÓN INCOMPLETA", "FALTA DE DATOS"
+    target_account: str
+    rate_limit_display: str
+    variables: list[ConnectorVariableDetail]
+    missing_variables: list[MissingDataNotice]
+    has_missing_data: bool
+    diagnostic_summary: str
+    last_checked_at: str
+
+
+class ConnectorsDiagnosticResponse(BaseModel):
+    connectors: list[ConnectorDiagnosticDetail]
+    system_env: str
+    all_operational: bool
+    total_missing_variables: int

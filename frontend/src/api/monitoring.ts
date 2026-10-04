@@ -3,6 +3,7 @@ import {
   ActivityMatrixResponse,
   ConnectorConfigItem,
   ConnectorConfigsResponse,
+  ConnectorsDiagnosticResponse,
   MonitoredPerson,
   MonitoredPersonBulkImportResponse,
   MonitoredPersonCreateInput,
@@ -30,6 +31,11 @@ export const monitoringApi = {
     extraction_mode?: string;
   }): Promise<TestConnectionResponse> => {
     const res = await apiClient.post<TestConnectionResponse>('/monitoring/hub/test-connection', data);
+    return res.data;
+  },
+
+  getConnectorsDiagnostics: async (): Promise<ConnectorsDiagnosticResponse> => {
+    const res = await apiClient.get<ConnectorsDiagnosticResponse>('/monitoring/hub/diagnostics');
     return res.data;
   },
 

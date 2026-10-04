@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
+  AlertTriangle,
   Check,
+  CheckCircle2,
   Facebook,
   Key,
   Pencil,
@@ -14,7 +16,8 @@ import {
   Trash2,
   Users,
   Video,
-  X
+  X,
+  Zap,
 } from 'lucide-react';
 import {
   UserAdminItem,
@@ -23,9 +26,10 @@ import {
   listUsersApi,
   updateUserApi,
 } from '../api/admin';
+import { monitoringApi } from '../api/monitoring';
 import { useAuth } from '../context/AuthContext';
 import { formatUserRole } from '../utils/formatters';
-import { UserRole } from '../types';
+import { ConnectorsDiagnosticResponse, UserRole } from '../types';
 
 export interface RoleMeta {
   role: string;
@@ -230,6 +234,26 @@ export const AdminPage: React.FC = () => {
 
   const isSuperAdmin = hasRole(UserRole.SUPER_ADMIN);
 
+  // Estado del Diagnóstico Exhaustivo de Conectores API
+  const [connectorsDiag, setConnectorsDiag] = useState<ConnectorsDiagnosticResponse | null>(null);
+  const [loadingDiag, setLoadingDiag] = useState<boolean>(false);
+  const [diagError, setDiagError] = useState<string | null>(null);
+  const [testingPlatform, setTestingPlatform] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ platform: string; success: boolean; message: string } | null>(null);
+
+  const fetchDiagnostics = async () => {
+    setLoadingDiag(true);
+    setDiagError(null);
+    try {
+      const data = await monitoringApi.getConnectorsDiagnostics();
+      setConnectorsDiag(data);
+    } catch {
+      setDiagError('No se pudo comunicar con el servicio de diagnóstico del servidor.');
+    } finally {
+      setLoadingDiag(false);
+    }
+  };
+
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -247,6 +271,9 @@ export const AdminPage: React.FC = () => {
   useEffect(() => {
     if (isSuperAdmin && tab === 'users') {
       fetchUsers();
+    }
+    if (tab === 'connectors') {
+      fetchDiagnostics();
     }
   }, [tab]);
 
@@ -945,81 +972,321 @@ export const AdminPage: React.FC = () => {
       {/* ========================================================================= */}
       {/* TAB CONECTORES API                                                        */}
       {/* ========================================================================= */}
+      {/* ========================================================================= */}
+      {/* TAB CONECTORES API & DIAGNÓSTICO EXHAUSTIVO DE VARIABLES                   */}
+      {/* ========================================================================= */}
       {tab === 'connectors' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* Facebook Connector Card */}
-          <div className="glass-panel" style={{ padding: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Facebook size={28} color="#1877f2" />
-                <div>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#fff' }}>
-                    Meta Graph API (Facebook)
-                  </h3>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Versión v20.0 — Webhook Activo</span>
-                </div>
-              </div>
-              <span className="badge badge-success">ONLINE / OPERATIVO</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Header de la sección de conectores */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
+                Diagnóstico & Auditoría de Conectores API
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Verificación exhaustiva de variables de entorno (.env / Coolify) y credenciales de redes sociales.
+              </p>
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginTop: '20px' }}>
-              <div style={{ background: 'rgba(31, 41, 55, 0.4)', padding: '14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>Page Access Token</div>
-                <div style={{ fontSize: '0.85rem', fontFamily: 'monospace', color: '#38bdf8', marginTop: '4px' }}>
-                  EAAG...••••••••••••...ZDZD
-                </div>
-              </div>
-              <div style={{ background: 'rgba(31, 41, 55, 0.4)', padding: '14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>Páginas Monitoreadas</div>
-                <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 600, marginTop: '4px' }}>
-                  Gobierno Autónomo Municipal de El Alto
-                </div>
-              </div>
-              <div style={{ background: 'rgba(31, 41, 55, 0.4)', padding: '14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>Estado de Rate Limit</div>
-                <div style={{ fontSize: '0.85rem', color: '#34d399', fontWeight: 600, marginTop: '4px' }}>
-                  12% utilizado (200 req / h)
-                </div>
-              </div>
-            </div>
+            <button
+              onClick={fetchDiagnostics}
+              disabled={loadingDiag}
+              className="btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 16px' }}
+            >
+              <RefreshCw size={16} className={loadingDiag ? 'animate-spin' : ''} />
+              <span>{loadingDiag ? 'Inspeccionando Variables...' : 'Volver a Verificar Conectores'}</span>
+            </button>
           </div>
 
-          {/* TikTok Connector Card */}
-          <div className="glass-panel" style={{ padding: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Video size={28} color="#f472b6" />
-                <div>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#fff' }}>
-                    TikTok Business API
-                  </h3>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>OAuth 2.0 Client Credentials</span>
+          {/* Banner de Estado Global */}
+          {connectorsDiag && (
+            <div
+              style={{
+                padding: '16px 20px',
+                borderRadius: 'var(--radius-md)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                background: connectorsDiag.all_operational
+                  ? 'rgba(16, 185, 129, 0.1)'
+                  : 'rgba(239, 68, 68, 0.1)',
+                border: `1px solid ${
+                  connectorsDiag.all_operational ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'
+                }`,
+              }}
+            >
+              {connectorsDiag.all_operational ? (
+                <CheckCircle2 size={24} color="#10b981" style={{ flexShrink: 0 }} />
+              ) : (
+                <AlertTriangle size={24} color="#ef4444" style={{ flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1, fontSize: '0.875rem' }}>
+                <strong style={{ color: connectorsDiag.all_operational ? '#34d399' : '#f87171' }}>
+                  {connectorsDiag.all_operational
+                    ? 'Conectores en Estado Operativo:'
+                    : `Atención — Falta de Datos Detectada (${connectorsDiag.total_missing_variables} variables incompletas o mock):`}
+                </strong>
+                <div style={{ color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {connectorsDiag.all_operational
+                    ? 'Todas las variables de entorno requeridas fueron encontradas en el sistema con credenciales activas.'
+                    : 'Existen conectores sin credenciales reales o con parámetros de demostración. A continuación se detalla el estado exacto de cada variable y cómo configurarla en el servidor.'}
                 </div>
               </div>
-              <span className="badge badge-success">ONLINE / OPERATIVO</span>
             </div>
+          )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginTop: '20px' }}>
-              <div style={{ background: 'rgba(31, 41, 55, 0.4)', padding: '14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>Client Key</div>
-                <div style={{ fontSize: '0.85rem', fontFamily: 'monospace', color: '#f472b6', marginTop: '4px' }}>
-                  awz8...••••••••••••...09a1
-                </div>
-              </div>
-              <div style={{ background: 'rgba(31, 41, 55, 0.4)', padding: '14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>Cuentas Oficiales</div>
-                <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 600, marginTop: '4px' }}>
-                  @alcaldiaelalto (Oficial)
-                </div>
-              </div>
-              <div style={{ background: 'rgba(31, 41, 55, 0.4)', padding: '14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>Estado de Rate Limit</div>
-                <div style={{ fontSize: '0.85rem', color: '#34d399', fontWeight: 600, marginTop: '4px' }}>
-                  8% utilizado (50 req / h)
-                </div>
-              </div>
+          {/* Fallback de carga */}
+          {loadingDiag && !connectorsDiag && (
+            <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <RefreshCw size={32} className="animate-spin" style={{ margin: '0 auto 12px auto', display: 'block', color: 'var(--primary-500)' }} />
+              Verificando variables de entorno en el servidor...
             </div>
-          </div>
+          )}
+
+          {/* Error de conexión */}
+          {diagError && (
+            <div style={{ padding: '14px 18px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', borderRadius: 'var(--radius-md)', color: '#fca5a5', fontSize: '0.85rem' }}>
+              {diagError}
+            </div>
+          )}
+
+          {/* Tarjetas de Conectores Dinámicos */}
+          {connectorsDiag?.connectors.map((c) => {
+            const isOperational = c.overall_status === 'OPERATIONAL';
+            const isPartial = c.overall_status === 'PARTIAL';
+            const statusColor = isOperational ? '#10b981' : isPartial ? '#f59e0b' : '#ef4444';
+            const statusBg = isOperational ? 'rgba(16, 185, 129, 0.15)' : isPartial ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+            const statusBorder = isOperational ? 'rgba(16, 185, 129, 0.4)' : isPartial ? 'rgba(245, 158, 11, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+
+            return (
+              <div
+                key={c.platform_name}
+                className="glass-panel"
+                style={{
+                  padding: '24px',
+                  borderLeft: `4px solid ${statusColor}`,
+                  boxShadow: `0 4px 20px ${isOperational ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)'}`,
+                }}
+              >
+                {/* Cabecera del Conector */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {c.icon_type === 'facebook' ? (
+                      <Facebook size={30} color="#1877f2" />
+                    ) : (
+                      <Video size={30} color="#f472b6" />
+                    )}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', margin: 0 }}>
+                          {c.display_name}
+                        </h3>
+                        <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-faint)' }}>
+                          API {c.api_version}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Cuenta Objetivo: <strong style={{ color: '#fff' }}>{c.target_account}</strong> — {c.rate_limit_display}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.5px',
+                        background: statusBg,
+                        color: statusColor,
+                        border: `1px solid ${statusBorder}`,
+                      }}
+                    >
+                      {c.status_label}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Resumen de Diagnóstico */}
+                <div
+                  style={{
+                    marginTop: '16px',
+                    padding: '12px 16px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'rgba(31, 41, 55, 0.3)',
+                    border: '1px solid var(--border-subtle)',
+                    fontSize: '0.85rem',
+                    color: isOperational ? '#34d399' : 'var(--text-muted)',
+                  }}
+                >
+                  {c.diagnostic_summary}
+                </div>
+
+                {/* Tabla Exhaustiva de Variables del Sistema */}
+                <div style={{ marginTop: '20px' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                    Variables del Sistema & Credenciales Evaluadas
+                  </div>
+                  <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(17, 24, 39, 0.7)', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
+                          <th style={{ padding: '10px 14px' }}>VARIABLE DE ENTORNO</th>
+                          <th style={{ padding: '10px 14px' }}>DESCRIPCIÓN / PROPÓSITO</th>
+                          <th style={{ padding: '10px 14px' }}>VALOR DETECTADO</th>
+                          <th style={{ padding: '10px 14px' }}>ORIGEN</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'right' }}>ESTADO</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {c.variables.map((v) => {
+                          const isVarOk = v.status_badge === 'CONFIGURADO';
+                          const isVarMock = v.status_badge === 'MOCK_DEMO';
+                          return (
+                            <tr key={v.key} style={{ borderBottom: '1px solid var(--border-subtle)', background: 'rgba(31, 41, 55, 0.15)' }}>
+                              <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 600, color: isVarOk ? '#38bdf8' : isVarMock ? '#f59e0b' : '#ef4444' }}>
+                                {v.key}
+                                {v.required && <span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>}
+                              </td>
+                              <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>
+                                <div style={{ color: '#fff', fontWeight: 500 }}>{v.label}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>{v.description}</div>
+                              </td>
+                              <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                <span
+                                  style={{
+                                    padding: '3px 8px',
+                                    borderRadius: '4px',
+                                    background: isVarOk ? 'rgba(56, 189, 248, 0.1)' : isVarMock ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                    color: isVarOk ? '#7dd3fc' : isVarMock ? '#fbbf24' : '#fca5a5',
+                                  }}
+                                >
+                                  {v.masked_value}
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px 14px', color: 'var(--text-faint)', fontSize: '0.75rem' }}>
+                                {v.source}
+                              </td>
+                              <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                                {isVarOk && (
+                                  <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
+                                    PRESENTE
+                                  </span>
+                                )}
+                                {isVarMock && (
+                                  <span style={{ fontSize: '0.7rem', padding: '3px 8px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', fontWeight: 600 }}>
+                                    PLANTILLA MOCK
+                                  </span>
+                                )}
+                                {!isVarOk && !isVarMock && (
+                                  <span style={{ fontSize: '0.7rem', padding: '3px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', fontWeight: 600 }}>
+                                    FALTA DATO
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* MENSAJE EXPLICATIVO SI HAY FALTA DE DATOS */}
+                {c.has_missing_data && (
+                  <div
+                    style={{
+                      marginTop: '20px',
+                      padding: '16px 20px',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171', fontWeight: 700, fontSize: '0.9rem', marginBottom: '8px' }}>
+                      <AlertTriangle size={18} />
+                      <span>Mensaje de Falta de Datos en el Sistema:</span>
+                    </div>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: 1.5 }}>
+                      El conector no puede sincronizar datos reales con la plataforma porque las siguientes variables no han sido proporcionadas en la configuración del servidor:
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {c.missing_variables.map((m) => (
+                        <div
+                          key={m.variable_name}
+                          style={{
+                            background: 'rgba(17, 24, 39, 0.6)',
+                            padding: '10px 14px',
+                            borderRadius: 'var(--radius-sm)',
+                            borderLeft: '3px solid #ef4444',
+                            fontSize: '0.8rem',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                            <strong style={{ color: '#fca5a5', fontFamily: 'monospace' }}>{m.variable_name}</strong>
+                            <span style={{ color: 'var(--text-faint)' }}>— {m.impact}</span>
+                          </div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>
+                            <strong>Instrucción para configurar:</strong> {m.instructions}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sección de Prueba de Conexión en Vivo */}
+                <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-faint)' }}>
+                    Última verificación del sistema: {c.last_checked_at}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setTestingPlatform(c.platform_name);
+                      setTestResult(null);
+                      try {
+                        const res = await monitoringApi.testConnection({ platform_name: c.platform_name });
+                        setTestResult({ platform: c.platform_name, success: res.success, message: res.message });
+                      } catch {
+                        setTestResult({
+                          platform: c.platform_name,
+                          success: false,
+                          message: 'Error al enviar petición de prueba de conexión al servidor.',
+                        });
+                      } finally {
+                        setTestingPlatform(null);
+                      }
+                    }}
+                    disabled={testingPlatform === c.platform_name}
+                    className="btn-secondary"
+                    style={{ fontSize: '0.8rem', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Zap size={14} className={testingPlatform === c.platform_name ? 'animate-spin' : ''} />
+                    <span>{testingPlatform === c.platform_name ? 'Probando...' : 'Ejecutar Test de Conexión'}</span>
+                  </button>
+                </div>
+
+                {/* Resultado de prueba de conexión si aplica a esta tarjeta */}
+                {testResult && testResult.platform === c.platform_name && (
+                  <div
+                    style={{
+                      marginTop: '12px',
+                      padding: '10px 14px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: testResult.success ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                      border: `1px solid ${testResult.success ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                      fontSize: '0.82rem',
+                      color: testResult.success ? '#34d399' : '#fca5a5',
+                    }}
+                  >
+                    <strong>Resultado del Test:</strong> {testResult.message}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

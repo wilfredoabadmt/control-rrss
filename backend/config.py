@@ -108,12 +108,15 @@ class Settings(BaseSettings):
     # Redes Sociales — Facebook Graph API
     FACEBOOK_APP_ID: str = Field(default="mock_facebook_app_id")
     FACEBOOK_APP_SECRET: str = Field(default="mock_facebook_app_secret")
+    FACEBOOK_PAGE_ACCESS_TOKEN: str = Field(default="")
+    FACEBOOK_PAGE_ID: str = Field(default="")
     FACEBOOK_VERIFY_TOKEN: str = Field(default="gamea_meta_webhook_verify_token")
     FACEBOOK_GRAPH_VERSION: str = Field(default="v20.0")
 
     # Redes Sociales — TikTok
     TIKTOK_CLIENT_KEY: str = Field(default="mock_tiktok_client_key")
     TIKTOK_CLIENT_SECRET: str = Field(default="mock_tiktok_client_secret")
+    TIKTOK_ACCESS_TOKEN: str = Field(default="")
 
     # Rate Limiting
     RATE_LIMIT_DEFAULT: str = Field(default="100/minute")

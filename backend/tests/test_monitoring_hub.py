@@ -82,6 +82,22 @@ async def test_connection_validation(async_db: AsyncSession):
 
 
 @pytest.mark.asyncio
+async def test_connectors_diagnostics(async_db: AsyncSession):
+    """Comprueba el diagnóstico exhaustivo de variables de entorno y estado de conectores."""
+    diag = await MonitoringHubService.get_connectors_diagnostics(async_db)
+    assert len(diag.connectors) == 2
+    fb_diag = next(c for c in diag.connectors if c.platform_name == "FACEBOOK")
+    tt_diag = next(c for c in diag.connectors if c.platform_name == "TIKTOK")
+    assert fb_diag.display_name == "Meta Graph API (Facebook)"
+    assert tt_diag.display_name == "TikTok Display & Business API"
+    assert len(fb_diag.variables) >= 5
+    assert len(tt_diag.variables) >= 4
+    # Comprobar que detecta variables faltantes o mock
+    assert fb_diag.has_missing_data is True
+    assert len(fb_diag.missing_variables) > 0
+
+
+@pytest.mark.asyncio
 async def test_audience_roster_and_bulk_import(async_db: AsyncSession, mock_admin_user: User):
     """Verifica el alta individual y la importación masiva de personas a monitorear."""
     # 1. Alta individual

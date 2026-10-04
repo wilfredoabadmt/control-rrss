@@ -16,6 +16,7 @@ from modules.monitoring.schemas import (
     ActivityMatrixResponse,
     ConnectorConfigsResponse,
     ConnectorConfigUpdateRequest,
+    ConnectorsDiagnosticResponse,
     MonitoredPersonBulkImportRequest,
     MonitoredPersonBulkImportResponse,
     MonitoredPersonCreate,
@@ -73,6 +74,18 @@ async def test_connection(
     current_user: User = Depends(get_current_user),
 ):
     return await MonitoringHubService.test_connection(req)
+
+
+@monitoring_router.get(
+    "/hub/diagnostics",
+    response_model=ConnectorsDiagnosticResponse,
+    summary="Diagnóstico exhaustivo de variables de entorno y estado de conectores API",
+)
+async def get_connectors_diagnostics(
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await MonitoringHubService.get_connectors_diagnostics(db)
 
 
 # -----------------------------------------------------------------------------
