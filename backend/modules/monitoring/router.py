@@ -143,7 +143,7 @@ async def bulk_import_audience(
 async def run_social_sync(
     req: RunSyncRequest,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.COMMUNICATIONS_LEAD, UserRole.OPERATOR)),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.COMMUNICATIONS_LEAD, UserRole.OPERATOR, UserRole.DIRECTOR, UserRole.ANALYST)),
 ):
     return await MonitoringHubService.run_social_sync(db, req, current_user)
 

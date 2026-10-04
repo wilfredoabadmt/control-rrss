@@ -151,7 +151,8 @@ export const MonitoringHubPage: React.FC = () => {
       await fetchAudience();
     } catch (err: any) {
       console.error(err);
-      setErrorMessage('Error al ejecutar la extracción y cruce de datos.');
+      const detail = err.response?.data?.detail || err.message || 'Error al ejecutar la extracción y cruce de datos.';
+      setErrorMessage(detail);
     } finally {
       setIsSyncing(false);
     }
@@ -166,7 +167,8 @@ export const MonitoringHubPage: React.FC = () => {
       });
     } catch (err: any) {
       console.error(err);
-      setErrorMessage('Error al generar el informe en Excel.');
+      const detail = err.response?.data?.detail || err.message || 'Error al generar el informe en Excel.';
+      setErrorMessage(detail);
     } finally {
       setIsExporting(false);
     }
@@ -223,7 +225,8 @@ export const MonitoringHubPage: React.FC = () => {
       await fetchMatrix();
     } catch (err: any) {
       console.error(err);
-      setErrorMessage('Error al realizar la importación masiva.');
+      const detail = err.response?.data?.detail || err.message || 'Error al realizar la importación masiva.';
+      setErrorMessage(detail);
     }
   };
 

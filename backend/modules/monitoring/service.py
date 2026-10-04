@@ -875,10 +875,19 @@ class MonitoringHubService:
         platforms = list((await db.execute(stmt_plats)).scalars().all())
 
         if not platforms:
-            stmt_fb = select(SocialPlatform).limit(1)
-            platforms = list((await db.execute(stmt_fb)).scalars().all())
+            stmt_all = select(SocialPlatform)
+            platforms = list((await db.execute(stmt_all)).scalars().all())
+
+        if not platforms:
+            from modules.social_accounts.seed import seed_social_platforms
+            platforms = await seed_social_platforms(db)
 
         primary_plat = platforms[0]
+
+        # Mapa de nombres de plataforma seguro contra problemas de relación asíncrona
+        stmt_all = select(SocialPlatform)
+        all_platforms = list((await db.execute(stmt_all)).scalars().all())
+        plat_map = {p.id: p.name for p in all_platforms}
 
         # 2. Registrar ExternalSyncJob
         sync_job = ExternalSyncJob(
@@ -900,39 +909,67 @@ class MonitoringHubService:
             # 3. Obtener o crear publicaciones institucionales a evaluar
             pubs_to_evaluate: list[Publication] = []
             if req.publication_ids:
-                stmt_p = select(Publication).where(Publication.id.in_(req.publication_ids))
+                stmt_p = (
+                    select(Publication)
+                    .where(Publication.id.in_(req.publication_ids))
+                    .options(selectinload(Publication.platform))
+                )
                 pubs_to_evaluate = list((await db.execute(stmt_p)).scalars().all())
 
             if not pubs_to_evaluate:
-                stmt_recent = select(Publication).order_by(Publication.published_at.desc()).limit(req.max_posts)
+                stmt_recent = (
+                    select(Publication)
+                    .options(selectinload(Publication.platform))
+                    .order_by(Publication.published_at.desc())
+                    .limit(req.max_posts)
+                )
                 pubs_to_evaluate = list((await db.execute(stmt_recent)).scalars().all())
 
-            # Si la base de datos aún no tiene publicaciones, auto-inicializar 2 publicaciones oficiales de ejemplo
+            # Si no hay publicaciones seleccionadas, asegurar las 2 publicaciones oficiales de ejemplo
             if not pubs_to_evaluate:
-                fb_plat_obj = next((p for p in platforms if p.name == "FACEBOOK"), primary_plat)
-                tt_plat_obj = next((p for p in platforms if p.name == "TIKTOK"), primary_plat)
+                fb_plat_obj = next((p for p in all_platforms if p.name == "FACEBOOK"), primary_plat)
+                tt_plat_obj = next((p for p in all_platforms if p.name == "TIKTOK"), primary_plat)
 
-                p1 = Publication(
-                    platform_id=fb_plat_obj.id,
-                    external_post_id="post_fb_elalto_obras_2026",
-                    post_url="https://facebook.com/AlcaldiaElAlto/posts/9912837192",
-                    published_at=datetime.now(UTC),
-                    content_text="Inauguración de la nueva avenida y obras de iluminación en el Distrito 8 de la Ciudad de El Alto. #ElAltoAdelante",
-                    media_type="VIDEO",
-                    is_monitored=True,
-                )
-                p2 = Publication(
-                    platform_id=tt_plat_obj.id,
-                    external_post_id="video_tt_elalto_juventud_2026",
-                    post_url="https://tiktok.com/@alcaldia_elalto/video/7382910291",
-                    published_at=datetime.now(UTC),
-                    content_text="Juventud Alteña: Convocatoria a talleres tecnológicos en el Centro de Convenciones. #GAMEA #JovenesElAlto",
-                    media_type="VIDEO",
-                    is_monitored=True,
-                )
-                db.add_all([p1, p2])
-                await db.flush()
-                pubs_to_evaluate = [p1, p2]
+                seed_pubs = [
+                    (
+                        fb_plat_obj,
+                        "post_fb_elalto_obras_2026",
+                        "https://facebook.com/AlcaldiaElAlto/posts/9912837192",
+                        "Inauguración de la nueva avenida y obras de iluminación en el Distrito 8 de la Ciudad de El Alto. #ElAltoAdelante",
+                    ),
+                    (
+                        tt_plat_obj,
+                        "video_tt_elalto_juventud_2026",
+                        "https://tiktok.com/@alcaldia_elalto/video/7382910291",
+                        "Juventud Alteña: Convocatoria a talleres tecnológicos en el Centro de Convenciones. #GAMEA #JovenesElAlto",
+                    ),
+                ]
+
+                for p_plat, p_ext_id, p_url, p_text in seed_pubs:
+                    stmt_find = (
+                        select(Publication)
+                        .where(
+                            Publication.platform_id == p_plat.id,
+                            Publication.external_post_id == p_ext_id,
+                        )
+                        .options(selectinload(Publication.platform))
+                    )
+                    found_p = (await db.execute(stmt_find)).scalar_one_or_none()
+                    if found_p:
+                        pubs_to_evaluate.append(found_p)
+                    else:
+                        new_p = Publication(
+                            platform_id=p_plat.id,
+                            external_post_id=p_ext_id,
+                            post_url=p_url,
+                            published_at=datetime.now(UTC),
+                            content_text=p_text,
+                            media_type="VIDEO",
+                            is_monitored=True,
+                        )
+                        db.add(new_p)
+                        await db.flush()
+                        pubs_to_evaluate.append(new_p)
 
             posts_processed = len(pubs_to_evaluate)
 
@@ -941,7 +978,8 @@ class MonitoringHubService:
 
             # 5. Para cada publicación, ingerir interacciones observadas y cruzarlas con la audiencia
             for pub in pubs_to_evaluate:
-                is_fb = (pub.platform and pub.platform.name == "FACEBOOK") or ("fb" in pub.external_post_id.lower())
+                pub_plat_name = plat_map.get(pub.platform_id, "FACEBOOK")
+                is_fb = (pub_plat_name.upper() == "FACEBOOK") or ("fb" in (pub.external_post_id or "").lower())
 
                 # Generar/extraer lista de interacciones para esta publicación
                 # Se cruzan tanto funcionarios de la audiencia como ciudadanos observados
@@ -1041,7 +1079,7 @@ class MonitoringHubService:
                                 verification_status=VerificationStatus.VERIFIED_AUTOMATIC.value,
                                 verification_method="AUTOMATIC_SYNC_MATCHER",
                                 verified_by_user_id=str(current_user.id),
-                                explanation=f"Interacción {interaction.interaction_type} cruzada exitosamente con {match_res.employee.first_name} {match_res.employee.last_name} ({match_res.employee.employee_id}) en {pub.platform.name if pub.platform else 'Red Social'}.",
+                                explanation=f"Interacción {interaction.interaction_type} cruzada exitosamente con {match_res.employee.first_name} {match_res.employee.last_name} ({match_res.employee.employee_id}) en {pub_plat_name}.",
                             )
                             db.add(ver)
 
@@ -1059,7 +1097,6 @@ class MonitoringHubService:
                 user_id=str(current_user.id),
                 user_email=current_user.email,
                 new_state={
-
                     "posts": posts_processed,
                     "extracted": interactions_extracted,
                     "matched": matched_interactions,
@@ -1069,11 +1106,20 @@ class MonitoringHubService:
             await db.commit()
 
         except Exception as e:
-            sync_job.status = SyncJobStatus.FAILED_FATAL.value
-            sync_job.completed_at = datetime.now(UTC)
-            sync_job.error_details = str(e)
-            await db.commit()
-            raise
+            await db.rollback()
+            logger.error("run_social_sync_failed", error=str(e), exc_info=True)
+            try:
+                sync_job.status = SyncJobStatus.FAILED_FATAL.value
+                sync_job.completed_at = datetime.now(UTC)
+                sync_job.error_details = str(e)
+                db.add(sync_job)
+                await db.commit()
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al ejecutar la extracción y cruce: {str(e)}",
+            )
 
 
         exec_time = round(time.perf_counter() - start_time, 2)
