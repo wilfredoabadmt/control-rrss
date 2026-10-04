@@ -1374,6 +1374,8 @@ class MonitoringHubService:
             )
             await db.commit()
 
+        except HTTPException:
+            raise
         except Exception as e:
             await db.rollback()
             logger.error(f"run_social_sync_failed: {str(e)}", exc_info=True)
