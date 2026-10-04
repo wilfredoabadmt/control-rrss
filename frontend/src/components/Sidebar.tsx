@@ -62,19 +62,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) =>
       id: 'publications',
       label: 'Publicaciones & Campañas',
       icon: Radio,
-      roles: [UserRole.SUPER_ADMIN, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR, UserRole.VIEWER],
     },
     {
       id: 'interactions',
       label: 'Control de Reacciones',
       icon: MessageSquare,
-      roles: [UserRole.SUPER_ADMIN, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
     },
     {
       id: 'reports',
       label: 'Reportes Oficiales',
       icon: FileSpreadsheet,
-      roles: [UserRole.SUPER_ADMIN, UserRole.AUDITOR, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST],
+      roles: [UserRole.SUPER_ADMIN, UserRole.AUDITOR, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.VIEWER],
     },
     {
       id: 'audit',

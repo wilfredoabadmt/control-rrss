@@ -83,6 +83,7 @@ async def list_report_executions(
             UserRole.COMMUNICATIONS_LEAD,
             UserRole.ANALYST,
             UserRole.DIRECTOR,
+            UserRole.VIEWER,
         )
     ),
 ):

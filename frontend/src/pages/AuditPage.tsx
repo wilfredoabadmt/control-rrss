@@ -18,61 +18,25 @@ import { formatAuditAction, formatEntityName } from '../utils/formatters';
 
 export const AuditPage: React.FC = () => {
   const { hasRole } = useAuth();
-  const [events, setEvents] = useState<AuditEventItem[]>([
-    {
-      id: 'aud-001',
-      timestamp_utc: new Date(Date.now() - 1800000).toISOString(),
-      user_email: 'admin@elalto.gob.bo',
-      action: 'LOGIN',
-      entity_name: 'User',
-      entity_id: 'usr-100',
-      correlation_id: '7b01b2a9-1c9f-4318-bfae-6b95d7eb80a1',
-      ip_address: '192.168.1.45',
-      user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      details: { method: 'JWT_ARGON2ID', outcome: 'SUCCESS' },
-    },
-    {
-      id: 'aud-002',
-      timestamp_utc: new Date(Date.now() - 3600000).toISOString(),
-      user_email: 'analista@elalto.gob.bo',
-      action: 'VERIFY',
-      entity_name: 'Verification',
-      entity_id: 'ver-882',
-      correlation_id: '2a498fd2-9f33-43da-9ec1-1901bca01e23',
-      ip_address: '192.168.1.72',
-      previous_state: { status: 'PENDING' },
-      new_state: { status: 'DECLARED_CONFIRMED', justification: 'Captura cotejada de interacción' },
-      details: { note: 'Manual verification review' },
-    },
-    {
-      id: 'aud-003',
-      timestamp_utc: new Date(Date.now() - 7200000).toISOString(),
-      user_email: 'auditor@elalto.gob.bo',
-      action: 'EXPORT',
-      entity_name: 'ReportExecution',
-      entity_id: 'rep-001',
-      correlation_id: 'f93d489b-9842-494b-a270-13f6eb73010b',
-      ip_address: '192.168.1.12',
-      details: { format: 'XLSX', sha256: 'e3b0c44298fc1c14...' },
-    },
-  ]);
+  const [events, setEvents] = useState<AuditEventItem[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AuditEventItem | null>(null);
   const [actionFilter, setActionFilter] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   const isAuthorized = hasRole([UserRole.SUPER_ADMIN, UserRole.AUDITOR]);
 
   const fetchAuditEvents = async () => {
     setLoading(true);
+    setAuditError(null);
     try {
       const res = await listAuditEventsApi({ action: actionFilter || undefined });
-      if (res.items && res.items.length > 0) {
-        setEvents(res.items);
-      }
-    } catch {
-      // Estado inicial
+      setEvents(res.items || []);
+    } catch (err: any) {
+      setEvents([]);
+      setAuditError(err.response?.data?.detail || err.message || 'Error al consultar registros de auditoría.');
     } finally {
       setLoading(false);
     }
@@ -86,6 +50,7 @@ export const AuditPage: React.FC = () => {
 
   const handleExportCsv = async () => {
     setExporting(true);
+    setAuditError(null);
     try {
       const blob = await exportAuditCsvApi();
       const url = window.URL.createObjectURL(blob);
@@ -96,17 +61,8 @@ export const AuditPage: React.FC = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch {
-      // Mock download
-      const mockCsv = 'timestamp,user_email,action,entity_name,correlation_id\n2026-09-17T20:00:00Z,admin@elalto.gob.bo,LOGIN,User,cid-123\n';
-      const blob = new Blob([mockCsv], { type: 'text/csv;charset=utf-8;' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'auditoria_gamea.csv');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+    } catch (err: any) {
+      setAuditError(err.response?.data?.detail || err.message || 'Error al exportar la bitácora de auditoría.');
     } finally {
       setExporting(false);
     }
@@ -191,6 +147,22 @@ export const AuditPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {auditError && (
+        <div
+          style={{
+            marginBottom: '20px',
+            padding: '14px 18px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: 'var(--radius-md)',
+            color: '#f87171',
+            fontSize: '0.85rem',
+          }}
+        >
+          <strong>Aviso de Auditoría:</strong> {auditError}
+        </div>
+      )}
 
       {/* Filter Controls */}
       <div
@@ -309,6 +281,14 @@ export const AuditPage: React.FC = () => {
                   </td>
                 </tr>
               ))}
+
+              {events.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    No se registran eventos de auditoría para los filtros seleccionados.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

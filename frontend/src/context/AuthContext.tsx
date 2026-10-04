@@ -44,19 +44,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const profile = await getMeApi();
       setUser(profile);
     } catch (err: any) {
-      // Fallback para desarrollo local si el backend aún no tiene usuarios sembrados
-      if (err.message && err.message.includes('Network Error')) {
-        const mockUser: UserProfile = {
-          id: 'dev-admin-01',
-          email: username,
-          full_name: 'Administrador Local GAMEA',
-          roles: [UserRole.SUPER_ADMIN],
-          is_active: true,
-        };
-        setUser(mockUser);
-        localStorage.setItem('access_token', 'mock-token-dev');
-        return;
-      }
       throw err;
     }
   };

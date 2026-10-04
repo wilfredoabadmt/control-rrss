@@ -14,43 +14,21 @@ import {
 import { formatReportType } from '../utils/formatters';
 
 export const ReportsPage: React.FC = () => {
-  const [executions, setExecutions] = useState<ReportExecutionItem[]>([
-    {
-      id: 'rep-001',
-      report_type: 'ESTADO_VERIFICACION_EPISTEMICA',
-      report_version: '1.0',
-      generated_at: new Date(Date.now() - 7200000).toISOString(),
-      file_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-      row_count: 342,
-      status: 'COMPLETED',
-      parameters: { campaign: 'Consolidado General 2026' },
-    },
-    {
-      id: 'rep-002',
-      report_type: 'COBERTURA_OBSERVABLE_CAMPANAS',
-      report_version: '1.0',
-      generated_at: new Date(Date.now() - 86400000).toISOString(),
-      file_hash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-      row_count: 180,
-      status: 'COMPLETED',
-      parameters: { campaign: 'Plan de Bacheo' },
-    },
-  ]);
+  const [executions, setExecutions] = useState<ReportExecutionItem[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [campaignTitle, setCampaignTitle] = useState('');
   const [lastGeneratedHash, setLastGeneratedHash] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   const fetchExecutions = async () => {
     setLoading(true);
     try {
       const res = await listReportExecutionsApi();
-      if (res && res.length > 0) {
-        setExecutions(res);
-      }
+      setExecutions(res || []);
     } catch {
-      // Estado inicial
+      setExecutions([]);
     } finally {
       setLoading(false);
     }
@@ -64,6 +42,7 @@ export const ReportsPage: React.FC = () => {
     e.preventDefault();
     setGenerating(true);
     setLastGeneratedHash(null);
+    setReportError(null);
 
     try {
       const { blob, filename, sha256 } = await generateReportApi({
@@ -81,22 +60,11 @@ export const ReportsPage: React.FC = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      setLastGeneratedHash(sha256 || '4c6168e31005b6...sha256');
+      setLastGeneratedHash(sha256 || null);
       fetchExecutions();
-    } catch {
-      // Mock download fallback para pruebas en frontend aislado
-      setLastGeneratedHash('7d5a99f603f231d539ec1...simulado_sha256');
-      const newExec: ReportExecutionItem = {
-        id: `rep-${Date.now()}`,
-        report_type: 'ESTADO_VERIFICACION_EPISTEMICA',
-        report_version: '1.0',
-        generated_at: new Date().toISOString(),
-        file_hash: '7d5a99f603f231d539ec1123456789abcdef0123456789abcdef0123456789ab',
-        row_count: 350,
-        status: 'COMPLETED',
-        parameters: { campaign: campaignTitle || 'Consolidado General' },
-      };
-      setExecutions([newExec, ...executions]);
+    } catch (err: any) {
+      console.error(err);
+      setReportError(err.response?.data?.detail || err.message || 'Error al generar el reporte oficial.');
     } finally {
       setGenerating(false);
     }
@@ -241,6 +209,22 @@ export const ReportsPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {reportError && (
+          <div
+            style={{
+              marginTop: '20px',
+              padding: '14px 18px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: 'var(--radius-md)',
+              color: '#f87171',
+              fontSize: '0.85rem',
+            }}
+          >
+            <strong>Aviso del Sistema:</strong> {reportError}
+          </div>
+        )}
       </div>
 
       {/* Historial de Reportes Generados */}
@@ -306,6 +290,14 @@ export const ReportsPage: React.FC = () => {
                   </td>
                 </tr>
               ))}
+
+              {executions.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    No se registran reportes oficiales generados previamente en la base de datos.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -161,53 +161,7 @@ export const AdminPage: React.FC = () => {
   const { hasRole } = useAuth();
   const [tab, setTab] = useState<'connectors' | 'users' | 'roles_matrix' | 'policies'>('users');
 
-  const [users, setUsers] = useState<UserAdminItem[]>([
-    {
-      id: 'usr-001',
-      email: 'wilfredosbad@gmail.com',
-      full_name: 'Wilfredo Abad Mancilla Teran',
-      is_active: true,
-      roles: [{ id: 'r1', name: 'SUPER_ADMIN', description: 'Control total de la plataforma' }],
-      failed_login_attempts: 0,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'usr-002',
-      email: 'admin@elalto.gob.bo',
-      full_name: 'Super Administrador GAMEA',
-      is_active: true,
-      roles: [{ id: 'r2', name: 'SUPER_ADMIN', description: 'Control total de la plataforma' }],
-      failed_login_attempts: 0,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'usr-003',
-      email: 'director.comunicacion@elalto.gob.bo',
-      full_name: 'Dirección de Comunicación Social',
-      is_active: true,
-      roles: [{ id: 'r3', name: 'DIRECTOR', description: 'Supervisión ejecutiva institucional' }],
-      failed_login_attempts: 0,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'usr-004',
-      email: 'auditor@elalto.gob.bo',
-      full_name: 'Lic. Gonzalo Vargas (Auditoría)',
-      is_active: true,
-      roles: [{ id: 'r4', name: 'AUDITOR', description: 'Inspección de pistas y reportes' }],
-      failed_login_attempts: 0,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'usr-005',
-      email: 'analista.monitoreo@elalto.gob.bo',
-      full_name: 'Equipo de Monitoreo Digital',
-      is_active: true,
-      roles: [{ id: 'r5', name: 'ANALYST', description: 'Análisis operativo de métricas' }],
-      failed_login_attempts: 0,
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  const [users, setUsers] = useState<UserAdminItem[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -258,11 +212,9 @@ export const AdminPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await listUsersApi();
-      if (res.items && res.items.length > 0) {
-        setUsers(res.items);
-      }
+      setUsers(res.items || []);
     } catch {
-      // Estado mock retenido
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -282,33 +234,19 @@ export const AdminPage: React.FC = () => {
     setSubmittingUser(true);
     try {
       const created = await createUserApi({
-        email: newEmail,
-        full_name: newFullName,
+        email: newEmail.trim(),
+        full_name: newFullName.trim(),
         password: newPassword,
         role_names: selectedRoles,
       });
-      setUsers([created, ...users]);
+      setUsers([created, ...users.filter((u) => u.id !== created.id)]);
       setShowCreateUserModal(false);
       setNewEmail('');
       setNewFullName('');
       setNewPassword('');
       setSelectedRoles(['VIEWER']);
-    } catch {
-      // Mock create local
-      const mockNew: UserAdminItem = {
-        id: `usr-${Date.now()}`,
-        email: newEmail,
-        full_name: newFullName,
-        is_active: true,
-        roles: selectedRoles.map((r, i) => ({ id: `r-${i}`, name: r })),
-        failed_login_attempts: 0,
-        created_at: new Date().toISOString(),
-      };
-      setUsers([mockNew, ...users]);
-      setShowCreateUserModal(false);
-      setNewEmail('');
-      setNewFullName('');
-      setNewPassword('');
+    } catch (err: any) {
+      alert(err.response?.data?.detail || err.message || 'Error al crear el usuario en la base de datos.');
     } finally {
       setSubmittingUser(false);
     }
@@ -328,9 +266,9 @@ export const AdminPage: React.FC = () => {
     e.preventDefault();
     setSubmittingEdit(true);
     try {
-      await updateUserApi(editUserId, {
-        full_name: editFullName,
-        email: editEmail,
+      const updated = await updateUserApi(editUserId, {
+        full_name: editFullName.trim(),
+        email: editEmail.trim(),
         is_active: editIsActive,
         password: editPassword.trim() ? editPassword.trim() : undefined,
         role_names: editRoles,
@@ -340,31 +278,17 @@ export const AdminPage: React.FC = () => {
           u.id === editUserId
             ? {
                 ...u,
-                full_name: editFullName,
-                email: editEmail,
-                is_active: editIsActive,
-                roles: editRoles.map((r, i) => ({ id: `r-${i}`, name: r })),
+                full_name: updated.full_name || editFullName,
+                email: updated.email || editEmail,
+                is_active: updated.is_active !== undefined ? updated.is_active : editIsActive,
+                roles: updated.roles || editRoles.map((r, i) => ({ id: `r-${i}`, name: r })),
               }
             : u
         )
       );
       setShowEditUserModal(false);
-    } catch {
-      // Mock update local si falla la red
-      setUsers(
-        users.map((u) =>
-          u.id === editUserId
-            ? {
-                ...u,
-                full_name: editFullName,
-                email: editEmail,
-                is_active: editIsActive,
-                roles: editRoles.map((r, i) => ({ id: `r-${i}`, name: r })),
-              }
-            : u
-        )
-      );
-      setShowEditUserModal(false);
+    } catch (err: any) {
+      alert(err.response?.data?.detail || err.message || 'Error al actualizar el usuario en la base de datos.');
     } finally {
       setSubmittingEdit(false);
     }
@@ -762,6 +686,14 @@ export const AdminPage: React.FC = () => {
                       </td>
                     </tr>
                   ))}
+
+                  {filteredUsers.length === 0 && !loading && (
+                    <tr>
+                      <td colSpan={5} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No se encontraron usuarios institucionales registrados en la base de datos.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

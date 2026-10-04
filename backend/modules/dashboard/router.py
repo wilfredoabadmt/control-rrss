@@ -39,9 +39,12 @@ async def get_operational_dashboard(
     _: User = Depends(
         require_roles(
             UserRole.SUPER_ADMIN,
+            UserRole.DIRECTOR,
+            UserRole.AUDITOR,
             UserRole.COMMUNICATIONS_LEAD,
             UserRole.ANALYST,
             UserRole.OPERATOR,
+            UserRole.VIEWER,
         )
     ),
 ):
@@ -157,8 +160,10 @@ async def get_executive_dashboard(
         require_roles(
             UserRole.SUPER_ADMIN,
             UserRole.DIRECTOR,
+            UserRole.AUDITOR,
             UserRole.COMMUNICATIONS_LEAD,
             UserRole.ANALYST,
+            UserRole.OPERATOR,
             UserRole.VIEWER,
         )
     ),
