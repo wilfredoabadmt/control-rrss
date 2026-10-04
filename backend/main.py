@@ -252,7 +252,14 @@ async def root(request: Request) -> Any:
     """Raíz del servicio: entrega la SPA de React a navegadores o JSON a clientes API."""
     accept = request.headers.get("accept", "")
     if "text/html" in accept and (STATIC_DIR / "index.html").exists():
-        return FileResponse(str(STATIC_DIR / "index.html"))
+        return FileResponse(
+            str(STATIC_DIR / "index.html"),
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
     return {
         "project": settings.PROJECT_NAME,
         "version": "1.0.0",
@@ -345,7 +352,14 @@ if (STATIC_DIR / "index.html").exists():
         potential_file = STATIC_DIR / full_path
         if potential_file.is_file():
             return FileResponse(str(potential_file))
-        return FileResponse(str(STATIC_DIR / "index.html"))
+        return FileResponse(
+            str(STATIC_DIR / "index.html"),
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
 
 
