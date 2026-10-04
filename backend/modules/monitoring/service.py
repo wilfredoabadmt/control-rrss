@@ -88,37 +88,41 @@ class MonitoringHubService:
         stmt = select(SocialConnectorConfig).order_by(SocialConnectorConfig.platform_name)
         configs = list((await db.execute(stmt)).scalars().all())
 
-        # Si no existen, inicializar predeterminados oficiales del GAMEA
+        # Si no existen, inicializar predeterminados oficiales del GAMEA con variables reales
         if not configs:
+            fb_token = settings.FACEBOOK_PAGE_ACCESS_TOKEN or ""
+            fb_account = settings.FACEBOOK_PAGE_ID or ""
             fb_cfg = SocialConnectorConfig(
                 platform_name="FACEBOOK",
-                target_account_id="100064567891234",
+                target_account_id=fb_account,
                 display_name="Gobierno Autónomo Municipal de El Alto (Facebook Oficial)",
-                access_token_encrypted=encrypt_field("mock_facebook_graph_token_gamea"),
-                api_secret_encrypted=encrypt_field(settings.FACEBOOK_APP_SECRET),
+                access_token_encrypted=encrypt_field(fb_token) if fb_token else "",
+                api_secret_encrypted=encrypt_field(settings.FACEBOOK_APP_SECRET) if settings.FACEBOOK_APP_SECRET else "",
                 api_version="v20.0",
                 extraction_mode="OFFICIAL_API",
                 rate_limit_per_minute=60,
                 max_posts_per_sync=25,
                 max_comments_per_post=200,
                 is_active=True,
-                last_status="CONFIGURED",
-                status_message="Conector oficial Meta Graph API inicializado.",
+                last_status="CONFIGURED" if fb_token else "NOT_CONFIGURED",
+                status_message="Conector oficial Meta Graph API inicializado con credenciales institucionales." if fb_token else "Conector registrado. Pendiente de configuración de token de acceso.",
             )
+            tt_token = settings.TIKTOK_ACCESS_TOKEN or ""
+            tt_account = settings.TIKTOK_CLIENT_KEY or "@alcaldia_elalto"
             tt_cfg = SocialConnectorConfig(
                 platform_name="TIKTOK",
-                target_account_id="@alcaldia_elalto",
+                target_account_id=tt_account,
                 display_name="Alcaldía de El Alto (TikTok Oficial)",
-                access_token_encrypted=encrypt_field("mock_tiktok_display_token_gamea"),
-                api_secret_encrypted=encrypt_field(settings.TIKTOK_CLIENT_SECRET),
+                access_token_encrypted=encrypt_field(tt_token) if tt_token else "",
+                api_secret_encrypted=encrypt_field(settings.TIKTOK_CLIENT_SECRET) if settings.TIKTOK_CLIENT_SECRET else "",
                 api_version="v2.0",
                 extraction_mode="OFFICIAL_API",
                 rate_limit_per_minute=45,
                 max_posts_per_sync=20,
                 max_comments_per_post=150,
                 is_active=True,
-                last_status="CONFIGURED",
-                status_message="Conector oficial TikTok Display API inicializado (Modo métricas agregadas).",
+                last_status="CONFIGURED" if tt_token else "NOT_CONFIGURED",
+                status_message="Conector oficial TikTok Display API inicializado." if tt_token else "Conector registrado. Pendiente de credenciales oficiales de TikTok Display API.",
             )
             db.add_all([fb_cfg, tt_cfg])
             await db.flush()

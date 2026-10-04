@@ -103,6 +103,31 @@ async def lifespan(app: FastAPI):
                 await session.commit()
             except Exception as e_clean:
                 logger.warning("legacy_publications_cleanup_skipped", error=str(e_clean))
+
+            # Sincronización de conectores oficiales con variables de entorno reales
+            try:
+                from modules.monitoring.models import SocialConnectorConfig
+                from core.security.encryption import encrypt_field
+                stmt_cfg = select(SocialConnectorConfig)
+                existing_cfgs = list((await session.execute(stmt_cfg)).scalars().all())
+                for cfg in existing_cfgs:
+                    if cfg.platform_name == "FACEBOOK":
+                        if settings.FACEBOOK_PAGE_ID and cfg.target_account_id in ("100064567891234", ""):
+                            cfg.target_account_id = settings.FACEBOOK_PAGE_ID
+                        if settings.FACEBOOK_PAGE_ACCESS_TOKEN and ("mock" in (cfg.access_token_encrypted or "").lower() or not cfg.access_token_encrypted):
+                            cfg.access_token_encrypted = encrypt_field(settings.FACEBOOK_PAGE_ACCESS_TOKEN)
+                            cfg.last_status = "CONFIGURED"
+                            cfg.status_message = "Conector oficial Meta Graph API conectado con credenciales institucionales."
+                    elif cfg.platform_name == "TIKTOK":
+                        if settings.TIKTOK_CLIENT_KEY and cfg.target_account_id in ("@alcaldia_elalto", ""):
+                            cfg.target_account_id = settings.TIKTOK_CLIENT_KEY
+                        if settings.TIKTOK_ACCESS_TOKEN and ("mock" in (cfg.access_token_encrypted or "").lower() or not cfg.access_token_encrypted):
+                            cfg.access_token_encrypted = encrypt_field(settings.TIKTOK_ACCESS_TOKEN)
+                            cfg.last_status = "CONFIGURED"
+                            cfg.status_message = "Conector oficial TikTok conectado."
+                await session.commit()
+            except Exception as e_cfg:
+                logger.warning("connector_configs_sync_skipped", error=str(e_cfg))
     except Exception as e:
         logger.error("startup_seeding_failed", error=str(e), exc_info=True)
 
