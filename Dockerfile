@@ -7,9 +7,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Instalar únicamente dependencias mínimas de ejecución (curl para probe de salud)
+# Instalar únicamente dependencias mínimas de ejecución (curl y wget para probe de salud)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements y cachear paquetes pip mediante Docker BuildKit
