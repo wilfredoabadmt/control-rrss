@@ -60,82 +60,10 @@ interface EmployeesPageProps {
 }
 
 export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
-  // Lista de Funcionarios inicial / fallback
-  const [employees, setEmployees] = useState<EmployeeItem[]>([
-    {
-      id: 'emp-001',
-      first_name: 'Juan Carlos',
-      last_name: 'Mamani Quispe',
-      id_document: '6845*** LP',
-      email: 'jmamani@elalto.gob.bo',
-      org_unit_name: 'Unidad de Prensa',
-      parent_unit_name: 'Dirección de Comunicación',
-      position_title: 'Especialista en Redes Sociales',
-      facebook_account: 'juancarlos.mamani.oficial',
-      tiktok_account: '@jcmamani_elalto',
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'emp-002',
-      first_name: 'María Elena',
-      last_name: 'Condori Flores',
-      id_document: '7921*** LP',
-      email: 'mecondori@elalto.gob.bo',
-      org_unit_name: 'Unidad de Imagen Corporativa',
-      parent_unit_name: 'Dirección de Comunicación',
-      position_title: 'Diseñadora Gráfica & Contenido',
-      facebook_account: 'mariaelena.condori',
-      tiktok_account: '@mecondori_ea',
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'emp-003',
-      first_name: 'Pedro',
-      last_name: 'Huanca Ticona',
-      id_document: '5421*** LP',
-      email: 'phuanca@elalto.gob.bo',
-      org_unit_name: 'Unidad de Comunicación Digital',
-      parent_unit_name: 'Dirección de Comunicación',
-      position_title: 'Community Manager',
-      facebook_account: 'pedro.huanca',
-      tiktok_account: '@phuanca',
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'emp-004',
-      first_name: 'Roberto',
-      last_name: 'Choque Limachi',
-      id_document: '4832*** LP',
-      email: 'rchoque@elalto.gob.bo',
-      org_unit_name: 'Unidad de Transparencia y Lucha Contra la Corrupción',
-      parent_unit_name: 'Dirección General de Asesoría Legal',
-      position_title: 'Analista de Transparencia',
-      facebook_account: 'roberto.choque.ea',
-      tiktok_account: '@rchoque_elalto',
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'emp-005',
-      first_name: 'Susana',
-      last_name: 'Copa Quispe',
-      id_document: '8491*** LP',
-      email: 'scopa@elalto.gob.bo',
-      org_unit_name: 'Intendencia Guardia y Banda Municipal',
-      parent_unit_name: 'Dirección de Seguridad Pública',
-      position_title: 'Coordinadora de Seguridad',
-      facebook_account: 'susana.copa.oficial',
-      tiktok_account: '@scopa_gamea',
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-  ]);
-
+  // Lista de Funcionarios vinculada a la Base de Datos PostgreSQL (limpia, sin datos de ejemplo)
+  const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(5);
+  const [total, setTotal] = useState(0);
 
   // Filtros
   const [search, setSearch] = useState('');
@@ -198,17 +126,22 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
   const [newEmail, setNewEmail] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
 
-  // Cargar funcionarios desde backend
+  // Cargar funcionarios desde backend PostgreSQL
   const fetchEmployees = async () => {
     setLoading(true);
     try {
-      const res = await listEmployeesApi({ search: search || undefined, page: 1, page_size: 50 });
-      if (res.items && res.items.length > 0) {
+      const res = await listEmployeesApi({ search: search || undefined, page: 1, page_size: 100 });
+      if (res && Array.isArray(res.items)) {
         setEmployees(res.items);
-        setTotal(res.total);
+        setTotal(res.total ?? res.items.length);
+      } else {
+        setEmployees([]);
+        setTotal(0);
       }
-    } catch {
-      // Usar lista local predeterminada
+    } catch (err) {
+      console.error('Error al cargar funcionarios desde PostgreSQL:', err);
+      setEmployees([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -584,25 +517,16 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
     }
   };
 
-  // Abrir Historial
+  // Abrir Historial desde base de datos PostgreSQL
   const handleOpenHistory = async (emp: EmployeeItem) => {
     setSelectedEmployee(emp);
     setShowHistoryModal(true);
     const empId = emp.id || (emp as any).employee_id;
     try {
       const history = await getEmployeeHistoryApi(empId);
-      setHistoryRecords(history);
+      setHistoryRecords(Array.isArray(history) ? history : []);
     } catch {
-      setHistoryRecords([
-        {
-          id: 'hist-1',
-          change_type: 'ALTA INICIAL',
-          previous_unit: 'Ninguna (Ingreso)',
-          new_unit: emp.org_unit_name || 'Dirección de Comunicación',
-          effective_date: new Date().toISOString().slice(0, 10),
-          justification: 'Designación formal en planilla municipal',
-        },
-      ]);
+      setHistoryRecords([]);
     }
   };
 
@@ -1009,11 +933,87 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
             <tbody style={{ fontSize: '0.84rem' }}>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                      <Users size={32} color="var(--text-faint)" />
-                      <div style={{ fontWeight: 600, color: '#fff' }}>No se encontraron funcionarios</div>
-                      <div style={{ fontSize: '0.78rem' }}>Intente cambiar los filtros o registre un nuevo funcionario.</div>
+                  <td colSpan={7} style={{ padding: '56px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', maxWidth: '520px', margin: '0 auto' }}>
+                      <div
+                        style={{
+                          width: '56px',
+                          height: '56px',
+                          borderRadius: '16px',
+                          background: 'rgba(6, 182, 212, 0.1)',
+                          border: '1px solid rgba(6, 182, 212, 0.25)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#38bdf8',
+                        }}
+                      >
+                        <Users size={28} />
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#fff', margin: '0 0 6px 0' }}>
+                          {employees.length === 0 ? 'Sin Funcionarios en la Base de Datos' : 'No se encontraron resultados con los filtros actuales'}
+                        </h3>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: '1.5', margin: 0 }}>
+                          {employees.length === 0
+                            ? 'Actualmente no existen funcionarios registrados en PostgreSQL. Puede agregar el primer funcionario de forma individual o cargar masivamente la nómina institucional mediante archivo CSV o Excel.'
+                            : 'Ningún funcionario coincide con el término de búsqueda o la combinación de filtros de Dirección, Estado y Redes Sociales seleccionados.'}
+                        </p>
+                      </div>
+
+                      {employees.length === 0 ? (
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                          <button
+                            onClick={() => setShowCreateModal(true)}
+                            className="btn-primary"
+                            style={{
+                              padding: '8px 16px',
+                              fontSize: '0.82rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <Plus size={15} />
+                            <span>+ Nuevo Funcionario</span>
+                          </button>
+                          <button
+                            onClick={() => setShowImportModal(true)}
+                            className="btn-secondary"
+                            style={{
+                              padding: '8px 16px',
+                              fontSize: '0.82rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <Upload size={15} />
+                            <span>Importar CSV / Excel</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setSearch('');
+                            setFilterDireccion('ALL');
+                            setFilterStatus('ALL');
+                            setFilterSocial('ALL');
+                          }}
+                          className="btn-secondary"
+                          style={{
+                            padding: '6px 14px',
+                            fontSize: '0.8rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            marginTop: '6px',
+                          }}
+                        >
+                          <RefreshCw size={13} />
+                          <span>Restablecer Filtros</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
