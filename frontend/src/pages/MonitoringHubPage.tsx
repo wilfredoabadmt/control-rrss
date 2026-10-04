@@ -3,6 +3,7 @@ import {
   Activity,
   AlertCircle,
   CheckCircle,
+  CheckSquare,
   Edit3,
   ExternalLink,
   Facebook,
@@ -16,6 +17,7 @@ import {
   Search,
   Settings,
   Shield,
+  Square,
   ThumbsUp,
   Upload,
   UserCheck,
@@ -26,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import { monitoringApi } from '../api/monitoring';
+import { FacebookRecentPostItem, getFacebookRecentPostsApi } from '../api/publications';
 import { LISTA_DIRECCIONES, ORGANIGRAMA_GAMEA } from '../data/organigrama';
 import {
   ActivityMatrixResponse,
@@ -94,6 +97,13 @@ export const MonitoringHubPage: React.FC = () => {
   const [showAddPersonModal, setShowAddPersonModal] = useState<boolean>(false);
   const [showBulkImportModal, setShowBulkImportModal] = useState<boolean>(false);
   const [showSyncModal, setShowSyncModal] = useState<boolean>(false);
+
+  // Selección Interactiva de Publicaciones Oficiales
+  const [syncModalTab, setSyncModalTab] = useState<'select' | 'quick'>('select');
+  const [fbRecentPosts, setFbRecentPosts] = useState<FacebookRecentPostItem[]>([]);
+  const [loadingFbPosts, setLoadingFbPosts] = useState<boolean>(false);
+  const [selectedPostIds, setSelectedPostIds] = useState<string[]>([]);
+  const [syncMaxPosts, setSyncMaxPosts] = useState<number>(15);
 
   // Formulario de Adición de Persona (Estructura Organigrama GAMEA 2026)
   const [newPersonCi, setNewPersonCi] = useState<string>('');
@@ -188,10 +198,41 @@ export const MonitoringHubPage: React.FC = () => {
   }, [filterPlatform, filterDepartment, filterParticipation, searchQuery]);
 
   // ---------------------------------------------------------------------------
-  // Acciones
+  // Acciones de Monitoreo & Sincronización
   // ---------------------------------------------------------------------------
 
-  const handleRunSync = async (platform: string, maxPosts: number) => {
+  const handleOpenSyncModal = async () => {
+    setShowSyncModal(true);
+    setLoadingFbPosts(true);
+    try {
+      const posts = await getFacebookRecentPostsApi();
+      setFbRecentPosts(posts || []);
+      if (posts && posts.length > 0) {
+        setSelectedPostIds(posts.map((p) => p.id));
+      }
+    } catch (err) {
+      console.error('Error al cargar posts oficiales de Facebook:', err);
+      setFbRecentPosts([]);
+    } finally {
+      setLoadingFbPosts(false);
+    }
+  };
+
+  const handleToggleSelectPost = (postId: string) => {
+    setSelectedPostIds((prev) =>
+      prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]
+    );
+  };
+
+  const handleSelectAllPosts = () => {
+    if (selectedPostIds.length === fbRecentPosts.length) {
+      setSelectedPostIds([]);
+    } else {
+      setSelectedPostIds(fbRecentPosts.map((p) => p.id));
+    }
+  };
+
+  const handleRunSync = async (platform: string, maxPosts: number, publicationIds?: string[]) => {
     try {
       setIsSyncing(true);
       setErrorMessage(null);
@@ -199,6 +240,7 @@ export const MonitoringHubPage: React.FC = () => {
         platform,
         max_posts: maxPosts,
         fetch_new_posts: true,
+        publication_ids: publicationIds && publicationIds.length > 0 ? publicationIds : undefined,
       });
       setSyncResult(res);
       if (res.status === 'FAILED') {
@@ -465,7 +507,7 @@ export const MonitoringHubPage: React.FC = () => {
         {/* Botones de Acción */}
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           <button
-            onClick={() => setShowSyncModal(true)}
+            onClick={handleOpenSyncModal}
             className="btn-primary"
             style={{
               padding: '10px 18px',
@@ -2289,6 +2331,9 @@ export const MonitoringHubPage: React.FC = () => {
       {/* --------------------------------------------------------------------- */}
       {/* MODAL: Ejecutar Monitoreo / Scrapeo Ahora                             */}
       {/* --------------------------------------------------------------------- */}
+      {/* --------------------------------------------------------------------- */}
+      {/* MODAL: Ejecutar Monitoreo / Scrapeo con Selección de Posts            */}
+      {/* --------------------------------------------------------------------- */}
       {showSyncModal && (
         <div
           style={{
@@ -2307,92 +2352,342 @@ export const MonitoringHubPage: React.FC = () => {
             className="glass-panel"
             style={{
               width: '100%',
-              maxWidth: '520px',
-              padding: '26px',
+              maxWidth: '750px',
+              padding: '24px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '18px',
+              gap: '16px',
               background: 'rgba(15, 23, 42, 0.98)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.75)',
             }}
           >
+            {/* Cabecera del Modal */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
               <div>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>Lanzar Extracción & Fiscalización</h3>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Procesamiento de publicaciones e interacciones</span>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>
+                  Scrapeo & Fiscalización de Publicaciones
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Selecciona qué publicaciones oficiales evaluar o ejecuta el barrido automatizado
+                </span>
               </div>
-              <button onClick={() => setShowSyncModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+              <button
+                onClick={() => setShowSyncModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
+              >
                 <X size={20} />
               </button>
             </div>
 
-            <p style={{ color: 'var(--text-main)', fontSize: '0.86rem', lineHeight: '1.5' }}>
-              Este proceso recolectará las publicaciones institucionales activas de Facebook y TikTok, extraerá las reacciones (Likes, etc.) y comentarios, y ejecutará el motor de cruce algorítmico contra las personas monitoreadas.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Pestañas de Modo */}
+            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '8px' }}>
               <button
-                onClick={() => {
-                  setShowSyncModal(false);
-                  handleRunSync('ALL', 10);
-                }}
-                disabled={isSyncing}
-                className="btn-primary"
-                style={{ padding: '12px', fontSize: '0.9rem', width: '100%' }}
-              >
-                <Zap size={16} />
-                <span>Monitorear Todo (Facebook + TikTok)</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowSyncModal(false);
-                  handleRunSync('FACEBOOK', 10);
-                }}
-                disabled={isSyncing}
+                onClick={() => setSyncModalTab('select')}
                 style={{
-                  padding: '12px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid rgba(59, 130, 246, 0.4)',
-                  background: 'rgba(59, 130, 246, 0.12)',
-                  color: '#60a5fa',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: syncModalTab === 'select' ? 'rgba(6, 182, 212, 0.18)' : 'transparent',
+                  color: syncModalTab === 'select' ? '#22d3ee' : 'var(--text-muted)',
                   fontWeight: 600,
-                  fontSize: '0.9rem',
+                  fontSize: '0.85rem',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
                   gap: '8px',
                 }}
               >
                 <Facebook size={16} />
-                <span>Solo Facebook (Meta Graph API)</span>
+                <span>Elegir Publicaciones de Facebook ({fbRecentPosts.length})</span>
               </button>
 
               <button
-                onClick={() => {
-                  setShowSyncModal(false);
-                  handleRunSync('TIKTOK', 10);
-                }}
-                disabled={isSyncing}
+                onClick={() => setSyncModalTab('quick')}
                 style={{
-                  padding: '12px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid rgba(244, 63, 94, 0.4)',
-                  background: 'rgba(244, 63, 94, 0.12)',
-                  color: '#fb7185',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: syncModalTab === 'quick' ? 'rgba(59, 130, 246, 0.18)' : 'transparent',
+                  color: syncModalTab === 'quick' ? '#60a5fa' : 'var(--text-muted)',
                   fontWeight: 600,
-                  fontSize: '0.9rem',
+                  fontSize: '0.85rem',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
                   gap: '8px',
                 }}
               >
-                <Video size={16} />
-                <span>Solo TikTok (Display API)</span>
+                <Zap size={16} />
+                <span>Monitoreo Rápido Automatizado</span>
               </button>
             </div>
+
+            {/* Pestaña 1: Selección de Publicaciones de Facebook */}
+            {syncModalTab === 'select' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      onClick={handleSelectAllPosts}
+                      style={{
+                        background: 'rgba(30, 41, 59, 0.8)',
+                        border: '1px solid var(--border-subtle)',
+                        color: '#fff',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      {selectedPostIds.length === fbRecentPosts.length && fbRecentPosts.length > 0 ? (
+                        <>
+                          <CheckSquare size={14} color="#06b6d4" />
+                          <span>Deseleccionar todos</span>
+                        </>
+                      ) : (
+                        <>
+                          <Square size={14} />
+                          <span>Seleccionar todos</span>
+                        </>
+                      )}
+                    </button>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      {selectedPostIds.length} de {fbRecentPosts.length} post(s) marcados para scrapeo
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={handleOpenSyncModal}
+                    disabled={loadingFbPosts}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#06b6d4',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <RefreshCw size={12} className={loadingFbPosts ? 'animate-spin' : ''} />
+                    <span>Actualizar lista</span>
+                  </button>
+                </div>
+
+                {loadingFbPosts ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: '#06b6d4' }}>
+                    <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 10px auto' }} />
+                    <div style={{ fontSize: '0.85rem' }}>Consultando publicaciones recientes de la página oficial...</div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      maxHeight: '340px',
+                      overflowY: 'auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      paddingRight: '4px',
+                    }}
+                  >
+                    {fbRecentPosts.map((post) => {
+                      const isSelected = selectedPostIds.includes(post.id);
+                      return (
+                        <div
+                          key={post.id}
+                          onClick={() => handleToggleSelectPost(post.id)}
+                          style={{
+                            background: isSelected ? 'rgba(6, 182, 212, 0.08)' : 'rgba(30, 41, 59, 0.4)',
+                            border: isSelected ? '1px solid rgba(6, 182, 212, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                            borderRadius: '8px',
+                            padding: '12px 14px',
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '12px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{ marginTop: '2px' }}>
+                            {isSelected ? (
+                              <CheckSquare size={18} color="#06b6d4" />
+                            ) : (
+                              <Square size={18} color="var(--text-muted)" />
+                            )}
+                          </div>
+
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 500, lineHeight: 1.4 }}>
+                              {post.message ? (
+                                post.message.length > 150 ? post.message.slice(0, 150) + '...' : post.message
+                              ) : (
+                                <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>Publicación multimedia sin descripción</span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                              <span>
+                                {post.created_time ? new Date(post.created_time).toLocaleString('es-ES') : 'Reciente'}
+                              </span>
+                              <span>•</span>
+                              <span>{post.shares_count || 0} compartidos</span>
+                              {post.permalink_url && (
+                                <>
+                                  <span>•</span>
+                                  <a
+                                    href={post.permalink_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{ color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: '2px', textDecoration: 'none' }}
+                                  >
+                                    <span>Ver post</span>
+                                    <ExternalLink size={10} />
+                                  </a>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {fbRecentPosts.length === 0 && (
+                      <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No se detectaron publicaciones recientes en la página oficial de Facebook conectada.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Botón de Ejecución de Selección */}
+                <button
+                  onClick={() => {
+                    setShowSyncModal(false);
+                    handleRunSync('FACEBOOK', selectedPostIds.length, selectedPostIds);
+                  }}
+                  disabled={isSyncing || selectedPostIds.length === 0}
+                  className="btn-primary"
+                  style={{
+                    padding: '12px',
+                    fontSize: '0.9rem',
+                    width: '100%',
+                    opacity: selectedPostIds.length === 0 ? 0.6 : 1,
+                  }}
+                >
+                  <Play size={16} fill="currentColor" />
+                  <span>
+                    Scrapear y Fiscalizar ({selectedPostIds.length} Publicaciones Seleccionadas)
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* Pestaña 2: Monitoreo Rápido Automatizado */}
+            {syncModalTab === 'quick' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <p style={{ color: 'var(--text-main)', fontSize: '0.86rem', lineHeight: '1.5' }}>
+                  El motor ingiere automáticamente las últimas publicaciones oficiales desde Meta Graph API y TikTok, extrayendo reacciones, likes y comentarios para cruzarlos contra la base de datos PostgreSQL.
+                </p>
+
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                    Cantidad de publicaciones recientes a procesar:
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {[5, 10, 15, 20, 25].map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setSyncMaxPosts(cnt)}
+                        style={{
+                          flex: 1,
+                          padding: '8px',
+                          borderRadius: '6px',
+                          border: syncMaxPosts === cnt ? '1px solid #06b6d4' : '1px solid rgba(255, 255, 255, 0.1)',
+                          background: syncMaxPosts === cnt ? 'rgba(6, 182, 212, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          color: syncMaxPosts === cnt ? '#22d3ee' : '#fff',
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {cnt} posts
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
+                  <button
+                    onClick={() => {
+                      setShowSyncModal(false);
+                      handleRunSync('ALL', syncMaxPosts);
+                    }}
+                    disabled={isSyncing}
+                    className="btn-primary"
+                    style={{ padding: '12px', fontSize: '0.9rem', width: '100%' }}
+                  >
+                    <Zap size={16} />
+                    <span>Monitorear Todo ({syncMaxPosts} Posts Facebook + TikTok)</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowSyncModal(false);
+                      handleRunSync('FACEBOOK', syncMaxPosts);
+                    }}
+                    disabled={isSyncing}
+                    style={{
+                      padding: '12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid rgba(59, 130, 246, 0.4)',
+                      background: 'rgba(59, 130, 246, 0.12)',
+                      color: '#60a5fa',
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <Facebook size={16} />
+                    <span>Solo Facebook ({syncMaxPosts} Posts Recientes)</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowSyncModal(false);
+                      handleRunSync('TIKTOK', syncMaxPosts);
+                    }}
+                    disabled={isSyncing}
+                    style={{
+                      padding: '12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid rgba(244, 63, 94, 0.4)',
+                      background: 'rgba(244, 63, 94, 0.12)',
+                      color: '#fb7185',
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <Video size={16} />
+                    <span>Solo TikTok ({syncMaxPosts} Posts Recientes)</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

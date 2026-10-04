@@ -1122,13 +1122,90 @@ class MonitoringHubService:
         try:
             # 3. Obtener o crear publicaciones institucionales a evaluar
             pubs_to_evaluate: list[Publication] = []
+            is_pytest = bool(os.environ.get("PYTEST_CURRENT_TEST") or settings.ENVIRONMENT == "TEST")
+
             if req.publication_ids:
+                import uuid as uuid_pkg
+                uuid_list = []
+                ext_id_list = []
+                for pid in req.publication_ids:
+                    try:
+                        uuid_list.append(uuid_pkg.UUID(str(pid)))
+                    except (ValueError, AttributeError):
+                        ext_id_list.append(str(pid))
                 stmt_p = (
                     select(Publication)
-                    .where(Publication.id.in_(req.publication_ids))
+                    .where(
+                        or_(
+                            Publication.id.in_(uuid_list) if uuid_list else False,
+                            Publication.external_post_id.in_(ext_id_list) if ext_id_list else False,
+                        )
+                    )
                     .options(selectinload(Publication.platform))
                 )
                 pubs_to_evaluate = list((await db.execute(stmt_p)).scalars().all())
+
+            # Si se solicita refrescar posts y estamos en producción / ambiente real, traer publicaciones recientes de la página oficial de Facebook
+            if not req.publication_ids and req.fetch_new_posts and not is_pytest and (req.platform.upper() in ("ALL", "FACEBOOK")):
+                try:
+                    fb_plat_obj = next((p for p in all_platforms if p.name == "FACEBOOK"), primary_plat)
+                    fb_cfg = (await db.execute(select(SocialConnectorConfig).where(SocialConnectorConfig.platform_name == "FACEBOOK"))).scalar_one_or_none()
+                    fb_token = ""
+                    if fb_cfg and fb_cfg.access_token_encrypted:
+                        try:
+                            fb_token = decrypt_field(fb_cfg.access_token_encrypted)
+                        except Exception:
+                            pass
+                    if not fb_token:
+                        fb_token = (
+                            os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+                            or getattr(settings, "FACEBOOK_PAGE_ACCESS_TOKEN", "")
+                            or ""
+                        ).strip()
+
+                    page_id = (fb_cfg.target_account_id if fb_cfg and fb_cfg.target_account_id else "") or os.environ.get("FACEBOOK_PAGE_ID", "1612864202296619")
+
+                    if fb_token and len(fb_token) > 20:
+                        import httpx
+                        target_limit = max(min(req.max_posts, 25), 15)
+                        async with httpx.AsyncClient(timeout=10.0) as client:
+                            resp = await client.get(
+                                f"https://graph.facebook.com/v20.0/{page_id}/posts",
+                                params={
+                                    "fields": "id,message,created_time,permalink_url",
+                                    "limit": target_limit,
+                                    "access_token": fb_token,
+                                },
+                            )
+                            if resp.status_code == 200:
+                                fb_posts = resp.json().get("data", [])
+                                for fp in fb_posts:
+                                    f_id = fp.get("id")
+                                    if not f_id:
+                                        continue
+                                    stmt_check = select(Publication).where(Publication.external_post_id == f_id)
+                                    existing_p = (await db.execute(stmt_check)).scalar_one_or_none()
+                                    if not existing_p:
+                                        created_time_str = fp.get("created_time")
+                                        pub_dt = datetime.now(UTC)
+                                        if created_time_str:
+                                            try:
+                                                pub_dt = datetime.fromisoformat(created_time_str.replace("Z", "+00:00"))
+                                            except Exception:
+                                                pass
+                                        new_p = Publication(
+                                            platform_id=fb_plat_obj.id,
+                                            external_post_id=f_id,
+                                            post_url=fp.get("permalink_url") or f"https://facebook.com/{f_id}",
+                                            published_at=pub_dt,
+                                            content_text=fp.get("message") or "Publicación oficial GAMEA",
+                                            media_type="POST",
+                                            is_monitored=True,
+                                        )
+                                        db.add(new_p)
+                                        await db.flush()
+                except Exception:
+                    pass
 
             if not pubs_to_evaluate:
                 stmt_recent = (
@@ -1140,7 +1217,6 @@ class MonitoringHubService:
                 pubs_to_evaluate = list((await db.execute(stmt_recent)).scalars().all())
 
             # En ambiente TEST puramente sintético (offline para pytest):
-            is_pytest = bool(os.environ.get("PYTEST_CURRENT_TEST") or settings.ENVIRONMENT == "TEST")
             if not pubs_to_evaluate and is_pytest:
                 fb_plat_obj = next((p for p in all_platforms if p.name == "FACEBOOK"), primary_plat)
                 tt_plat_obj = next((p for p in all_platforms if p.name == "TIKTOK"), primary_plat)

@@ -104,7 +104,7 @@ class MonitoredPersonResponse(BaseModel):
 
 class RunSyncRequest(BaseModel):
     platform: str = Field(default="ALL", description="ALL, FACEBOOK, TIKTOK")
-    publication_ids: list[uuid.UUID] | None = Field(default=None, description="Publicaciones específicas a evaluar")
+    publication_ids: list[str] | None = Field(default=None, description="Publicaciones específicas a evaluar (UUID o ID externo de Facebook)")
     fetch_new_posts: bool = Field(default=True, description="Buscar publicaciones recientes en las cuentas oficiales")
     max_posts: int = Field(default=10, ge=1, le=50)
 
