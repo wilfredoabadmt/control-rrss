@@ -126,8 +126,14 @@ class EmployeeResponse(BaseModel):
     last_name: str
     document_number: str | None = None  # Se descifra o se oculta según rol
     organizational_unit_id: uuid.UUID | None = None
+    org_unit_name: str | None = None
+    parent_unit_name: str | None = None
     position_id: uuid.UUID | None = None
+    position_title: str | None = None
+    facebook_account: str | None = None
+    tiktok_account: str | None = None
     status: str
+    is_active: bool = True
     hire_date: date | None = None
     termination_date: date | None = None
     created_at: datetime

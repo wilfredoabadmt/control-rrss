@@ -373,7 +373,7 @@ class EmployeeService:
             .offset(offset)
             .limit(limit)
             .options(
-                selectinload(Employee.organizational_unit),
+                selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent),
                 selectinload(Employee.position),
             )
         )

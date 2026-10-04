@@ -139,14 +139,41 @@ def _format_employee_response(emp: Employee, current_user: User) -> EmployeeResp
     else:
         doc_number = "••••••"
 
+    org_unit_name = emp.organizational_unit.name if emp.organizational_unit else None
+    parent_unit_name = (
+        emp.organizational_unit.parent.name
+        if emp.organizational_unit and getattr(emp.organizational_unit, "parent", None)
+        else None
+    )
+    position_title = emp.position.title if emp.position else None
+
+    # Redes sociales asociadas
+    fb_acc = None
+    tt_acc = None
+    if hasattr(emp, "social_accounts") and emp.social_accounts:
+        for sa in emp.social_accounts:
+            p_code = getattr(getattr(sa, "platform", None), "code", "")
+            url = (getattr(sa, "profile_url", None) or "").lower()
+            username = getattr(sa, "current_username", None) or ""
+            if p_code == "FACEBOOK" or "facebook" in url:
+                fb_acc = username or getattr(sa, "profile_url", None)
+            elif p_code == "TIKTOK" or "tiktok" in url:
+                tt_acc = username or getattr(sa, "profile_url", None)
+
     return EmployeeResponse(
         employee_id=emp.employee_id,
         first_name=emp.first_name,
         last_name=emp.last_name,
         document_number=doc_number,
         organizational_unit_id=emp.organizational_unit_id,
+        org_unit_name=org_unit_name,
+        parent_unit_name=parent_unit_name,
         position_id=emp.position_id,
+        position_title=position_title,
+        facebook_account=fb_acc,
+        tiktok_account=tt_acc,
         status=emp.status,
+        is_active=emp.status == EmployeeStatus.ACTIVE.value,
         hire_date=emp.hire_date,
         termination_date=emp.termination_date,
         created_at=emp.created_at,
