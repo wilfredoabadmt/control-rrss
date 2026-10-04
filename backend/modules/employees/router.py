@@ -2,7 +2,9 @@
 Routers para Directorio de Funcionarios, Estructura Organizacional y Cargos — GAMEA Social Monitor
 """
 
+import pathlib
 import uuid
+
 
 from core.pagination import PageResponse
 from core.security.auth import get_current_user
@@ -11,6 +13,7 @@ from core.security.rbac import require_roles
 from database import get_async_db
 from dependencies import PaginationDep
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from modules.employees.importer import EmployeePayrollImporter
 from modules.employees.models import Employee, OrganizationalUnit, Position
 from modules.employees.schemas import (
@@ -185,6 +188,37 @@ async def create_employee(
         return _format_employee_response(emp, current_user)
     except ValidationException as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
+
+
+@employees_router.get("/import/template")
+async def download_import_template(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Descarga la plantilla CSV modelo para importar funcionarios con sus cuentas de redes sociales.
+    Columnas: nombres, apellidos, unidad, direccion, cuenta_facebook, cuenta_tiktok
+    """
+    # Buscar el archivo de plantilla en ubicaciones relativas posibles (local y docker container)
+    candidates = [
+        pathlib.Path(__file__).resolve().parents[3] / "extras" / "plantilla_funcionarios.csv",
+        pathlib.Path(__file__).resolve().parents[2] / "extras" / "plantilla_funcionarios.csv",
+        pathlib.Path("/app/extras/plantilla_funcionarios.csv"),
+        pathlib.Path("extras/plantilla_funcionarios.csv"),
+    ]
+    template_path = next((p for p in candidates if p.is_file()), None)
+
+    if not template_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plantilla de importación no encontrada en el servidor.",
+        )
+
+    return FileResponse(
+        path=str(template_path),
+        filename="plantilla_funcionarios_gamea.csv",
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=plantilla_funcionarios_gamea.csv"},
+    )
 
 
 @employees_router.post("/import", response_model=EmployeeImportReport)

@@ -65,3 +65,17 @@ export const getOrgUnitsTreeApi = async (): Promise<OrgUnitNode[]> => {
   const res = await apiClient.get('/org-units/tree');
   return res.data;
 };
+
+export const downloadImportTemplateApi = async (): Promise<void> => {
+  const res = await apiClient.get('/employees/import/template', {
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(new Blob([res.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', 'plantilla_funcionarios_gamea.csv');
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};

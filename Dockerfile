@@ -22,6 +22,7 @@ FROM base AS development
 COPY backend /app/backend
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
+COPY extras /app/extras
 WORKDIR /app/backend
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
@@ -31,6 +32,7 @@ FROM base AS production
 COPY backend /app/backend
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
+COPY extras /app/extras
 WORKDIR /app/backend
 
 # Crear usuario no root y asignar permisos

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Download,
   FileSpreadsheet,
   History,
   Lock,
@@ -14,6 +15,7 @@ import {
   EmployeeImportResult,
   EmployeeItem,
   createEmployeeApi,
+  downloadImportTemplateApi,
   getEmployeeHistoryApi,
   importPayrollExcelApi,
   listEmployeesApi
@@ -420,7 +422,7 @@ export const EmployeesPage: React.FC = () => {
                   {importFile ? importFile.name : 'Haga clic o arrastre su archivo .xlsx o .csv'}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '4px' }}>
-                  Columnas obligatorias: CI, Nombres, Apellidos, Unidad, Cargo
+                  Columnas: nombres, apellidos, unidad, dirección, cuenta_facebook, cuenta_tiktok
                 </div>
                 <input
                   id="file-input"
@@ -429,6 +431,99 @@ export const EmployeesPage: React.FC = () => {
                   style={{ display: 'none' }}
                   onChange={(e) => setImportFile(e.target.files?.[0] || null)}
                 />
+              </div>
+
+              {/* Modelo de columnas del template */}
+              <div
+                style={{
+                  background: 'rgba(6, 182, 212, 0.06)',
+                  border: '1px solid rgba(6, 182, 212, 0.2)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '16px',
+                  marginBottom: '20px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#06b6d4' }}>
+                    📋 Formato del archivo CSV / Excel
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await downloadImportTemplateApi();
+                      } catch {
+                        // Fallback: generar CSV local
+                        const csvContent = 'nombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok\nJuan Carlos,Mamani Quispe,Unidad de Prensa,Dirección de Comunicación,facebook.com/juancarlos.mamani,@jcmamani';
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'plantilla_funcionarios_gamea.csv';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }
+                    }}
+                    style={{
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                      color: '#34d399',
+                      padding: '6px 14px',
+                      borderRadius: 'var(--radius-sm)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.78rem',
+                      fontWeight: '600',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <Download size={14} />
+                    Descargar Plantilla CSV
+                  </button>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(6, 182, 212, 0.15)' }}>
+                        {['nombres', 'apellidos', 'unidad', 'direccion', 'cuenta_facebook', 'cuenta_tiktok'].map(col => (
+                          <th key={col} style={{
+                            padding: '6px 8px',
+                            color: '#06b6d4',
+                            fontWeight: '700',
+                            textAlign: 'left',
+                            whiteSpace: 'nowrap',
+                            fontFamily: 'monospace',
+                          }}>
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Juan Carlos</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Mamani Q.</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Unidad de Prensa</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Dir. Comunicación</td>
+                        <td style={{ padding: '6px 8px', color: '#38bdf8', fontFamily: 'monospace' }}>facebook.com/jc</td>
+                        <td style={{ padding: '6px 8px', color: '#f472b6', fontFamily: 'monospace' }}>@jcmamani</td>
+                      </tr>
+                      <tr style={{ opacity: 0.5 }}>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-faint)', fontFamily: 'monospace' }}>María Elena</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-faint)', fontFamily: 'monospace' }}>Condori F.</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-faint)', fontFamily: 'monospace' }}>Unidad de Imagen</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-faint)', fontFamily: 'monospace' }}>Dir. Comunicación</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-faint)', fontFamily: 'monospace' }}></td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-faint)', fontFamily: 'monospace' }}></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-faint)', marginTop: '8px', fontStyle: 'italic' }}>
+                  💡 Las cuentas de Facebook y TikTok son opcionales. La plantilla pre-llenada contiene {'>'}100 unidades del organigrama GAMEA 2026.
+                </div>
               </div>
 
               {importResult && (
