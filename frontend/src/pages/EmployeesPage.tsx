@@ -21,6 +21,7 @@ import {
   importPayrollExcelApi,
   listEmployeesApi
 } from '../api/employees';
+import { ORGANIGRAMA_GAMEA, LISTA_DIRECCIONES } from '../data/organigrama';
 
 // Ícono SVG estilizado de TikTok
 const TikTokIcon: React.FC<{ size?: number; color?: string }> = ({ size = 14, color = 'currentColor' }) => (
@@ -267,6 +268,14 @@ export const EmployeesPage: React.FC = () => {
       setTotal(total + 1);
       setShowCreateModal(false);
     } finally {
+      setNewFirstName('');
+      setNewLastName('');
+      setNewUnit('');
+      setNewDireccion('');
+      setNewFacebook('');
+      setNewTiktok('');
+      setNewCi('');
+      setNewEmail('');
       setCreateLoading(false);
     }
   };
@@ -985,28 +994,66 @@ export const EmployeesPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Dirección / Dependencia Superior (Desplegable Padre) */}
+              <div className="form-group">
+                <label className="form-label">Dirección / Dependencia Superior *</label>
+                <select
+                  className="form-input"
+                  required
+                  value={newDireccion}
+                  onChange={(e) => {
+                    const selDir = e.target.value;
+                    setNewDireccion(selDir);
+                    setNewUnit('');
+                  }}
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    color: '#fff',
+                    borderColor: newDireccion ? 'var(--primary-500)' : 'var(--border-subtle)',
+                  }}
+                >
+                  <option value="">-- Seleccionar Dirección / Dependencia --</option>
+                  {LISTA_DIRECCIONES.map((dir) => (
+                    <option key={dir} value={dir}>
+                      {dir}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Unidad Organizacional (Desplegable Hijo en Cascada) */}
               <div className="form-group">
                 <label className="form-label">Unidad Organizacional (Organigrama) *</label>
-                <input
-                  type="text"
+                <select
                   className="form-input"
                   required
                   value={newUnit}
                   onChange={(e) => setNewUnit(e.target.value)}
-                  placeholder="Ej. Unidad de Prensa / Unidad de Imagen"
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Dirección / Dependencia Superior *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  required
-                  value={newDireccion}
-                  onChange={(e) => setNewDireccion(e.target.value)}
-                  placeholder="Ej. Dirección de Comunicación / Despacho Alcaldesa"
-                />
+                  disabled={!newDireccion}
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    color: !newDireccion ? 'var(--text-faint)' : '#fff',
+                    cursor: !newDireccion ? 'not-allowed' : 'pointer',
+                    borderColor: newUnit ? '#10b981' : 'var(--border-subtle)',
+                  }}
+                >
+                  <option value="">
+                    {!newDireccion
+                      ? '-- Primero seleccione una Dirección / Dependencia --'
+                      : '-- Seleccionar Unidad correspondiente --'}
+                  </option>
+                  {newDireccion &&
+                    (ORGANIGRAMA_GAMEA[newDireccion] || []).map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                </select>
+                {newDireccion && (
+                  <span style={{ fontSize: '0.72rem', color: '#38bdf8', marginTop: '4px', display: 'block' }}>
+                    Mostrando únicamente las {ORGANIGRAMA_GAMEA[newDireccion]?.length || 0} unidades pertenecientes a <strong>{newDireccion}</strong>
+                  </span>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
