@@ -247,19 +247,47 @@ class IAMService:
         user_in: UserUpdate,
         current_user: User,
     ) -> User:
-        """Actualiza atributos de usuario con auditoría de cambios."""
+        """Actualiza atributos y roles de usuario con auditoría de cambios."""
         user = await IAMService.get_user_by_id(db, user_id)
         if not user:
             raise EntityNotFoundException("User", str(user_id))
 
-        previous_state = {"full_name": user.full_name, "is_active": user.is_active}
+        previous_state = {
+            "email": user.email,
+            "full_name": user.full_name,
+            "is_active": user.is_active,
+            "roles": [r.name for r in user.roles],
+        }
 
         if user_in.full_name is not None:
             user.full_name = user_in.full_name.strip()
         if user_in.is_active is not None:
             user.is_active = user_in.is_active
+        if user_in.email is not None:
+            new_email = str(user_in.email).lower().strip()
+            if new_email != user.email:
+                existing = await IAMService.get_user_by_email(db, new_email)
+                if existing and existing.id != user.id:
+                    raise ValidationException(f"El correo '{new_email}' ya está registrado.")
+                user.email = new_email
+        if user_in.password is not None and user_in.password.strip():
+            validate_password_complexity(user_in.password)
+            user.password_hash = hash_password(user_in.password)
+            user.failed_login_attempts = 0
+            user.locked_until = None
+        if user_in.role_names is not None:
+            stmt = select(Role).where(Role.name.in_(user_in.role_names))
+            result = await db.execute(stmt)
+            new_roles = list(result.scalars().all())
+            if new_roles:
+                user.roles = new_roles
 
-        new_state = {"full_name": user.full_name, "is_active": user.is_active}
+        new_state = {
+            "email": user.email,
+            "full_name": user.full_name,
+            "is_active": user.is_active,
+            "roles": [r.name for r in user.roles],
+        }
 
         await record_audit_event(
             db=db,

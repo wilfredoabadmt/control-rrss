@@ -32,8 +32,22 @@ export const createUserApi = async (data: {
   return res.data;
 };
 
+export const updateUserApi = async (
+  userId: string,
+  data: {
+    full_name?: string;
+    email?: string;
+    is_active?: boolean;
+    password?: string;
+    role_names?: string[];
+  }
+): Promise<UserAdminItem> => {
+  const res = await apiClient.patch(`/users/${userId}`, data);
+  return res.data;
+};
+
 export const updateUserRolesApi = async (userId: string, roleNames: string[]): Promise<any> => {
-  const res = await apiClient.put(`/users/${userId}/roles`, { role_names: roleNames });
+  const res = await apiClient.patch(`/users/${userId}/roles`, { role_names: roleNames });
   return res.data;
 };
 

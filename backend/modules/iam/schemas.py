@@ -46,7 +46,10 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     full_name: str | None = Field(None, min_length=3, max_length=150)
+    email: EmailStr | None = None
     is_active: bool | None = None
+    password: str | None = Field(None, min_length=6, description="Nueva contraseña si se desea actualizar")
+    role_names: list[str] | None = Field(None, description="Lista de roles asignados al usuario")
 
 
 class UserRolesUpdate(BaseModel):
