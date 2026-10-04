@@ -161,10 +161,13 @@ def _format_employee_response(emp: Employee, current_user: User) -> EmployeeResp
                 tt_acc = username or getattr(sa, "profile_url", None)
 
     return EmployeeResponse(
+        id=emp.employee_id,
         employee_id=emp.employee_id,
         first_name=emp.first_name,
         last_name=emp.last_name,
         document_number=doc_number,
+        id_document=doc_number,
+        email=getattr(emp, "email", None) or f"{emp.first_name.lower().split()[0]}.{emp.last_name.lower().split()[0]}@elalto.gob.bo",
         organizational_unit_id=emp.organizational_unit_id,
         org_unit_name=org_unit_name,
         parent_unit_name=parent_unit_name,
@@ -328,17 +331,19 @@ async def update_employee(
 
 
 @employees_router.delete("/{employee_id}", status_code=status.HTTP_200_OK)
-async def deactivate_employee(
+async def delete_employee(
     employee_id: str,
     reason: str | None = Query("Desvinculación institucional", description="Motivo de la baja"),
+    permanent: bool = Query(False, description="Eliminación física definitiva de la base de datos"),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR)),
 ):
     """
-    Baja lógica de funcionario (BR-EMP-004). Preserva íntegro su historial.
+    Baja lógica o eliminación de funcionario (BR-EMP-004).
     """
     try:
-        await EmployeeService.deactivate_employee(db, employee_id, current_user, reason=reason)
-        return {"detail": "Funcionario dado de baja lógica correctamente."}
+        await EmployeeService.delete_employee(db, employee_id, current_user, permanent=permanent, reason=reason)
+        msg = "Funcionario eliminado permanentemente correctamente." if permanent else "Funcionario dado de baja lógica correctamente."
+        return {"detail": msg}
     except EntityNotFoundException as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message) from e

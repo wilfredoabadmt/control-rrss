@@ -5,6 +5,7 @@ export interface EmployeeItem {
   first_name: string;
   last_name: string;
   id_document?: string; // masked or unmasked based on role
+  document_number?: string;
   email?: string;
   phone?: string;
   org_unit_id?: string;
@@ -55,6 +56,21 @@ export const importPayrollExcelApi = async (file: File): Promise<EmployeeImportR
   formData.append('file', file);
   const res = await apiClient.post('/employees/import', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+};
+
+export const updateEmployeeApi = async (id: string, data: Partial<EmployeeItem> & { change_reason?: string; status?: string }): Promise<EmployeeItem> => {
+  const res = await apiClient.patch(`/employees/${id}`, data);
+  return res.data;
+};
+
+export const deleteEmployeeApi = async (id: string, permanent: boolean = false, reason?: string): Promise<{ detail: string }> => {
+  const res = await apiClient.delete(`/employees/${id}`, {
+    params: {
+      permanent,
+      reason: reason || (permanent ? 'Eliminación administrativa definitiva' : 'Desvinculación institucional'),
+    },
   });
   return res.data;
 };

@@ -77,28 +77,43 @@ class OrganizationalUnitTreeNode(OrganizationalUnitResponse):
 # -----------------------------------------------------------------------------
 
 class EmployeeBase(BaseModel):
-    employee_id: str = Field(..., min_length=1, max_length=50, description="Identificador único institucional (inmutable)")
+    employee_id: str | None = Field(None, max_length=50, description="Identificador único institucional (inmutable)")
     first_name: str = Field(..., min_length=1, max_length=100, description="Nombres")
     last_name: str = Field(..., min_length=1, max_length=100, description="Apellidos")
     organizational_unit_id: uuid.UUID | None = Field(None, description="ID de la unidad organizacional")
+    org_unit_name: str | None = Field(None, description="Nombre de la unidad institucional")
+    parent_unit_name: str | None = Field(None, description="Dirección superior")
     position_id: uuid.UUID | None = Field(None, description="ID del cargo institucional")
+    position_title: str | None = Field(None, description="Cargo o puesto institucional")
+    email: str | None = Field(None, description="Correo electrónico institucional")
+    facebook_account: str | None = Field(None, description="Cuenta o URL de Facebook")
+    tiktok_account: str | None = Field(None, description="Cuenta o URL de TikTok")
     status: str = Field(default=EmployeeStatus.ACTIVE.value, description="Estado del funcionario")
     hire_date: date | None = Field(None, description="Fecha de ingreso")
     termination_date: date | None = Field(None, description="Fecha de desvinculación")
 
 
 class EmployeeCreate(EmployeeBase):
-    document_number: str = Field(..., min_length=4, max_length=30, description="Número de cédula de identidad")
+    document_number: str | None = Field(None, min_length=3, max_length=30, description="Número de cédula de identidad")
+    id_document: str | None = Field(None, description="Alias para documento de identidad")
 
 
 class EmployeeUpdate(BaseModel):
     # Nota: employee_id NO puede ser actualizado (Principio VII)
-    document_number: str | None = Field(None, min_length=4, max_length=30)
+    document_number: str | None = Field(None, min_length=3, max_length=30)
+    id_document: str | None = None
     first_name: str | None = Field(None, min_length=1, max_length=100)
     last_name: str | None = Field(None, min_length=1, max_length=100)
     organizational_unit_id: uuid.UUID | None = None
+    org_unit_name: str | None = None
+    parent_unit_name: str | None = None
     position_id: uuid.UUID | None = None
+    position_title: str | None = None
+    email: str | None = None
+    facebook_account: str | None = None
+    tiktok_account: str | None = None
     status: str | None = None
+    is_active: bool | None = None
     hire_date: date | None = None
     termination_date: date | None = None
     change_reason: str | None = Field(None, max_length=255, description="Motivo del cambio")
@@ -121,10 +136,13 @@ class EmployeeHistoryResponse(BaseModel):
 
 
 class EmployeeResponse(BaseModel):
+    id: str | None = None  # Compatible con frontend emp.id
     employee_id: str
     first_name: str
     last_name: str
     document_number: str | None = None  # Se descifra o se oculta según rol
+    id_document: str | None = None
+    email: str | None = None
     organizational_unit_id: uuid.UUID | None = None
     org_unit_name: str | None = None
     parent_unit_name: str | None = None

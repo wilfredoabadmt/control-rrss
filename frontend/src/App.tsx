@@ -49,7 +49,7 @@ const AppContent: React.FC = () => {
           case 'monitoring-hub':
             return <MonitoringHubPage />;
           case 'employees':
-            return <EmployeesPage />;
+            return <EmployeesPage onNavigate={onNavigate} />;
 
           case 'publications':
             return <PublicationsPage onNavigate={onNavigate} />;
