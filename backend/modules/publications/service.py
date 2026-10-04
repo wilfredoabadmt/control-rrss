@@ -295,8 +295,22 @@ class PublicationService:
         """
         Obtiene los últimos posts oficiales directamente desde la API Graph de Meta para la página GAMEA.
         """
-        fb_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
-        page_id = os.environ.get("FACEBOOK_PAGE_ID", "1612864202296619")
+        from modules.monitoring.models import SocialConnectorConfig
+        from core.security.encryption import decrypt_field
+
+        # 1. Obtener token de BD o variables de entorno
+        stmt_cfg = select(SocialConnectorConfig).where(SocialConnectorConfig.platform_name == "FACEBOOK")
+        fb_cfg = (await db.execute(stmt_cfg)).scalar_one_or_none()
+        fb_token = ""
+        if fb_cfg and fb_cfg.access_token_encrypted:
+            try:
+                fb_token = decrypt_field(fb_cfg.access_token_encrypted)
+            except Exception:
+                pass
+        if not fb_token:
+            fb_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
+
+        page_id = (fb_cfg.target_account_id if fb_cfg and fb_cfg.target_account_id else "") or os.environ.get("FACEBOOK_PAGE_ID", "1612864202296619")
 
         # Cargar IDs existentes en BD para marcar is_monitored
         stmt_existing = select(Publication.id, Publication.external_post_id)
@@ -311,7 +325,7 @@ class PublicationService:
                         f"https://graph.facebook.com/v20.0/{page_id}/posts",
                         params={
                             "fields": "id,message,created_time,permalink_url,shares",
-                            "limit": 12,
+                            "limit": 15,
                             "access_token": fb_token,
                         },
                     )
@@ -334,6 +348,30 @@ class PublicationService:
                             )
             except Exception:
                 pass
+
+        # Si la API de Meta no está disponible (token pendiente de renovación),
+        # listar las publicaciones de Facebook ya registradas en la base de datos local
+        if not items:
+            stmt_local = (
+                select(Publication)
+                .join(SocialPlatform, Publication.platform_id == SocialPlatform.id)
+                .where(SocialPlatform.name == "FACEBOOK")
+                .order_by(Publication.created_at.desc())
+                .limit(20)
+            )
+            local_pubs = list((await db.execute(stmt_local)).scalars().all())
+            for lp in local_pubs:
+                items.append(
+                    FacebookRecentPostItem(
+                        id=lp.external_post_id,
+                        message=lp.content_text or "Publicación Institucional Alcaldía de El Alto",
+                        created_time=lp.published_at.isoformat() if lp.published_at else None,
+                        permalink_url=lp.post_url or f"https://facebook.com/{lp.external_post_id}",
+                        shares_count=0,
+                        is_monitored=lp.is_monitored,
+                        existing_id=lp.id,
+                    )
+                )
 
         # En ambiente TEST puramente sintético (offline para pytest):
         if not items and os.environ.get("ENVIRONMENT", "").upper() == "TEST":

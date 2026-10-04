@@ -9,7 +9,9 @@ import {
   Facebook,
   Heart,
   Info,
+  Link as LinkIcon,
   MessageSquare,
+  Plus,
   RefreshCw,
   Repeat,
   Search,
@@ -22,6 +24,13 @@ import {
 } from 'lucide-react';
 import { monitoringApi } from '../api/monitoring';
 import { manualVerificationApi } from '../api/interactions';
+import {
+  listPublicationsApi,
+  importPublicationFromUrlApi,
+  getFacebookRecentPostsApi,
+  PublicationItem,
+  FacebookRecentPostItem,
+} from '../api/publications';
 import { LISTA_DIRECCIONES } from '../data/organigrama';
 import { ActivityMatrixResponse, ActivityMatrixRow } from '../types';
 
@@ -31,6 +40,22 @@ export const InteractionsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
+
+  // Publicaciones de la BD
+  const [dbPublications, setDbPublications] = useState<PublicationItem[]>([]);
+  const [loadingPublications, setLoadingPublications] = useState(false);
+
+  // Modal para Vincular Post de Facebook
+  const [showAddPostModal, setShowAddPostModal] = useState(false);
+  const [modalTab, setModalTab] = useState<'recent' | 'url'>('recent');
+  const [fbRecentPosts, setFbRecentPosts] = useState<FacebookRecentPostItem[]>([]);
+  const [loadingFbPosts, setLoadingFbPosts] = useState(false);
+  const [importingPostId, setImportingPostId] = useState<string | null>(null);
+  const [inputUrl, setInputUrl] = useState('');
+  const [inputTitle, setInputTitle] = useState('');
+  const [submittingUrl, setSubmittingUrl] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [modalSuccess, setModalSuccess] = useState<string | null>(null);
 
   // Filtros
   const [selectedPublicationId, setSelectedPublicationId] = useState<string>('ALL');
@@ -49,6 +74,21 @@ export const InteractionsPage: React.FC = () => {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualSuccess, setManualSuccess] = useState(false);
 
+  // Cargar publicaciones registradas desde backend
+  const loadPublications = async () => {
+    setLoadingPublications(true);
+    try {
+      const res = await listPublicationsApi({ page_size: 100 });
+      if (res && res.items) {
+        setDbPublications(res.items);
+      }
+    } catch {
+      // Ignorar fallas silenciosas de red
+    } finally {
+      setLoadingPublications(false);
+    }
+  };
+
   // Cargar matriz de actividad desde backend
   const fetchActivityMatrix = async (pubId?: string) => {
     setLoading(true);
@@ -58,44 +98,151 @@ export const InteractionsPage: React.FC = () => {
         publication_id: activePubId === 'ALL' ? undefined : activePubId,
       });
 
-      if (res && res.rows && res.rows.length > 0) {
+      if (res && res.rows) {
         setMatrixData(res);
       } else {
-        // Si no hay datos aún en el backend, usar datos institucionales de demostración
-        setMatrixData(getMockMatrixData());
+        setMatrixData({
+          summary: {
+            total_monitored_persons: 0,
+            total_participated: 0,
+            total_not_participated: 0,
+            participation_percentage: 0,
+            total_reactions: 0,
+            total_comments: 0,
+            total_shares: 0,
+            reactions_by_type: {},
+            total_publications_evaluated: 0,
+          },
+          rows: [],
+        });
       }
     } catch {
-      // Fallback a datos institucionales de demostración en caso de error
-      setMatrixData(getMockMatrixData());
+      setMatrixData({
+        summary: {
+          total_monitored_persons: 0,
+          total_participated: 0,
+          total_not_participated: 0,
+          participation_percentage: 0,
+          total_reactions: 0,
+          total_comments: 0,
+          total_shares: 0,
+          reactions_by_type: {},
+          total_publications_evaluated: 0,
+        },
+        rows: [],
+      });
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    loadPublications();
     fetchActivityMatrix();
   }, []);
 
-  // Extraer lista única de publicaciones disponibles
+  // Abrir modal para vincular posts
+  const handleOpenAddPostModal = async () => {
+    setShowAddPostModal(true);
+    setModalError(null);
+    setModalSuccess(null);
+    setLoadingFbPosts(true);
+    try {
+      const posts = await getFacebookRecentPostsApi();
+      setFbRecentPosts(posts || []);
+    } catch {
+      setFbRecentPosts([]);
+    } finally {
+      setLoadingFbPosts(false);
+    }
+  };
+
+  // Importar post desde lista oficial de Facebook
+  const handleImportFbPost = async (post: FacebookRecentPostItem) => {
+    setImportingPostId(post.id);
+    setModalError(null);
+    try {
+      const newPub = await importPublicationFromUrlApi({
+        url: post.permalink_url || `https://facebook.com/${post.id}`,
+        title: post.message || 'Publicación Institucional Alcaldía de El Alto',
+        platform: 'FACEBOOK',
+      });
+      setModalSuccess('¡Publicación vinculada exitosamente!');
+      await loadPublications();
+      setSelectedPublicationId(newPub.id);
+      await fetchActivityMatrix(newPub.id);
+      setTimeout(() => {
+        setShowAddPostModal(false);
+        setModalSuccess(null);
+      }, 1000);
+    } catch (err: any) {
+      setModalError(err.response?.data?.detail || 'No se pudo vincular la publicación seleccionada.');
+    } finally {
+      setImportingPostId(null);
+    }
+  };
+
+  // Importar post pegando URL directo
+  const handleImportByUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputUrl.trim()) return;
+    setSubmittingUrl(true);
+    setModalError(null);
+    try {
+      const newPub = await importPublicationFromUrlApi({
+        url: inputUrl.trim(),
+        title: inputTitle.trim() || undefined,
+        platform: 'FACEBOOK',
+      });
+      setModalSuccess('¡Publicación vinculada exitosamente!');
+      setInputUrl('');
+      setInputTitle('');
+      await loadPublications();
+      setSelectedPublicationId(newPub.id);
+      await fetchActivityMatrix(newPub.id);
+      setTimeout(() => {
+        setShowAddPostModal(false);
+        setModalSuccess(null);
+      }, 1000);
+    } catch (err: any) {
+      setModalError(err.response?.data?.detail || 'No se pudo vincular la URL del post.');
+    } finally {
+      setSubmittingUrl(false);
+    }
+  };
+
+  // Extraer lista única de publicaciones disponibles (de la BD y de la matriz)
   const availablePublications = useMemo(() => {
-    if (!matrixData || !matrixData.rows.length) return [];
     const pubMap = new Map<string, { id: string; title: string; platform: string; url?: string; date?: string }>();
 
-    for (const row of matrixData.rows) {
-      for (const p of row.posts) {
-        if (!pubMap.has(p.publication_id)) {
-          pubMap.set(p.publication_id, {
-            id: p.publication_id,
-            title: p.post_title || p.external_post_id,
-            platform: p.platform,
-            url: p.post_url,
-            date: p.published_at,
-          });
+    for (const pub of dbPublications) {
+      pubMap.set(pub.id, {
+        id: pub.id,
+        title: pub.title || pub.external_post_id,
+        platform: pub.platform_name || 'FACEBOOK',
+        url: pub.post_url,
+        date: pub.published_at,
+      });
+    }
+
+    if (matrixData?.rows) {
+      for (const row of matrixData.rows) {
+        for (const p of row.posts) {
+          if (!pubMap.has(p.publication_id)) {
+            pubMap.set(p.publication_id, {
+              id: p.publication_id,
+              title: p.post_title || p.external_post_id,
+              platform: p.platform,
+              url: p.post_url,
+              date: p.published_at,
+            });
+          }
         }
       }
     }
+
     return Array.from(pubMap.values());
-  }, [matrixData]);
+  }, [dbPublications, matrixData]);
 
   // Publicación actualmente seleccionada
   const currentPost = useMemo(() => {
@@ -559,16 +706,49 @@ export const InteractionsPage: React.FC = () => {
                   cursor: 'pointer',
                 }}
               >
-                {availablePublications.map((pub) => (
-                  <option key={pub.id} value={pub.id}>
-                    [{pub.platform.toUpperCase()}] {pub.title}
+                {availablePublications.length === 0 ? (
+                  <option value="NONE" disabled>
+                    (No hay publicaciones institucionales vinculadas todavía)
                   </option>
-                ))}
+                ) : (
+                  <>
+                    <option value="ALL">📋 Todas las Publicaciones ({availablePublications.length})</option>
+                    {availablePublications.map((pub) => (
+                      <option key={pub.id} value={pub.id}>
+                        [{pub.platform.toUpperCase()}] {pub.title}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
 
             <button
-              onClick={() => fetchActivityMatrix()}
+              onClick={handleOpenAddPostModal}
+              style={{
+                background: 'linear-gradient(135deg, #1877f2, #0284c7)',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 16px',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(24, 119, 242, 0.25)',
+              }}
+            >
+              <Plus size={16} />
+              <span>+ Vincular Post de Facebook</span>
+            </button>
+
+            <button
+              onClick={() => {
+                loadPublications();
+                fetchActivityMatrix();
+              }}
               style={{
                 background: 'rgba(51, 65, 85, 0.6)',
                 border: '1px solid var(--border-subtle)',
@@ -582,8 +762,8 @@ export const InteractionsPage: React.FC = () => {
                 cursor: 'pointer',
               }}
             >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              <span>Recargar Post</span>
+              <RefreshCw size={14} className={loading || loadingPublications ? 'animate-spin' : ''} />
+              <span>Recargar</span>
             </button>
           </div>
 
@@ -1090,13 +1270,52 @@ export const InteractionsPage: React.FC = () => {
                 );
               })}
 
-              {filteredRows.length === 0 && (
+              {filteredRows.length === 0 && availablePublications.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                      <Facebook size={36} color="#60a5fa" />
+                      <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem' }}>
+                        No hay publicaciones institucionales vinculadas todavía para fiscalizar
+                      </div>
+                      <div style={{ fontSize: '0.84rem', maxWidth: '520px', color: '#94a3b8' }}>
+                        Vincula publicaciones de la página oficial de Facebook de la Alcaldía de El Alto para auditar automáticamente las reacciones, compartidos y comentarios de los funcionarios públicos.
+                      </div>
+                      <button
+                        onClick={handleOpenAddPostModal}
+                        style={{
+                          marginTop: '6px',
+                          background: 'linear-gradient(135deg, #1877f2, #0284c7)',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '10px 18px',
+                          borderRadius: '8px',
+                          fontSize: '0.85rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          boxShadow: '0 4px 12px rgba(24, 119, 242, 0.25)',
+                        }}
+                      >
+                        <Plus size={16} />
+                        <span>Vincular Post Oficial de Facebook</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {filteredRows.length === 0 && availablePublications.length > 0 && (
                 <tr>
                   <td colSpan={8} style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                       <AlertCircle size={32} color="#94a3b8" />
-                      <div style={{ fontWeight: 600, color: '#e2e8f0' }}>No se encontraron funcionarios con estos filtros</div>
-                      <div style={{ fontSize: '0.8rem' }}>Intenta cambiando la dirección seleccionada o el tipo de interacción.</div>
+                      <div style={{ fontWeight: 600, color: '#e2e8f0' }}>No se encontraron registros de funcionarios para esta consulta</div>
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                        Intenta cambiando la dirección seleccionada, limpiando el buscador, o pulsa "Sincronizar con Redes" para extraer y cotejar interacciones en vivo.
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -1105,6 +1324,304 @@ export const InteractionsPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* MODAL: Vincular Publicación Oficial de Facebook */}
+      {showAddPostModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px',
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: '680px',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              padding: '24px',
+              borderRadius: '12px',
+              background: '#0f172a',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Facebook size={20} color="#60a5fa" />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', margin: 0 }}>
+                  Vincular Publicación de la Página Oficial (GAMEA)
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowAddPostModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Pestañas: Recientes vs Pegar URL */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px' }}>
+              <button
+                onClick={() => setModalTab('recent')}
+                style={{
+                  background: modalTab === 'recent' ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                  color: modalTab === 'recent' ? '#60a5fa' : 'var(--text-muted)',
+                  border: modalTab === 'recent' ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid transparent',
+                  padding: '7px 14px',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Facebook size={14} />
+                <span>Posts Recientes de Página</span>
+              </button>
+
+              <button
+                onClick={() => setModalTab('url')}
+                style={{
+                  background: modalTab === 'url' ? 'rgba(6, 182, 212, 0.2)' : 'transparent',
+                  color: modalTab === 'url' ? '#06b6d4' : 'var(--text-muted)',
+                  border: modalTab === 'url' ? '1px solid rgba(6, 182, 212, 0.4)' : '1px solid transparent',
+                  padding: '7px 14px',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <LinkIcon size={14} />
+                <span>Pegar Enlace Directo (URL)</span>
+              </button>
+            </div>
+
+            {modalSuccess && (
+              <div
+                style={{
+                  background: 'rgba(16, 185, 129, 0.2)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  color: '#34d399',
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  marginBottom: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <CheckCircle2 size={16} />
+                <span>{modalSuccess}</span>
+              </div>
+            )}
+
+            {modalError && (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.2)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  color: '#f87171',
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  marginBottom: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <AlertCircle size={16} />
+                <span>{modalError}</span>
+              </div>
+            )}
+
+            {modalTab === 'recent' ? (
+              <div>
+                <p style={{ fontSize: '0.82rem', color: '#94a3b8', margin: '0 0 14px 0' }}>
+                  Selecciona una publicación realizada en la página institucional de Facebook para auditarla inmediatamente:
+                </p>
+
+                {loadingFbPosts ? (
+                  <div style={{ padding: '30px', textAlign: 'center', color: '#06b6d4' }}>
+                    <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 10px auto' }} />
+                    <div style={{ fontSize: '0.85rem' }}>Consultando publicaciones de la página en vivo...</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {fbRecentPosts.map((post) => (
+                      <div
+                        key={post.id}
+                        style={{
+                          background: 'rgba(30, 41, 59, 0.6)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          borderRadius: '8px',
+                          padding: '12px 14px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: '12px',
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 500, marginBottom: '4px' }}>
+                            "{post.message}"
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            Fecha: {post.created_time ? new Date(post.created_time).toLocaleString('es-ES') : 'Reciente'} • {post.shares_count || 0} compartidos
+                          </div>
+                        </div>
+
+                        <div>
+                          <button
+                            onClick={() => handleImportFbPost(post)}
+                            disabled={importingPostId === post.id}
+                            style={{
+                              background: post.is_monitored
+                                ? 'rgba(16, 185, 129, 0.2)'
+                                : 'linear-gradient(135deg, #0891b2, #0284c7)',
+                              color: post.is_monitored ? '#34d399' : '#fff',
+                              border: post.is_monitored ? '1px solid rgba(16, 185, 129, 0.4)' : 'none',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '0.78rem',
+                              fontWeight: 600,
+                              cursor: importingPostId === post.id ? 'not-allowed' : 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {post.is_monitored ? (
+                              <>
+                                <CheckCircle2 size={13} />
+                                <span>Evaluar Post</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus size={13} />
+                                <span>{importingPostId === post.id ? 'Vinculando...' : 'Vincular y Evaluar'}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {fbRecentPosts.length === 0 && (
+                      <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                        No se obtuvieron publicaciones automáticas de la página. Puedes usar la pestaña <strong>"Pegar Enlace Directo (URL)"</strong> para vincular cualquier post oficial pegando su enlace.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <form onSubmit={handleImportByUrl}>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
+                    Enlace de la Publicación de Facebook *
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://www.facebook.com/1612864202296619/posts/..."
+                    value={inputUrl}
+                    onChange={(e) => setInputUrl(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: 'rgba(30, 41, 59, 0.8)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '0.88rem',
+                      outline: 'none',
+                    }}
+                  />
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Pega el enlace directo copiado desde Facebook oficial. El sistema extraerá el ID automáticamente.
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '18px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
+                    Título o Descripción Resumida (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ejemplo: Inauguración Centro Infantil Distrito 3..."
+                    value={inputTitle}
+                    onChange={(e) => setInputTitle(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: 'rgba(30, 41, 59, 0.8)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '0.88rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPostModal(false)}
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid var(--border-subtle)',
+                      color: '#cbd5e1',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingUrl || !inputUrl.trim()}
+                    style={{
+                      background: 'linear-gradient(135deg, #1877f2, #0284c7)',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '8px 18px',
+                      borderRadius: '6px',
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      cursor: submittingUrl || !inputUrl.trim() ? 'not-allowed' : 'pointer',
+                      opacity: submittingUrl || !inputUrl.trim() ? 0.6 : 1,
+                    }}
+                  >
+                    {submittingUrl ? 'Vinculando...' : 'Vincular y Evaluar'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 7. Modal de Detalle de Auditoría & Verificación Manual */}
       {detailModalOpen && selectedRowDetail && (
@@ -1292,192 +1809,3 @@ export const InteractionsPage: React.FC = () => {
     </div>
   );
 };
-
-// Datos de demostración enriquecidos para cuando la BD no tenga registros previos
-function getMockMatrixData(): ActivityMatrixResponse {
-  const mockRows: ActivityMatrixRow[] = [
-    {
-      employee_id: '4928172 LP',
-      full_name: 'Juan Carlos Mamani Quispe',
-      department: 'Dirección de Obras Municipales',
-      position: 'Supervisor de Obras',
-      facebook_handle: 'juancarlos.mamani.obras',
-      tiktok_handle: '@juancarlos_elalto',
-      total_reactions: 1,
-      total_comments: 1,
-      total_shares: 1,
-      has_participated: true,
-      posts: [
-        {
-          publication_id: 'post_fb_gamea_obras_001',
-          platform: 'FACEBOOK',
-          external_post_id: '1612864202296619_1416238814024091',
-          post_url: 'https://facebook.com/AlcaldiaElAlto/posts/1416238814024091',
-          post_title: 'Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8',
-          published_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-          reaction_type: 'LIKE',
-          shared: true,
-          comment_text: 'Excelente trabajo por nuestra querida ciudad de El Alto, juntos avanzamos hacia el desarrollo.',
-          comment_created_at: new Date(Date.now() - 3600000).toISOString(),
-          verification_status: 'CONFIRMED',
-          epistemic_status_display: 'Confirmado',
-        },
-      ],
-    },
-    {
-      employee_id: '5819203 LP',
-      full_name: 'Martha Condori Flores',
-      department: 'Dirección de Salud',
-      position: 'Médico Coordinador de Red',
-      facebook_handle: 'martha.condori.gamea',
-      tiktok_handle: undefined,
-      total_reactions: 1,
-      total_comments: 0,
-      total_shares: 1,
-      has_participated: true,
-      posts: [
-        {
-          publication_id: 'post_fb_gamea_obras_001',
-          platform: 'FACEBOOK',
-          external_post_id: '1612864202296619_1416238814024091',
-          post_url: 'https://facebook.com/AlcaldiaElAlto/posts/1416238814024091',
-          post_title: 'Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8',
-          published_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-          reaction_type: 'LOVE',
-          shared: true,
-          comment_text: undefined,
-          comment_created_at: undefined,
-          verification_status: 'CONFIRMED',
-          epistemic_status_display: 'Confirmado',
-        },
-      ],
-    },
-    {
-      employee_id: '6728194 LP',
-      full_name: 'Rodrigo Choque Calle',
-      department: 'Dirección de Comunicación',
-      position: 'Especialista en Redes Sociales',
-      facebook_handle: 'rodrigo.choque.comunicacion',
-      tiktok_handle: '@rodrigo_choque',
-      total_reactions: 1,
-      total_comments: 1,
-      total_shares: 1,
-      has_participated: true,
-      posts: [
-        {
-          publication_id: 'post_fb_gamea_obras_001',
-          platform: 'FACEBOOK',
-          external_post_id: '1612864202296619_1416238814024091',
-          post_url: 'https://facebook.com/AlcaldiaElAlto/posts/1416238814024091',
-          post_title: 'Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8',
-          published_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-          reaction_type: 'LIKE',
-          shared: true,
-          comment_text: 'Difundiendo el gran trabajo de nuestra Alcaldesa Eva Copa en cada rincón de El Alto.',
-          comment_created_at: new Date(Date.now() - 3600000 * 1.5).toISOString(),
-          verification_status: 'CONFIRMED',
-          epistemic_status_display: 'Confirmado',
-        },
-      ],
-    },
-    {
-      employee_id: '7192834 LP',
-      full_name: 'Elena Quisbert Mendoza',
-      department: 'Dirección de Educación',
-      position: 'Analista de Gestión Educativa',
-      facebook_handle: 'elena.quisbert.mendoza',
-      tiktok_handle: undefined,
-      total_reactions: 1,
-      total_comments: 0,
-      total_shares: 0,
-      has_participated: true,
-      posts: [
-        {
-          publication_id: 'post_fb_gamea_obras_001',
-          platform: 'FACEBOOK',
-          external_post_id: '1612864202296619_1416238814024091',
-          post_url: 'https://facebook.com/AlcaldiaElAlto/posts/1416238814024091',
-          post_title: 'Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8',
-          published_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-          reaction_type: 'LIKE',
-          shared: false,
-          comment_text: undefined,
-          comment_created_at: undefined,
-          verification_status: 'CONFIRMED',
-          epistemic_status_display: 'Confirmado',
-        },
-      ],
-    },
-    {
-      employee_id: '8291024 LP',
-      full_name: 'Carlos Alberto Gutierrez',
-      department: 'Dirección de Planificación',
-      position: 'Técnico de Seguimiento POA',
-      facebook_handle: undefined,
-      tiktok_handle: undefined,
-      total_reactions: 0,
-      total_comments: 0,
-      total_shares: 0,
-      has_participated: false,
-      posts: [
-        {
-          publication_id: 'post_fb_gamea_obras_001',
-          platform: 'FACEBOOK',
-          external_post_id: '1612864202296619_1416238814024091',
-          post_url: 'https://facebook.com/AlcaldiaElAlto/posts/1416238814024091',
-          post_title: 'Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8',
-          published_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-          reaction_type: undefined,
-          shared: false,
-          comment_text: undefined,
-          comment_created_at: undefined,
-          verification_status: 'NOT_FOUND',
-          epistemic_status_display: 'Sin Actividad',
-        },
-      ],
-    },
-    {
-      employee_id: '9182736 LP',
-      full_name: 'Silvia Laura Apaza',
-      department: 'Dirección de Género y Gestión Social',
-      position: 'Trabajadora Social',
-      facebook_handle: 'silvia.laura.apaza',
-      tiktok_handle: undefined,
-      total_reactions: 0,
-      total_comments: 0,
-      total_shares: 0,
-      has_participated: false,
-      posts: [
-        {
-          publication_id: 'post_fb_gamea_obras_001',
-          platform: 'FACEBOOK',
-          external_post_id: '1612864202296619_1416238814024091',
-          post_url: 'https://facebook.com/AlcaldiaElAlto/posts/1416238814024091',
-          post_title: 'Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8',
-          published_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-          reaction_type: undefined,
-          shared: false,
-          comment_text: undefined,
-          comment_created_at: undefined,
-          verification_status: 'NOT_FOUND',
-          epistemic_status_display: 'Sin Actividad',
-        },
-      ],
-    },
-  ];
-
-  return {
-    summary: {
-      total_monitored_persons: 6,
-      total_participated: 4,
-      total_not_participated: 2,
-      participation_percentage: 66.7,
-      total_reactions: 4,
-      total_comments: 2,
-      total_shares: 3,
-      reactions_by_type: { LIKE: 3, LOVE: 1 },
-      total_publications_evaluated: 1,
-    },
-    rows: mockRows,
-  };
-}
