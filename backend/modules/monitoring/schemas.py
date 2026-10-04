@@ -129,6 +129,7 @@ class ActivityMatrixPersonPost(BaseModel):
     post_title: str
     published_at: datetime | None
     reaction_type: str | None = Field(default=None, description="LIKE, LOVE, CARE, HAHA, WOW, SAD, ANGRY o None")
+    shared: bool = Field(default=False, description="Indica si el funcionario compartió la publicación")
     comment_text: str | None = None
     comment_created_at: datetime | None = None
     verification_status: str = Field(default="NOT_FOUND", description="CONFIRMED, OBSERVED, API_RESTRICTED, NOT_FOUND")
@@ -144,6 +145,7 @@ class ActivityMatrixRow(BaseModel):
     tiktok_handle: str | None
     total_reactions: int
     total_comments: int
+    total_shares: int = Field(default=0, description="Total de veces que compartió")
     has_participated: bool
     posts: list[ActivityMatrixPersonPost]
 
@@ -151,9 +153,11 @@ class ActivityMatrixRow(BaseModel):
 class ActivityMatrixSummary(BaseModel):
     total_monitored_persons: int
     total_participated: int
+    total_not_participated: int = Field(default=0, description="Funcionarios sin ninguna interacción")
     participation_percentage: float
     total_reactions: int
     total_comments: int
+    total_shares: int = Field(default=0, description="Total de publicaciones compartidas")
     reactions_by_type: dict[str, int]
     total_publications_evaluated: int
 
@@ -161,6 +165,7 @@ class ActivityMatrixSummary(BaseModel):
 class ActivityMatrixResponse(BaseModel):
     summary: ActivityMatrixSummary
     rows: list[ActivityMatrixRow]
+
 
 
 class ConnectorVariableDetail(BaseModel):

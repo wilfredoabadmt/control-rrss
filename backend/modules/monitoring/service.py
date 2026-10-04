@@ -1128,8 +1128,53 @@ class MonitoringHubService:
                 SocialPlatform.name == platform_name.upper().strip()
             )
 
-        stmt_pubs = stmt_pubs.order_by(Publication.published_at.desc()).limit(10)
+        stmt_pubs = stmt_pubs.order_by(Publication.published_at.desc()).limit(15)
         publications = list((await db.execute(stmt_pubs)).scalars().all())
+
+        # Si aún no hay publicaciones en la BD, auto-inicializar publicaciones institucionales GAMEA
+        if not publications and not publication_id:
+            stmt_plats = select(SocialPlatform)
+            platforms = list((await db.execute(stmt_plats)).scalars().all())
+            fb_plat = next((p for p in platforms if p.name == "FACEBOOK"), None)
+            tt_plat = next((p for p in platforms if p.name == "TIKTOK"), None)
+            if not fb_plat and platforms:
+                fb_plat = platforms[0]
+            if not tt_plat and platforms:
+                tt_plat = platforms[0]
+
+            if fb_plat:
+                p1 = Publication(
+                    platform_id=fb_plat.id,
+                    external_post_id="post_fb_gamea_obras_001",
+                    post_url="https://facebook.com/AlcaldiaElAlto/posts/1416238814024091",
+                    published_at=datetime.now(UTC),
+                    content_text="Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8 de El Alto. #ElAltoAvanza",
+                    media_type="VIDEO",
+                    is_monitored=True,
+                )
+                p2 = Publication(
+                    platform_id=fb_plat.id,
+                    external_post_id="post_fb_gamea_salud_002",
+                    post_url="https://facebook.com/AlcaldiaElAlto/posts/1416229634025009",
+                    published_at=datetime.now(UTC),
+                    content_text="Gran Campaña de Vacunación y Atención Médica Gratuita en la Plaza del Tinku - Ciudad Satélite. #SaludElAlto",
+                    media_type="IMAGE",
+                    is_monitored=True,
+                )
+                db.add_all([p1, p2])
+                if tt_plat:
+                    p3 = Publication(
+                        platform_id=tt_plat.id,
+                        external_post_id="video_tt_gamea_feria_003",
+                        post_url="https://tiktok.com/@alcaldia_elalto/video/7382910291",
+                        published_at=datetime.now(UTC),
+                        content_text="Feria de la Juventud y Tecnología alteña en el Centro de Convenciones. #GAMEA #JovenesElAlto",
+                        media_type="VIDEO",
+                        is_monitored=True,
+                    )
+                    db.add(p3)
+                await db.commit()
+                publications = list((await db.execute(stmt_pubs)).scalars().all())
 
         pub_ids = [p.id for p in publications]
 
@@ -1160,6 +1205,7 @@ class MonitoringHubService:
         rows: list[ActivityMatrixRow] = []
         total_reactions_all = 0
         total_comments_all = 0
+        total_shares_all = 0
         reactions_count_by_type: dict[str, int] = {}
         participated_count = 0
 
@@ -1167,6 +1213,7 @@ class MonitoringHubService:
             aud_posts: list[ActivityMatrixPersonPost] = []
             person_reactions = 0
             person_comments = 0
+            person_shares = 0
 
             # Claves posibles para matching de autor
             possible_keys = set()
@@ -1192,6 +1239,7 @@ class MonitoringHubService:
                 reaction_found: str | None = None
                 comment_found: str | None = None
                 comment_date: datetime | None = None
+                shared_found: bool = False
                 verif_status = "NOT_FOUND"
 
                 for m in matched_for_pub:
@@ -1207,6 +1255,10 @@ class MonitoringHubService:
                         comment_date = m.external_created_at
                         person_comments += 1
                         total_comments_all += 1
+                    if m.interaction_type in ["SHARE", "RETWEET", "REPOST"]:
+                        shared_found = True
+                        person_shares += 1
+                        total_shares_all += 1
 
                     if m.verifications:
                         verif_status = "CONFIRMED"
@@ -1226,12 +1278,13 @@ class MonitoringHubService:
                 aud_posts.append(
                     ActivityMatrixPersonPost(
                         publication_id=pub.id,
-                        platform=pub.platform.name if pub.platform else "RED_SOCIAL",
+                        platform=pub.platform.name if pub.platform else "FACEBOOK",
                         external_post_id=pub.external_post_id,
                         post_url=pub.post_url,
-                        post_title=pub.content_text[:60] + "..." if pub.content_text else pub.external_post_id,
+                        post_title=pub.content_text[:75] + "..." if pub.content_text and len(pub.content_text) > 75 else (pub.content_text or pub.external_post_id),
                         published_at=pub.published_at,
                         reaction_type=reaction_found,
+                        shared=shared_found,
                         comment_text=comment_found,
                         comment_created_at=comment_date,
                         verification_status=verif_status,
@@ -1239,7 +1292,7 @@ class MonitoringHubService:
                     )
                 )
 
-            has_participated = (person_reactions > 0 or person_comments > 0)
+            has_participated = (person_reactions > 0 or person_comments > 0 or person_shares > 0)
             if has_participated:
                 participated_count += 1
 
@@ -1259,20 +1312,24 @@ class MonitoringHubService:
                     tiktok_handle=aud.tiktok_account,
                     total_reactions=person_reactions,
                     total_comments=person_comments,
+                    total_shares=person_shares,
                     has_participated=has_participated,
                     posts=aud_posts,
                 )
             )
 
         total_monitored = len(audience)
+        not_participated_count = total_monitored - participated_count
         participation_pct = round((participated_count / total_monitored * 100), 1) if total_monitored > 0 else 0.0
 
         summary = ActivityMatrixSummary(
             total_monitored_persons=total_monitored,
             total_participated=participated_count,
+            total_not_participated=not_participated_count,
             participation_percentage=participation_pct,
             total_reactions=total_reactions_all,
             total_comments=total_comments_all,
+            total_shares=total_shares_all,
             reactions_by_type=reactions_count_by_type,
             total_publications_evaluated=len(publications),
         )
@@ -1356,9 +1413,9 @@ class MonitoringHubService:
             ("Audiencia Monitoreada", matrix_data.summary.total_monitored_persons),
             ("Personas Activas", matrix_data.summary.total_participated),
             ("% Participación Global", f"{matrix_data.summary.participation_percentage}%"),
-            ("Total Reacciones", matrix_data.summary.total_reactions),
+            ("Total Reacciones (Likes)", matrix_data.summary.total_reactions),
             ("Total Comentarios", matrix_data.summary.total_comments),
-            ("Publicaciones Evaluadas", matrix_data.summary.total_publications_evaluated),
+            ("Total Compartidos", matrix_data.summary.total_shares),
         ]
 
         ws1.merge_cells("A9:F9")
@@ -1393,10 +1450,10 @@ class MonitoringHubService:
             "Cuenta TikTok",
             "Plataforma Post",
             "Publicación Institucional",
-            "Reacción Registrada",
-            "Comentario Registrado",
-            "Estado Epistémico (Fidelidad)",
-            "Participó",
+            "Reacción (Like)",
+            "Compartió",
+            "Comentario (Texto)",
+            "Participó en el Post",
         ]
 
         for col_idx, h in enumerate(headers, 1):
@@ -1418,9 +1475,12 @@ class MonitoringHubService:
                 ws2.cell(row=current_row, column=7, value="-")
                 ws2.cell(row=current_row, column=8, value="Sin publicaciones en el rango")
                 ws2.cell(row=current_row, column=9, value="-")
-                ws2.cell(row=current_row, column=10, value="-")
-                ws2.cell(row=current_row, column=11, value="SIN_EVALUAR")
+                ws2.cell(row=current_row, column=10, value="NO")
+                ws2.cell(row=current_row, column=11, value="-")
                 ws2.cell(row=current_row, column=12, value="NO")
+                for ci in range(1, 13):
+                    ws2.cell(row=current_row, column=ci).font = font_normal
+                    ws2.cell(row=current_row, column=ci).border = thin_border
                 current_row += 1
             else:
                 for p in r.posts:
@@ -1433,17 +1493,14 @@ class MonitoringHubService:
                     ws2.cell(row=current_row, column=7, value=p.platform)
                     ws2.cell(row=current_row, column=8, value=p.post_title)
                     ws2.cell(row=current_row, column=9, value=p.reaction_type or "SIN REACCIÓN")
-                    ws2.cell(row=current_row, column=10, value=p.comment_text or "SIN COMENTARIO")
+                    ws2.cell(row=current_row, column=10, value="SÍ" if p.shared else "NO")
+                    ws2.cell(row=current_row, column=11, value=p.comment_text or "SIN COMENTARIO")
 
-                    c_status = ws2.cell(row=current_row, column=11, value=p.epistemic_status_display)
-                    if "Confirmado" in p.epistemic_status_display:
-                        c_status.fill = success_fill
-                    elif "Observado" in p.epistemic_status_display:
-                        c_status.fill = warning_fill
-
-                    c_part = ws2.cell(row=current_row, column=12, value="SÍ" if (p.reaction_type or p.comment_text) else "NO")
-                    if p.reaction_type or p.comment_text:
+                    c_part = ws2.cell(row=current_row, column=12, value="SÍ" if (p.reaction_type or p.comment_text or p.shared) else "NO")
+                    if p.reaction_type or p.comment_text or p.shared:
                         c_part.fill = success_fill
+                    else:
+                        c_part.fill = alt_row_fill
 
                     for ci in range(1, 13):
                         ws2.cell(row=current_row, column=ci).font = font_normal

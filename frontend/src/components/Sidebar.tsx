@@ -66,7 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) =>
     },
     {
       id: 'interactions',
-      label: 'Verificación Epistémica',
+      label: 'Control de Reacciones',
       icon: MessageSquare,
       roles: [UserRole.SUPER_ADMIN, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
     },

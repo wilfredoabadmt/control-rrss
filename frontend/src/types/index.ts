@@ -272,6 +272,7 @@ export interface ActivityMatrixPersonPost {
   post_title: string;
   published_at?: string;
   reaction_type?: string;
+  shared?: boolean;
   comment_text?: string;
   comment_created_at?: string;
   verification_status: string;
@@ -287,6 +288,7 @@ export interface ActivityMatrixRow {
   tiktok_handle?: string;
   total_reactions: number;
   total_comments: number;
+  total_shares?: number;
   has_participated: boolean;
   posts: ActivityMatrixPersonPost[];
 }
@@ -294,9 +296,11 @@ export interface ActivityMatrixRow {
 export interface ActivityMatrixSummary {
   total_monitored_persons: number;
   total_participated: number;
+  total_not_participated?: number;
   participation_percentage: number;
   total_reactions: number;
   total_comments: number;
+  total_shares?: number;
   reactions_by_type: Record<string, number>;
   total_publications_evaluated: number;
 }
@@ -305,4 +309,5 @@ export interface ActivityMatrixResponse {
   summary: ActivityMatrixSummary;
   rows: ActivityMatrixRow[];
 }
+
 
