@@ -335,13 +335,11 @@ class PublicationService:
             except Exception:
                 pass
 
-        # Fallback con publicaciones oficiales verificadas si la API externa tuvo timeout
-        if not items:
+        # En ambiente TEST puramente sintético (offline para pytest):
+        if not items and os.environ.get("ENVIRONMENT", "").upper() == "TEST":
             sample_fb = [
                 ("1612864202296619_1416238814024091", "Inauguración de obras de pavimentado e iluminación LED en el Distrito Municipal 8 de El Alto. #ElAltoAvanza", 42),
                 ("1612864202296619_1416229634025009", "Gran Campaña de Vacunación y Atención Médica Gratuita en la Plaza del Tinku - Ciudad Satélite. #SaludElAlto", 18),
-                ("1612864202296619_1416224490692190", "Entrega de equipamiento médico y medicamentos en el Hospital del Norte. #GAMEA", 25),
-                ("1612864202296619_1416218497359456", "Feria de la Juventud y Tecnología alteña en el Centro de Convenciones. #JovenesElAlto", 31),
             ]
             for fid, fmsg, fshares in sample_fb:
                 is_mon = (fid in existing_map)

@@ -197,7 +197,7 @@ export interface ConnectorDiagnosticDetail {
   display_name: string;
   icon_type: string;
   api_version: string;
-  overall_status: 'OPERATIONAL' | 'PARTIAL' | 'NOT_CONFIGURED';
+  overall_status: 'OPERATIONAL' | 'PARTIAL' | 'NOT_CONFIGURED' | 'TOKEN_EXPIRED' | 'AUTH_FAILED' | string;
   status_label: string;
   target_account: string;
   rate_limit_display: string;

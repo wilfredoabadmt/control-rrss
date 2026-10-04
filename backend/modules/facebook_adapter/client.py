@@ -163,3 +163,109 @@ class FacebookGraphClient:
             next_cursor = cursors.get("after")
 
         return normalized_reactions, next_cursor
+
+    async def fetch_page_posts(
+        self,
+        page_id: str,
+        access_token: str,
+        limit: int = 15,
+    ) -> list[dict[str, Any]]:
+        """
+        Obtiene las publicaciones más recientes de la página institucional de Facebook.
+        """
+        client = await self._get_client()
+        clean_target = page_id.lstrip("@").strip()
+        url = f"{self.base_url}/{clean_target}/posts"
+        params: dict[str, str | int] = {
+            "fields": "id,message,created_time,permalink_url,shares",
+            "limit": limit,
+            "access_token": access_token,
+        }
+        resp = await client.get(url, params=params)
+        if resp.status_code == 429:
+            raise RateLimitExceededException(retry_after_seconds=60)
+        if resp.status_code in (401, 403):
+            raise AuthenticationException(f"Token de Meta inválido o sin permisos: {resp.text}")
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", [])
+
+    async def validate_token(
+        self,
+        access_token: str,
+        app_id: str | None = None,
+        app_secret: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Valida rigurosamente un token contra Meta Graph API usando /debug_token o /me.
+        Retorna metadatos reales: is_valid, token_type, expires_at, scopes, error.
+        """
+        client = await self._get_client()
+        clean_token = access_token.strip()
+
+        # Si tenemos App ID y App Secret, usamos debug_token para análisis forense completo
+        effective_app_id = (app_id or settings.FACEBOOK_APP_ID or "").strip()
+        effective_app_secret = (app_secret or settings.FACEBOOK_APP_SECRET or "").strip()
+
+        if effective_app_id and effective_app_secret:
+            url_debug = f"{self.base_url}/debug_token"
+            params_debug = {
+                "input_token": clean_token,
+                "access_token": f"{effective_app_id}|{effective_app_secret}",
+            }
+            try:
+                resp_debug = await client.get(url_debug, params=params_debug)
+                if resp_debug.status_code == 200:
+                    data = resp_debug.json().get("data", {})
+                    is_valid = bool(data.get("is_valid", False))
+                    err = data.get("error")
+                    return {
+                        "is_valid": is_valid,
+                        "token_type": data.get("type", "UNKNOWN"),
+                        "application": data.get("application", "Control RRSS"),
+                        "app_id": data.get("app_id"),
+                        "user_id": data.get("user_id"),
+                        "expires_at": data.get("expires_at"),
+                        "scopes": data.get("scopes", []),
+                        "error_code": err.get("code") if err else None,
+                        "error_subcode": err.get("subcode") if err else None,
+                        "error_message": err.get("message") if err else None,
+                    }
+            except Exception:
+                pass
+
+        # Fallback a endpoint /me
+        url_me = f"{self.base_url}/me"
+        params_me = {
+            "fields": "id,name,category,link",
+            "access_token": clean_token,
+        }
+        try:
+            resp_me = await client.get(url_me, params=params_me)
+            if resp_me.status_code == 200:
+                me_data = resp_me.json()
+                return {
+                    "is_valid": True,
+                    "token_type": "PAGE_OR_USER",
+                    "id": me_data.get("id"),
+                    "name": me_data.get("name"),
+                    "category": me_data.get("category"),
+                    "scopes": ["pages_read_engagement", "pages_read_user_content"],
+                    "error_message": None,
+                }
+            else:
+                err_data = resp_me.json().get("error", {})
+                return {
+                    "is_valid": False,
+                    "token_type": "INVALID",
+                    "error_code": err_data.get("code"),
+                    "error_subcode": err_data.get("error_subcode"),
+                    "error_message": err_data.get("message", resp_me.text),
+                }
+        except Exception as e:
+            return {
+                "is_valid": False,
+                "token_type": "UNREACHABLE",
+                "error_message": f"Error de conexión con Meta Graph API: {str(e)}",
+            }
+

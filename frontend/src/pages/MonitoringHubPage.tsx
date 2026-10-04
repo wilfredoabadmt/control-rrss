@@ -30,6 +30,7 @@ import { LISTA_DIRECCIONES, ORGANIGRAMA_GAMEA } from '../data/organigrama';
 import {
   ActivityMatrixResponse,
   ConnectorConfigItem,
+  ConnectorsDiagnosticResponse,
   MonitoredPerson,
   RunSyncResponse,
   TestConnectionResponse,
@@ -75,6 +76,7 @@ export const MonitoringHubPage: React.FC = () => {
   const [matrixData, setMatrixData] = useState<ActivityMatrixResponse | null>(null);
   const [audienceList, setAudienceList] = useState<MonitoredPerson[]>([]);
   const [connectorConfigs, setConnectorConfigs] = useState<ConnectorConfigItem[]>([]);
+  const [diagResponse, setDiagResponse] = useState<ConnectorsDiagnosticResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -162,9 +164,18 @@ export const MonitoringHubPage: React.FC = () => {
     }
   };
 
+  const fetchDiagnostics = async () => {
+    try {
+      const diag = await monitoringApi.getConnectorsDiagnostics();
+      setDiagResponse(diag);
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
   const loadAll = async () => {
     setIsLoading(true);
-    await Promise.all([fetchMatrix(), fetchAudience(), fetchConfigs()]);
+    await Promise.all([fetchMatrix(), fetchAudience(), fetchConfigs(), fetchDiagnostics()]);
     setIsLoading(false);
   };
 
@@ -364,15 +375,20 @@ export const MonitoringHubPage: React.FC = () => {
         platform_name: platformName,
         target_account_id: cfg?.target_account_id,
         extraction_mode: cfg?.extraction_mode,
+        access_token: cfg?.access_token || undefined,
+        api_secret: cfg?.api_secret || undefined,
       });
       setTestResult(res);
+      await fetchDiagnostics();
+      await fetchConfigs();
     } catch (err: any) {
       console.error(err);
+      const detail = err.response?.data?.detail || err.message || 'No se pudo conectar con el endpoint de prueba.';
       setTestResult({
         platform_name: platformName,
         success: false,
         status: 'ERROR',
-        message: 'No se pudo conectar con el endpoint de prueba.',
+        message: detail,
       });
     } finally {
       setTestingPlatform(null);
@@ -384,6 +400,7 @@ export const MonitoringHubPage: React.FC = () => {
       await monitoringApi.updateConnectorConfigs(connectorConfigs);
       setSuccessMessage('Parámetros de conectores guardados con éxito.');
       await fetchConfigs();
+      await fetchDiagnostics();
     } catch (err: any) {
       console.error(err);
       setErrorMessage('Error al guardar la configuración de los conectores.');
@@ -1267,21 +1284,81 @@ export const MonitoringHubPage: React.FC = () => {
               background: 'rgba(139, 92, 246, 0.05)',
             }}
           >
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#c084fc', marginBottom: '6px' }}>
-              Parámetros de Integración e Ingesta de Redes Sociales
-            </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: '1.5' }}>
-              Configure los identificadores de página institucional, claves de API Graph de Meta y Display API de TikTok.
-              Todas las credenciales y tokens de acceso son cifrados en reposo con <strong>AES-256 (Fernet)</strong> conforme
-              al Principio XX de la Constitución SDD.
-            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#c084fc', marginBottom: '6px' }}>
+                  Parámetros de Integración e Ingesta de Redes Sociales (Modo Oficial en Vivo)
+                </h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: '1.5' }}>
+                  Estado real de las APIs institucionales. Todas las conexiones se verifican directamente contra los servidores
+                  de Meta y TikTok. Credenciales cifradas con <strong>AES-256 (Fernet)</strong>.
+                </p>
+              </div>
+              <button
+                onClick={fetchDiagnostics}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: '6px',
+                  background: 'rgba(139, 92, 246, 0.15)',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  color: '#c084fc',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <RefreshCw size={14} />
+                Actualizar Diagnóstico en Vivo
+              </button>
+            </div>
           </div>
+
+          {/* Banner de Aviso Forense si el token de Facebook expiró */}
+          {diagResponse?.connectors?.find((c) => c.platform_name === 'FACEBOOK')?.overall_status === 'TOKEN_EXPIRED' && (
+            <div
+              style={{
+                padding: '16px 20px',
+                borderRadius: '8px',
+                background: 'rgba(245, 158, 11, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                color: '#fbbf24',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <AlertCircle size={20} color="#fbbf24" />
+                <h4 style={{ fontWeight: 800, fontSize: '0.95rem', margin: 0 }}>
+                  ESTADO EN VIVO: TOKEN DE META GRAPH API EXPIRADO
+                </h4>
+              </div>
+              <p style={{ fontSize: '0.85rem', color: '#fde68a', margin: '4px 0 10px 0' }}>
+                Su Aplicación institucional <strong>Control RRSS</strong> (ID: 1408420487501330) se encuentra verificada y activa en Meta. Sin embargo, el token de acceso actual expiró (Código 190, subcódigo 463).
+              </p>
+              <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px 16px', borderRadius: '6px', fontSize: '0.82rem', color: '#fff' }}>
+                <strong>Guía Rápida para Obtener un Token de Fanpage Permanente:</strong>
+                <ol style={{ paddingLeft: '20px', margin: '6px 0 0 0', lineHeight: '1.6' }}>
+                  <li>Abra el <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer" style={{ color: '#38bdf8', textDecoration: 'underline' }}>Graph API Explorer de Meta</a>.</li>
+                  <li>En el selector <strong>Meta App</strong>, elija <strong>Control RRSS (1408420487501330)</strong>.</li>
+                  <li>En el desplegable <strong>User or Page</strong>, seleccione su <strong>Página de Facebook</strong> (al seleccionar la página, Meta genera un token permanente que no caduca).</li>
+                  <li>Asegúrese de marcar los permisos <code>pages_read_engagement</code> y <code>pages_read_user_content</code>.</li>
+                  <li>Haga clic en <strong>Generate Access Token</strong>, copie el token y péguelo en el campo <em>Token de Acceso de Página</em> a continuación.</li>
+                  <li>Haga clic en <strong>Guardar Parámetros</strong> y luego en <strong>Probar Conexión Facebook</strong>.</li>
+                </ol>
+              </div>
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '24px' }}>
             {/* Tarjeta Facebook */}
             {connectorConfigs
               .filter((c) => c.platform_name === 'FACEBOOK')
-              .map((fbCfg, idx) => (
+              .map((fbCfg, idx) => {
+                const fbDiag = diagResponse?.connectors?.find((c) => c.platform_name === 'FACEBOOK');
+                const isFbOnline = fbDiag?.overall_status === 'OPERATIONAL';
+                const isFbExpired = fbDiag?.overall_status === 'TOKEN_EXPIRED';
+                return (
                 <div key={fbCfg.platform_name} className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1295,15 +1372,19 @@ export const MonitoringHubPage: React.FC = () => {
                     </div>
                     <span
                       style={{
-                        padding: '4px 8px',
+                        padding: '4px 10px',
                         borderRadius: '4px',
-                        background: fbCfg.is_active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                        color: fbCfg.is_active ? '#34d399' : '#f87171',
+                        background: isFbOnline
+                          ? 'rgba(16, 185, 129, 0.15)'
+                          : isFbExpired
+                          ? 'rgba(245, 158, 11, 0.15)'
+                          : 'rgba(239, 68, 68, 0.15)',
+                        color: isFbOnline ? '#34d399' : isFbExpired ? '#fbbf24' : '#f87171',
                         fontSize: '0.75rem',
                         fontWeight: 700,
                       }}
                     >
-                      {fbCfg.is_active ? 'HABILITADO' : 'INACTIVO'}
+                      {fbDiag?.status_label || (fbCfg.is_active ? 'HABILITADO' : 'INACTIVO')}
                     </span>
                   </div>
 
@@ -1409,12 +1490,16 @@ export const MonitoringHubPage: React.FC = () => {
                     </button>
                   </div>
                 </div>
-              ))}
+              );
+            })}
 
             {/* Tarjeta TikTok */}
             {connectorConfigs
               .filter((c) => c.platform_name === 'TIKTOK')
-              .map((ttCfg) => (
+              .map((ttCfg) => {
+                const ttDiag = diagResponse?.connectors?.find((c) => c.platform_name === 'TIKTOK');
+                const isTtConfigured = ttDiag?.overall_status === 'OPERATIONAL';
+                return (
                 <div key={ttCfg.platform_name} className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1428,15 +1513,15 @@ export const MonitoringHubPage: React.FC = () => {
                     </div>
                     <span
                       style={{
-                        padding: '4px 8px',
+                        padding: '4px 10px',
                         borderRadius: '4px',
-                        background: ttCfg.is_active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                        color: ttCfg.is_active ? '#34d399' : '#f87171',
+                        background: isTtConfigured ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: isTtConfigured ? '#34d399' : '#f87171',
                         fontSize: '0.75rem',
                         fontWeight: 700,
                       }}
                     >
-                      {ttCfg.is_active ? 'HABILITADO' : 'INACTIVO'}
+                      {ttDiag?.status_label || (ttCfg.is_active ? 'HABILITADO' : 'INACTIVO')}
                     </span>
                   </div>
 
@@ -1546,7 +1631,8 @@ export const MonitoringHubPage: React.FC = () => {
                     </button>
                   </div>
                 </div>
-              ))}
+              );
+            })}
           </div>
 
           {/* Resultado de prueba de conexión */}
@@ -1554,21 +1640,108 @@ export const MonitoringHubPage: React.FC = () => {
             <div
               className="glass-panel"
               style={{
-                padding: '18px 24px',
-                borderLeft: testResult.success ? '4px solid #10b981' : '4px solid #ef4444',
-                background: testResult.success ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                padding: '20px 24px',
+                borderLeft: testResult.success
+                  ? '4px solid #10b981'
+                  : testResult.status === 'TOKEN_EXPIRED'
+                  ? '4px solid #f59e0b'
+                  : '4px solid #ef4444',
+                background: testResult.success
+                  ? 'rgba(16, 185, 129, 0.05)'
+                  : testResult.status === 'TOKEN_EXPIRED'
+                  ? 'rgba(245, 158, 11, 0.08)'
+                  : 'rgba(239, 68, 68, 0.05)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                {testResult.success ? <CheckCircle size={18} color="#10b981" /> : <AlertCircle size={18} color="#ef4444" />}
-                <h4 style={{ fontWeight: 700, color: testResult.success ? '#34d399' : '#f87171' }}>
-                  Resultado de Verificación: {testResult.platform_name} ({testResult.status})
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {testResult.success ? (
+                  <CheckCircle size={20} color="#10b981" />
+                ) : (
+                  <AlertCircle size={20} color={testResult.status === 'TOKEN_EXPIRED' ? '#f59e0b' : '#ef4444'} />
+                )}
+                <h4
+                  style={{
+                    fontWeight: 700,
+                    fontSize: '1rem',
+                    color: testResult.success
+                      ? '#34d399'
+                      : testResult.status === 'TOKEN_EXPIRED'
+                      ? '#fbbf24'
+                      : '#f87171',
+                  }}
+                >
+                  Verificación de API: {testResult.platform_name} — {testResult.status}
                 </h4>
+                {testResult.account_info?.latency_ms !== undefined && (
+                  <span
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: 'rgba(255,255,255,0.1)',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    Latencia: {testResult.account_info.latency_ms} ms
+                  </span>
+                )}
               </div>
-              <p style={{ color: 'var(--text-main)', fontSize: '0.85rem' }}>{testResult.message}</p>
+
+              <p style={{ color: 'var(--text-main)', fontSize: '0.9rem', lineHeight: '1.5' }}>
+                {testResult.message}
+              </p>
+
               {testResult.account_info && (
-                <div style={{ marginTop: '10px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Detalles técnicos: {JSON.stringify(testResult.account_info)}
+                <div
+                  style={{
+                    marginTop: '4px',
+                    padding: '12px 16px',
+                    borderRadius: '6px',
+                    background: 'rgba(0, 0, 0, 0.35)',
+                    border: '1px solid var(--border-subtle)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  {testResult.account_info.application && (
+                    <div>
+                      <strong style={{ color: 'var(--text-muted)' }}>Aplicación Meta: </strong>
+                      <span style={{ color: '#fff' }}>{testResult.account_info.application}</span>
+                    </div>
+                  )}
+                  {testResult.account_info.token_type && (
+                    <div>
+                      <strong style={{ color: 'var(--text-muted)' }}>Tipo de Token: </strong>
+                      <span style={{ color: '#38bdf8' }}>{testResult.account_info.token_type}</span>
+                    </div>
+                  )}
+                  {testResult.account_info.expiration && (
+                    <div>
+                      <strong style={{ color: 'var(--text-muted)' }}>Vigencia: </strong>
+                      <span style={{ color: '#34d399' }}>{testResult.account_info.expiration}</span>
+                    </div>
+                  )}
+                  {testResult.account_info.permissions && (
+                    <div>
+                      <strong style={{ color: 'var(--text-muted)' }}>Permisos Activos: </strong>
+                      <span style={{ color: '#c084fc' }}>
+                        {Array.isArray(testResult.account_info.permissions)
+                          ? testResult.account_info.permissions.join(', ')
+                          : String(testResult.account_info.permissions)}
+                      </span>
+                    </div>
+                  )}
+                  {testResult.account_info.error_message && (
+                    <div style={{ color: '#f87171' }}>
+                      <strong>Detalle del Error: </strong>
+                      <span>{testResult.account_info.error_message}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -71,9 +71,10 @@ async def update_connector_configs(
 )
 async def test_connection(
     req: TestConnectionRequest,
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await MonitoringHubService.test_connection(req)
+    return await MonitoringHubService.test_connection(req, db)
 
 
 @monitoring_router.get(
