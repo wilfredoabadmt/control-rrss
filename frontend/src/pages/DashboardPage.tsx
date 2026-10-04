@@ -39,35 +39,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [selectedIndicator, setSelectedIndicator] = useState<IndicatorResult | null>(null);
   const [showTechnicalBreakdown, setShowTechnicalBreakdown] = useState<boolean>(false);
 
-  // Operational State
+  // Operational State (Datos reales del backend — sin estados ni números ficticios)
   const [opData, setOpData] = useState<OperationalDashboardResponse>({
-    platforms: [
-      { name: 'facebook', display_name: 'Facebook (Meta Graph API)', is_active: true, status: 'ONLINE' },
-      { name: 'tiktok', display_name: 'TikTok (Display API)', is_active: true, status: 'ONLINE' }
-    ],
-    monitored_publications_count: 14,
-    total_interactions_count: 342,
-    pending_verifications_count: 18,
-    recent_sync_jobs: [
-      {
-        id: 'job-fb-001',
-        platform: 'facebook',
-        job_type: 'POST_SYNC',
-        status: 'COMPLETED' as any,
-        created_at: new Date().toISOString(),
-        records_processed: 8,
-        records_failed: 0
-      },
-      {
-        id: 'job-tt-002',
-        platform: 'tiktok',
-        job_type: 'METRICS_SYNC',
-        status: 'COMPLETED' as any,
-        created_at: new Date(Date.now() - 3600000).toISOString(),
-        records_processed: 6,
-        records_failed: 0
-      }
-    ],
+    platforms: [],
+    monitored_publications_count: 0,
+    total_interactions_count: 0,
+    pending_verifications_count: 0,
+    recent_sync_jobs: [],
     active_alerts: []
   });
 
@@ -76,11 +54,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     observable_coverage_rate: {
       code: 'IND-COV-01',
       name: 'Tasa de Cobertura Observable',
-      value: 92.4,
+      value: 0,
       unit: '%',
-      numerator: 3880,
-      denominator: 4200,
-      exclusions: 312,
+      numerator: 0,
+      denominator: 0,
+      exclusions: 0,
       formula: '(Funcionarios_Con_Cuenta_Observable / Funcionarios_Activos_Elegibles) * 100',
       description: 'Porcentaje de funcionarios cuya actividad en plataformas oficiales es técnicamente observable.',
       methodology_notes: 'Excluye funcionarios en comisión, suspendidos y plataformas con restricciones de API (Principio V y XXVI).'
@@ -88,29 +66,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     verification_rate: {
       code: 'IND-VER-01',
       name: 'Tasa de Verificación Institucional',
-      value: 86.8,
+      value: 0,
       unit: '%',
-      numerator: 297,
-      denominator: 342,
-      exclusions: 24,
+      numerator: 0,
+      denominator: 0,
+      exclusions: 0,
       formula: '(Interacciones_Confirmadas / Total_Interacciones_Exigibles) * 100',
       description: 'Nivel de verificación epistémica de interacciones en campañas oficiales monitoreadas.',
       methodology_notes: 'Calculado sobre interacciones de funcionarios públicos en horario de publicación oficial sin inventar identidades.'
     },
-    verification_distribution: {
-      CONFIRMED: 297,
-      DECLARED_CONFIRMED: 45,
-      PENDING: 18,
-      NOT_OBSERVABLE: 24,
-      API_RESTRICTED: 12,
-      DECLARED_NOT_FOUND: 6,
-      NOT_FOUND: 8
-    },
+    verification_distribution: {},
     platform_breakdown: {
-      facebook: 284,
-      tiktok: 58
+      facebook: 0,
+      tiktok: 0
     },
-    total_active_employees: 4512,
+    total_active_employees: 0,
     constitutional_disclaimer:
       'PRINCIPIO XXVII: Prohibición absoluta de rankings de funcionarios, puntajes individuales o evaluaciones punitivas de desempeño. Todos los indicadores son de carácter técnico y de alcance exclusivamente agregado.'
   });
@@ -327,42 +297,86 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                {opData.platforms.map((p) => (
-                  <div
-                    key={p.name}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      background: 'rgba(31, 41, 55, 0.4)',
-                      padding: '8px 16px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--border-subtle)'
-                    }}
-                  >
-                    {p.name.toLowerCase().includes('facebook') ? (
-                      <Facebook size={18} color="#1877f2" />
-                    ) : (
-                      <Video size={18} color="#06b6d4" />
-                    )}
-                    <span style={{ fontSize: '0.85rem', fontWeight: '500' }}>{p.display_name}</span>
-                    <span
-                      className={`badge ${
-                        p.status === 'ONLINE'
-                          ? 'badge-success'
-                          : p.status === 'DEGRADED'
-                          ? 'badge-warning'
-                          : 'badge-info'
-                      }`}
-                      style={{ fontSize: '0.7rem' }}
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {opData.platforms.map((p) => {
+                  const isOnline = p.status === 'ONLINE';
+                  const isExpired = p.status === 'TOKEN_EXPIRED';
+                  const isNotConfigured = p.status === 'NOT_CONFIGURED';
+                  const isAuthFailed = p.status === 'AUTH_FAILED';
+
+                  const badgeClass = isOnline
+                    ? 'badge-success'
+                    : isExpired
+                    ? 'badge-warning'
+                    : 'badge-danger';
+
+                  const statusLabel = isOnline
+                    ? 'ONLINE'
+                    : isExpired
+                    ? 'TOKEN EXPIRADO'
+                    : isNotConfigured
+                    ? 'NO CONFIGURADO'
+                    : isAuthFailed
+                    ? 'ERROR AUTH'
+                    : p.status === 'OFFLINE'
+                    ? 'DESCONECTADO'
+                    : p.status;
+
+                  return (
+                    <div
+                      key={p.name}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        background: 'rgba(31, 41, 55, 0.4)',
+                        padding: '8px 16px',
+                        borderRadius: 'var(--radius-md)',
+                        border: isOnline
+                          ? '1px solid rgba(16, 185, 129, 0.4)'
+                          : isExpired
+                          ? '1px solid rgba(245, 158, 11, 0.4)'
+                          : '1px solid rgba(239, 68, 68, 0.3)'
+                      }}
                     >
-                      {p.status}
-                    </span>
-                  </div>
-                ))}
+                      {p.name.toLowerCase().includes('facebook') ? (
+                        <Facebook size={18} color="#1877f2" />
+                      ) : (
+                        <Video size={18} color="#06b6d4" />
+                      )}
+                      <span style={{ fontSize: '0.85rem', fontWeight: '500' }}>{p.display_name}</span>
+                      <span
+                        className={`badge ${badgeClass}`}
+                        style={{ fontSize: '0.7rem', fontWeight: '700' }}
+                      >
+                        {statusLabel}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
+
+            {/* Banner de Diagnóstico Real de Conectores */}
+            {opData.platforms.some((p) => p.status !== 'ONLINE') && (
+              <div
+                style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '12px 20px',
+                  marginBottom: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px'
+                }}
+              >
+                <AlertTriangle size={20} color="#f59e0b" style={{ flexShrink: 0 }} />
+                <div style={{ fontSize: '0.85rem', color: '#fcd34d' }}>
+                  <strong>Diagnóstico en Tiempo Real:</strong> El panel refleja el estado auténtico verificado contra los servidores de Meta y TikTok. Si un conector indica <em>TOKEN EXPIRADO</em> o <em>NO CONFIGURADO</em>, configure o renueve las credenciales en el módulo <strong>Auditoría RRSS &amp; Scraper</strong> para sincronizar interacciones en vivo.
+                </div>
+              </div>
+            )}
 
             {/* Metric KPI Cards */}
             <div

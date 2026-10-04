@@ -48,18 +48,53 @@ async def get_operational_dashboard(
     """
     BR-DSH-001: Todos los datos se consultan y calculan en backend, nunca en frontend.
     """
-    # 1. Plataformas y estado de salud
+    # 1. Plataformas y estado de salud real basado en diagnóstico forense de conectores
+    from modules.monitoring.service import MonitoringHubService
+
     stmt_plats = select(SocialPlatform)
     plats = list((await db.execute(stmt_plats)).scalars().all())
-    platform_health = [
-        PlatformHealthItem(
-            name=p.name,
-            display_name=p.display_name,
-            is_active=p.is_active,
-            status="ONLINE" if p.is_active else "OFFLINE",
+
+    diag = await MonitoringHubService.get_connectors_diagnostics(db)
+    diag_map = {c.platform_name.upper(): c for c in diag.connectors}
+
+    platform_health = []
+    connector_alerts = []
+
+    for p in plats:
+        plat_key = p.name.upper()
+        diag_item = diag_map.get(plat_key)
+
+        if not p.is_active:
+            status = "OFFLINE"
+        elif not diag_item:
+            status = "NOT_CONFIGURED"
+        else:
+            status = diag_item.overall_status  # "ONLINE", "TOKEN_EXPIRED", "NOT_CONFIGURED", "AUTH_FAILED"
+
+        if status == "TOKEN_EXPIRED":
+            connector_alerts.append({
+                "level": "WARNING",
+                "message": f"{p.display_name}: El Token de acceso ha caducado. Requiere renovación en Graph API Explorer.",
+            })
+        elif status == "NOT_CONFIGURED":
+            connector_alerts.append({
+                "level": "INFO",
+                "message": f"{p.display_name}: Conector sin credenciales activas configuradas en el servidor.",
+            })
+        elif status == "AUTH_FAILED":
+            connector_alerts.append({
+                "level": "ERROR",
+                "message": f"{p.display_name}: Fallo de autenticación en la API oficial.",
+            })
+
+        platform_health.append(
+            PlatformHealthItem(
+                name=p.name,
+                display_name=p.display_name,
+                is_active=p.is_active and (status == "ONLINE"),
+                status=status,
+            )
         )
-        for p in plats
-    ]
 
     # 2. Publicaciones activas
     stmt_pubs = select(func.count(Publication.id)).where(Publication.is_monitored.is_(True))
@@ -89,13 +124,17 @@ async def get_operational_dashboard(
         for j in jobs
     ]
 
-    # 6. Alertas dinámicas del sistema
+    # 6. Alertas dinámicas del sistema (exclusivamente veraces y reales)
     system_alerts = await NotificationService.get_active_system_alerts(db)
     alerts = [
-        {"level": "INFO", "message": "Tokens de conectores institucionales Meta y TikTok vigentes."},
-        {"level": "SUCCESS", "message": "Motor de ingesta operando con idempotencia activa."},
+        *connector_alerts,
         *system_alerts,
     ]
+    if not alerts:
+        alerts.append({
+            "level": "SUCCESS",
+            "message": "Todos los conectores institucionales se encuentran activos y sincronizados.",
+        })
 
     return OperationalDashboardResponse(
         platforms=platform_health,
