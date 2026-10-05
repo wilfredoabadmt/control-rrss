@@ -186,3 +186,75 @@ async def test_employee_deactivation_soft_delete(async_db, mock_admin):
     assert len(emp_reloaded.history) == 1
     assert emp_reloaded.history[0].new_status == EmployeeStatus.TERMINATED.value
     assert "Fin de contrato" in emp_reloaded.history[0].change_reason
+
+
+@pytest.mark.asyncio
+async def test_employee_bulk_delete_soft(async_db, mock_admin):
+    """Prueba la baja lógica en lote de múltiples funcionarios."""
+    created_ids = []
+    for i in range(5):
+        emp_in = EmployeeCreate(
+            employee_id=f"GAMEA-BULK-SOFT-{i}",
+            first_name=f"Funcionario{i}",
+            last_name=f"Apellido{i}",
+            document_number=f"700000{i}",
+            status=EmployeeStatus.ACTIVE.value,
+        )
+        emp = await EmployeeService.create_employee(async_db, emp_in, mock_admin)
+        created_ids.append(emp.employee_id)
+
+    # Ejecutar baja lógica en lote
+    result = await EmployeeService.bulk_delete_employees(
+        db=async_db,
+        employee_ids=created_ids,
+        current_user=mock_admin,
+        permanent=False,
+        reason="Baja de nómina masiva fin de gestión",
+    )
+
+    assert result["total_requested"] == 5
+    assert result["deleted_count"] == 5
+    assert result["permanent"] is False
+
+    # Verificar que todos están con estado TERMINATED e historial
+    for eid in created_ids:
+        emp = await EmployeeService.get_employee_by_id(async_db, eid)
+        assert emp is not None
+        assert emp.status == EmployeeStatus.TERMINATED.value
+        assert len(emp.history) >= 1
+        assert "Baja de nómina masiva" in emp.history[-1].change_reason
+
+
+@pytest.mark.asyncio
+async def test_employee_bulk_delete_permanent(async_db, mock_admin):
+    """Prueba la eliminación física definitiva en lote de múltiples funcionarios."""
+    created_ids = []
+    for i in range(4):
+        emp_in = EmployeeCreate(
+            employee_id=f"GAMEA-BULK-PERM-{i}",
+            first_name=f"PruebaPurga{i}",
+            last_name=f"ApellidoPurga{i}",
+            document_number=f"800000{i}",
+            status=EmployeeStatus.ACTIVE.value,
+        )
+        emp = await EmployeeService.create_employee(async_db, emp_in, mock_admin)
+        created_ids.append(emp.employee_id)
+
+    # Ejecutar purga física permanente en lote
+    result = await EmployeeService.bulk_delete_employees(
+        db=async_db,
+        employee_ids=created_ids,
+        current_user=mock_admin,
+        permanent=True,
+        reason="Purga administrativa de duplicados",
+    )
+
+    assert result["total_requested"] == 4
+    assert result["deleted_count"] == 4
+    assert result["permanent"] is True
+
+    # Verificar que los registros ya no existen en la base de datos
+    for eid in created_ids:
+        emp = await EmployeeService.get_employee_by_id(async_db, eid)
+        assert emp is None
+

@@ -525,6 +525,162 @@ class EmployeeService:
             await EmployeeService.deactivate_employee(db, employee_id, current_user, reason=reason)
 
     @staticmethod
+    async def bulk_delete_employees(
+        db: AsyncSession,
+        employee_ids: list[str],
+        current_user: User,
+        permanent: bool = False,
+        reason: str | None = "Eliminación administrativa en lote",
+    ) -> dict:
+        """
+        Elimina o da de baja lógica a un lote de funcionarios.
+        Soporta purga física definitiva o baja lógica institucional con auditoría.
+        """
+        clean_ids = [str(eid).strip() for eid in employee_ids if str(eid).strip()]
+        if not clean_ids:
+            return {
+                "total_requested": 0,
+                "deleted_count": 0,
+                "failed_count": 0,
+                "permanent": permanent,
+                "errors": [],
+                "detail": "No se proporcionaron identificadores de funcionarios.",
+            }
+
+        cid = get_correlation_id()
+        user_roles = {r.name for r in current_user.roles}
+        is_superadmin = (
+            UserRole.SUPER_ADMIN.value in user_roles or UserRole.COMMUNICATIONS_LEAD.value in user_roles
+        ) and not getattr(current_user, "assigned_direction", None)
+
+        stmt = (
+            select(Employee)
+            .where(Employee.employee_id.in_(clean_ids))
+            .options(
+                selectinload(Employee.history),
+                selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent),
+            )
+        )
+        found_employees = list((await db.execute(stmt)).scalars().all())
+
+        allowed_employees: list[Employee] = []
+        user_dir = getattr(current_user, "assigned_direction", None)
+        for emp in found_employees:
+            if is_superadmin:
+                allowed_employees.append(emp)
+            elif user_dir:
+                dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip()).lower()
+                emp_dir = (emp.direction_name or "").lower()
+                parent_dir = ""
+                if emp.organizational_unit and emp.organizational_unit.parent:
+                    parent_dir = (emp.organizational_unit.parent.name or "").lower()
+                if emp_dir == dir_norm or parent_dir == dir_norm or emp.created_by_user_id == current_user.id:
+                    allowed_employees.append(emp)
+            else:
+                if emp.created_by_user_id == current_user.id:
+                    allowed_employees.append(emp)
+
+        if not allowed_employees:
+            return {
+                "total_requested": len(clean_ids),
+                "deleted_count": 0,
+                "failed_count": len(clean_ids),
+                "permanent": permanent,
+                "errors": ["Ninguno de los funcionarios seleccionados fue encontrado o cuenta con permisos para gestionarlos."],
+                "detail": "No se realizaron cambios en la base de datos.",
+            }
+
+        target_ids = [e.employee_id for e in allowed_employees]
+
+        if permanent:
+            try:
+                from modules.verification.models import InteractionEvidence
+                stmt_verif = select(InteractionEvidence).where(InteractionEvidence.employee_id.in_(target_ids))
+                verifs = list((await db.execute(stmt_verif)).scalars().all())
+                for v in verifs:
+                    v.employee_id = None
+            except Exception:
+                pass
+
+            stmt_acc = select(SocialAccount).where(SocialAccount.employee_id.in_(target_ids))
+            accounts = list((await db.execute(stmt_acc)).scalars().all())
+            for sa in accounts:
+                await db.delete(sa)
+
+            for emp in allowed_employees:
+                for h in emp.history:
+                    await db.delete(h)
+                await db.delete(emp)
+
+            await record_audit_event(
+                db=db,
+                action=AuditAction.DELETE,
+                entity_name="Employee",
+                entity_id=f"BULK_DELETE_{len(target_ids)}",
+                user_id=str(current_user.id),
+                user_email=current_user.email,
+                details={
+                    "operation": "BULK_PERMANENT_DELETE_EMPLOYEES",
+                    "count": len(target_ids),
+                    "employee_ids": target_ids,
+                    "reason": reason,
+                },
+                correlation_id=cid,
+            )
+        else:
+            for emp in allowed_employees:
+                prev_status = emp.status
+                emp.status = EmployeeStatus.TERMINATED.value
+                history_entry = EmployeeHistory(
+                    employee_id=emp.employee_id,
+                    previous_organizational_unit_id=emp.organizational_unit_id,
+                    new_organizational_unit_id=emp.organizational_unit_id,
+                    previous_position_id=emp.position_id,
+                    new_position_id=emp.position_id,
+                    previous_status=prev_status,
+                    new_status=EmployeeStatus.TERMINATED.value,
+                    change_reason=reason,
+                    recorded_by_user_id=str(current_user.id),
+                    correlation_id=cid,
+                )
+                db.add(history_entry)
+
+            await record_audit_event(
+                db=db,
+                action=AuditAction.DELETE,
+                entity_name="Employee",
+                entity_id=f"BULK_DEACTIVATE_{len(target_ids)}",
+                user_id=str(current_user.id),
+                user_email=current_user.email,
+                details={
+                    "operation": "BULK_DEACTIVATE_EMPLOYEES",
+                    "count": len(target_ids),
+                    "employee_ids": target_ids,
+                    "reason": reason,
+                },
+                correlation_id=cid,
+            )
+
+        await db.flush()
+        await db.commit()
+
+        msg = (
+            f"Se eliminaron permanentemente {len(target_ids)} funcionarios de la base de datos."
+            if permanent
+            else f"Se dieron de baja lógica {len(target_ids)} funcionarios correctamente."
+        )
+
+        return {
+            "total_requested": len(clean_ids),
+            "deleted_count": len(target_ids),
+            "failed_count": len(clean_ids) - len(target_ids),
+            "permanent": permanent,
+            "errors": [],
+            "detail": msg,
+        }
+
+
+    @staticmethod
     async def deactivate_employee(
         db: AsyncSession,
         employee_id: str,

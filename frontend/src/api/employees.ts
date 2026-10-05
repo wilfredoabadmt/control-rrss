@@ -84,6 +84,29 @@ export const deleteEmployeeApi = async (id: string, permanent: boolean = false, 
   return res.data;
 };
 
+export interface EmployeeBulkDeletePayload {
+  employee_ids: string[];
+  permanent?: boolean;
+  reason?: string;
+}
+
+export interface EmployeeBulkDeleteResponse {
+  total_requested: number;
+  deleted_count: number;
+  failed_count?: number;
+  permanent?: boolean;
+  errors?: string[];
+  detail: string;
+}
+
+export const bulkDeleteEmployeesApi = async (
+  payload: EmployeeBulkDeletePayload
+): Promise<EmployeeBulkDeleteResponse> => {
+  const res = await apiClient.post('/employees/bulk-delete', payload);
+  return res.data;
+};
+
+
 export const getEmployeeHistoryApi = async (id: string): Promise<any[]> => {
   const res = await apiClient.get(`/employees/${id}/history`);
   return res.data;

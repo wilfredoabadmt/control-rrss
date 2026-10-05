@@ -200,3 +200,23 @@ class EmployeeImportReport(BaseModel):
     @property
     def unchanged(self) -> int:
         return self.unchanged_count
+
+
+# -----------------------------------------------------------------------------
+# Esquemas de Eliminación Masiva / en Lote
+# -----------------------------------------------------------------------------
+
+class EmployeeBulkDeleteRequest(BaseModel):
+    employee_ids: list[str] = Field(..., min_length=1, description="Lista de IDs o identificadores de funcionarios a procesar")
+    permanent: bool = Field(default=False, description="Si es True, purga física definitiva; si es False, baja lógica institucional")
+    reason: str | None = Field(default="Eliminación administrativa en lote", description="Motivo de la acción")
+
+
+class EmployeeBulkDeleteResponse(BaseModel):
+    total_requested: int
+    deleted_count: int
+    failed_count: int = 0
+    permanent: bool = False
+    errors: list[str] = []
+    detail: str
+

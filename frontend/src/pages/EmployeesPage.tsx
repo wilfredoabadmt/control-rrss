@@ -26,6 +26,7 @@ import {
 import {
   EmployeeImportResult,
   EmployeeItem,
+  bulkDeleteEmployeesApi,
   createEmployeeApi,
   deleteEmployeeApi,
   downloadImportTemplateApi,
@@ -127,6 +128,13 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
   const [deleteReason, setDeleteReason] = useState('Desvinculación institucional o retiro de funciones');
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Estado para Selección Masiva y Eliminación en Lote
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [bulkDeletePermanent, setBulkDeletePermanent] = useState(false);
+  const [bulkDeleteReason, setBulkDeleteReason] = useState('Depuración administrativa de nómina en lote');
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+
   // Historial
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeItem | null>(null);
   const [historyRecords, setHistoryRecords] = useState<any[]>([]);
@@ -152,7 +160,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
   const fetchEmployees = async () => {
     setLoading(true);
     try {
-      const res = await listEmployeesApi({ search: search || undefined, page: 1, page_size: 100 });
+      const res = await listEmployeesApi({ search: search || undefined, page: 1, page_size: 500 });
       if (res && Array.isArray(res.items)) {
         setEmployees(res.items);
         setTotal(res.total ?? res.items.length);
@@ -284,6 +292,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
     try {
       await deleteEmployeeApi(empId, deletePermanent, deleteReason);
       setShowDeleteModal(false);
+      setSelectedEmployeeIds((prev) => prev.filter((id) => id !== empId));
       await fetchEmployees();
       setFeedback({
         type: 'info',
@@ -478,6 +487,88 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
     });
   }, [employees, search, filterDireccion, filterStatus, filterSocial]);
 
+  // =========================================================================
+  // GESTIÓN DE SELECCIÓN Y ELIMINACIÓN EN LOTE (BULK DELETE)
+  // =========================================================================
+  const getEmpId = (emp: EmployeeItem): string => emp.id || (emp as any).employee_id;
+
+  const handleToggleSelectOne = (id: string) => {
+    setSelectedEmployeeIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const allFilteredSelected =
+    filteredEmployees.length > 0 &&
+    filteredEmployees.every((emp) => selectedEmployeeIds.includes(getEmpId(emp)));
+
+  const someFilteredSelected =
+    !allFilteredSelected &&
+    filteredEmployees.some((emp) => selectedEmployeeIds.includes(getEmpId(emp)));
+
+  const handleToggleSelectAll = () => {
+    if (allFilteredSelected) {
+      const filteredIds = new Set(filteredEmployees.map(getEmpId));
+      setSelectedEmployeeIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+    } else {
+      const filteredIds = filteredEmployees.map(getEmpId);
+      setSelectedEmployeeIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
+    }
+  };
+
+  const handleSelectAllFiltered = () => {
+    const filteredIds = filteredEmployees.map(getEmpId);
+    setSelectedEmployeeIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedEmployeeIds([]);
+  };
+
+  const handleOpenBulkDelete = () => {
+    if (selectedEmployeeIds.length === 0) return;
+    setBulkDeletePermanent(false);
+    setBulkDeleteReason('Depuración administrativa de nómina en lote');
+    setShowBulkDeleteModal(true);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    if (selectedEmployeeIds.length === 0) return;
+    setBulkDeleteLoading(true);
+
+    try {
+      const countToDelete = selectedEmployeeIds.length;
+      const res = await bulkDeleteEmployeesApi({
+        employee_ids: selectedEmployeeIds,
+        permanent: bulkDeletePermanent,
+        reason: bulkDeleteReason,
+      });
+
+      setShowBulkDeleteModal(false);
+      setSelectedEmployeeIds([]);
+      await fetchEmployees();
+
+      setFeedback({
+        type: 'success',
+        text:
+          res.detail ||
+          (bulkDeletePermanent
+            ? `Se eliminaron permanentemente ${res.deleted_count ?? countToDelete} funcionarios de la base de datos.`
+            : `Se dieron de baja lógica ${res.deleted_count ?? countToDelete} funcionarios correctamente.`),
+      });
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.detail || err?.message || 'Error al procesar la eliminación en lote.';
+      console.error('Error en eliminación masiva:', err);
+      setFeedback({
+        type: 'error',
+        text: `Error en borrado en lote: ${errorMsg}`,
+      });
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  };
+
   return (
     <div>
       {/* Header Bar */}
@@ -628,6 +719,32 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
             <Plus size={17} />
             <span>+ Nuevo Funcionario</span>
           </button>
+
+          {/* Botón Acción Masiva: Borrar en Lote */}
+          {selectedEmployeeIds.length > 0 && (
+            <button
+              onClick={handleOpenBulkDelete}
+              className="btn-primary"
+              title={`Eliminar o dar de baja a los ${selectedEmployeeIds.length} funcionarios seleccionados`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 18px',
+                fontWeight: '700',
+                borderRadius: 'var(--radius-md)',
+                cursor: 'pointer',
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                border: '1px solid #b91c1c',
+                color: '#fff',
+                boxShadow: '0 4px 16px rgba(239, 68, 68, 0.45)',
+                animation: 'pulse 2s infinite',
+              }}
+            >
+              <Trash2 size={16} />
+              <span>Borrar en Lote ({selectedEmployeeIds.length})</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -845,6 +962,105 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
 
       {/* Tabla de Funcionarios CRUD */}
       <div className="glass-panel" style={{ overflow: 'hidden' }}>
+        {/* Barra de Acciones de Selección Masiva / en Lote */}
+        {selectedEmployeeIds.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
+              padding: '12px 18px',
+              background: 'linear-gradient(90deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98))',
+              borderBottom: '1px solid rgba(6, 182, 212, 0.35)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span
+                style={{
+                  background: 'rgba(6, 182, 212, 0.2)',
+                  color: '#38bdf8',
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  padding: '4px 10px',
+                  borderRadius: '16px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  border: '1px solid rgba(6, 182, 212, 0.4)',
+                }}
+              >
+                <CheckCircle2 size={14} />
+                {selectedEmployeeIds.length} seleccionado{selectedEmployeeIds.length !== 1 ? 's' : ''}
+              </span>
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                de {filteredEmployees.length} funcionarios mostrados
+              </span>
+              {!allFilteredSelected && filteredEmployees.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSelectAllFiltered}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#38bdf8',
+                    cursor: 'pointer',
+                    fontSize: '0.78rem',
+                    textDecoration: 'underline',
+                    padding: '2px 6px',
+                    fontWeight: 600,
+                  }}
+                >
+                  Seleccionar todos los {filteredEmployees.length} visibles
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-muted)',
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Deseleccionar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenBulkDelete}
+                style={{
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  border: '1px solid #b91c1c',
+                  color: '#fff',
+                  padding: '6px 16px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 10px rgba(239, 68, 68, 0.4)',
+                }}
+              >
+                <Trash2 size={14} />
+                <span>Borrar en Lote ({selectedEmployeeIds.length})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
@@ -856,6 +1072,25 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                   background: 'rgba(15, 23, 42, 0.5)',
                 }}
               >
+                <th style={{ width: '44px', padding: '12px 12px', textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Seleccionar todos los funcionarios visibles"
+                    checked={allFilteredSelected}
+                    ref={(input) => {
+                      if (input) {
+                        input.indeterminate = !allFilteredSelected && someFilteredSelected;
+                      }
+                    }}
+                    onChange={handleToggleSelectAll}
+                    style={{
+                      cursor: 'pointer',
+                      width: '16px',
+                      height: '16px',
+                      accentColor: '#06b6d4',
+                    }}
+                  />
+                </th>
                 <th style={{ padding: '12px 16px', fontWeight: 600 }}>FUNCIONARIO</th>
                 <th style={{ padding: '12px 16px', fontWeight: 600 }}>UNIDAD</th>
                 <th style={{ padding: '12px 16px', fontWeight: 600 }}>DIRECCIÓN & CARGO</th>
@@ -868,7 +1103,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
             <tbody style={{ fontSize: '0.84rem' }}>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '56px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <td colSpan={8} style={{ padding: '56px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', maxWidth: '520px', margin: '0 auto' }}>
                       <div
                         style={{
@@ -953,16 +1188,36 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                   </td>
                 </tr>
               ) : (
-                filteredEmployees.map((emp) => (
-                  <tr
-                    key={emp.id || (emp as any).employee_id}
-                    style={{
-                      borderBottom: '1px solid var(--border-subtle)',
-                      transition: 'background 0.2s',
-                    }}
-                  >
-                    {/* FUNCIONARIO (Nombres, Apellidos, CI y Correo) */}
-                    <td style={{ padding: '12px 16px' }}>
+                filteredEmployees.map((emp) => {
+                  const empId = getEmpId(emp);
+                  const isEmpSelected = selectedEmployeeIds.includes(empId);
+                  return (
+                    <tr
+                      key={empId}
+                      style={{
+                        borderBottom: '1px solid var(--border-subtle)',
+                        transition: 'background 0.2s',
+                        background: isEmpSelected ? 'rgba(6, 182, 212, 0.08)' : undefined,
+                      }}
+                    >
+                      {/* CHECKBOX SELECCIÓN */}
+                      <td style={{ width: '44px', padding: '12px 12px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Seleccionar a ${emp.first_name} ${emp.last_name}`}
+                          checked={isEmpSelected}
+                          onChange={() => handleToggleSelectOne(empId)}
+                          style={{
+                            cursor: 'pointer',
+                            width: '16px',
+                            height: '16px',
+                            accentColor: '#06b6d4',
+                          }}
+                        />
+                      </td>
+
+                      {/* FUNCIONARIO (Nombres, Apellidos, CI y Correo) */}
+                      <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div
                           style={{
@@ -1232,7 +1487,8 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1252,6 +1508,11 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         >
           <span>
             Mostrando <strong>{filteredEmployees.length}</strong> de <strong>{total}</strong> funcionarios en nómina
+            {selectedEmployeeIds.length > 0 && (
+              <span style={{ color: '#38bdf8', marginLeft: '10px', fontWeight: 600 }}>
+                • <strong>{selectedEmployeeIds.length}</strong> seleccionado{selectedEmployeeIds.length !== 1 ? 's' : ''}
+              </span>
+            )}
           </span>
           <span style={{ color: 'var(--text-faint)' }}>Cifrado Blind Index HMAC-SHA256 Activo</span>
         </div>
@@ -1684,6 +1945,186 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                   : deletePermanent
                   ? 'Eliminar Definitivamente'
                   : 'Proceder con la Baja'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 2B: ELIMINACIÓN EN LOTE DE FUNCIONARIOS (BULK DELETE)               */}
+      {/* ========================================================================= */}
+      {showBulkDeleteModal && selectedEmployeeIds.length > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+            zIndex: 100,
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: '540px',
+              padding: '28px',
+              background: 'var(--bg-secondary)',
+              border: '1px solid rgba(239, 68, 68, 0.45)',
+              boxShadow: '0 25px 50px rgba(0,0,0,0.75)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  background: 'rgba(239, 68, 68, 0.18)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Trash2 color="#ef4444" size={24} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#fff', margin: 0 }}>
+                  Eliminación en Lote de Funcionarios
+                </h3>
+                <div style={{ fontSize: '0.8rem', color: '#f87171', fontWeight: 600, marginTop: '2px' }}>
+                  {selectedEmployeeIds.length} funcionario{selectedEmployeeIds.length !== 1 ? 's' : ''} seleccionado{selectedEmployeeIds.length !== 1 ? 's' : ''} para procesar
+                </div>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#cbd5e1', lineHeight: '1.5', marginBottom: '16px' }}>
+              Esta operación se aplicará de forma masiva sobre los <strong>{selectedEmployeeIds.length}</strong> funcionarios seleccionados. Seleccione la modalidad:
+            </p>
+
+            {/* Opciones de Eliminación en Lote */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '18px' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px',
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: !bulkDeletePermanent ? 'rgba(6, 182, 212, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                  border: `1px solid ${!bulkDeletePermanent ? 'var(--primary-500)' : 'var(--border-subtle)'}`,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="bulkDeleteType"
+                  checked={!bulkDeletePermanent}
+                  onChange={() => setBulkDeletePermanent(false)}
+                  style={{ marginTop: '3px' }}
+                />
+                <div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#fff' }}>
+                    Baja Lógica Masiva (Recomendado)
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px', lineHeight: '1.4' }}>
+                    Inactiva a los {selectedEmployeeIds.length} funcionarios sin borrar sus datos ni su historial de transferencias y auditoría.
+                  </div>
+                </div>
+              </label>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px',
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: bulkDeletePermanent ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                  border: `1px solid ${bulkDeletePermanent ? '#ef4444' : 'var(--border-subtle)'}`,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="bulkDeleteType"
+                  checked={bulkDeletePermanent}
+                  onChange={() => setBulkDeletePermanent(true)}
+                  style={{ marginTop: '3px' }}
+                />
+                <div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#f87171' }}>
+                    Eliminación Física Definitiva (Purgar de la Base de Datos)
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px', lineHeight: '1.4' }}>
+                    Remueve permanentemente a los {selectedEmployeeIds.length} funcionarios y sus cuentas sociales asociadas. No se puede deshacer.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            {/* Motivo */}
+            <div className="form-group" style={{ marginBottom: '22px' }}>
+              <label className="form-label">Justificación o Motivo Institucional</label>
+              <input
+                type="text"
+                className="form-input"
+                value={bulkDeleteReason}
+                onChange={(e) => setBulkDeleteReason(e.target.value)}
+                placeholder="Ej. Depuración de nómina / retiro masivo"
+              />
+            </div>
+
+            {/* Botones */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(false)}
+                disabled={bulkDeleteLoading}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-muted)',
+                  padding: '8px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBulkDelete}
+                disabled={bulkDeleteLoading}
+                style={{
+                  background: bulkDeletePermanent ? '#ef4444' : '#eab308',
+                  color: bulkDeletePermanent ? '#fff' : '#000',
+                  border: 'none',
+                  padding: '8px 20px',
+                  borderRadius: 'var(--radius-md)',
+                  fontWeight: '700',
+                  cursor: bulkDeleteLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '0.85rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: bulkDeletePermanent ? '0 4px 14px rgba(239, 68, 68, 0.4)' : '0 4px 14px rgba(234, 179, 8, 0.35)',
+                }}
+              >
+                <Trash2 size={15} />
+                <span>
+                  {bulkDeleteLoading
+                    ? 'Procesando...'
+                    : bulkDeletePermanent
+                    ? `Purgar Definitivamente (${selectedEmployeeIds.length})`
+                    : `Dar de Baja en Lote (${selectedEmployeeIds.length})`}
+                </span>
               </button>
             </div>
           </div>

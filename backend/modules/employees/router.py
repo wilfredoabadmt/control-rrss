@@ -18,6 +18,8 @@ from modules.employees.importer import EmployeePayrollImporter
 from modules.employees.models import Employee, OrganizationalUnit, Position
 from modules.employees.schemas import (
     EmployeeCreate,
+    EmployeeBulkDeleteRequest,
+    EmployeeBulkDeleteResponse,
     EmployeeDetailResponse,
     EmployeeHistoryResponse,
     EmployeeImportReport,
@@ -367,6 +369,26 @@ async def update_employee(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message) from e
     except ValidationException as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message) from e
+
+
+@employees_router.post("/bulk-delete", response_model=EmployeeBulkDeleteResponse, status_code=status.HTTP_200_OK)
+async def bulk_delete_employees(
+    payload: EmployeeBulkDeleteRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(require_roles(*EMPLOYEE_MANAGE_ROLES)),
+):
+    """
+    Eliminación masiva / en lote de funcionarios (física o baja lógica).
+    Permite procesar múltiples funcionarios simultáneamente de forma atómica y segura.
+    """
+    res = await EmployeeService.bulk_delete_employees(
+        db=db,
+        employee_ids=payload.employee_ids,
+        current_user=current_user,
+        permanent=payload.permanent,
+        reason=payload.reason,
+    )
+    return EmployeeBulkDeleteResponse(**res)
 
 
 @employees_router.delete("/{employee_id}", status_code=status.HTTP_200_OK)
