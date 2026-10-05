@@ -11,6 +11,7 @@ export interface EmployeeItem {
   org_unit_id?: string;
   org_unit_name?: string;     // Unidad
   parent_unit_name?: string;  // Dirección
+  direction_name?: string;
   position_id?: string;
   position_title?: string;
   facebook_account?: string;  // Cuenta Facebook
@@ -40,6 +41,7 @@ export const listEmployeesApi = async (params: {
   page?: number;
   page_size?: number;
   search?: string;
+  direction?: string;
   org_unit_id?: string;
 }): Promise<{ items: EmployeeItem[]; total: number; page: number; total_pages: number }> => {
   const res = await apiClient.get('/employees/', { params });
@@ -96,9 +98,9 @@ export const RAW_CSV_TEMPLATE = `nombres,apellidos,unidad,direccion,cuenta_faceb
 Juan Carlos,Mamani Quispe,Unidad de Prensa,Dirección de Comunicación,facebook.com/juancarlos.mamani,@jcmamani
 María Elena,Condori Flores,Unidad de Imagen Corporativa,Dirección de Comunicación,facebook.com/mariaelena.condori,@mecondori
 Pedro,Huanca Ticona,Unidad de Comunicación Digital,Dirección de Comunicación,facebook.com/pedro.huanca,@phuanca
-Rosa,Apaza Mamani,Unidad de Relaciones Públicas y Protocolo,Despacho Alcaldesa,facebook.com/rosa.apaza,@rapaza
-Carlos,Quispe Choque,Unidad Sumariante,Despacho Alcaldesa,,
-Ana,Flores Torres,Unidad de Auditoria Interna,Despacho Alcaldesa,,
+Rosa,Apaza Mamani,Unidad de Relaciones Públicas y Protocolo,Despacho Alcalde,facebook.com/rosa.apaza,@rapaza
+Carlos,Quispe Choque,Unidad Sumariante,Despacho Alcalde,,
+Ana,Flores Torres,Unidad de Auditoria Interna,Despacho Alcalde,,
 Roberto,Choque Limachi,Unidad de Transparencia y Lucha Contra la Corrupción,Dirección General de Asesoría Legal,facebook.com/roberto.choque,
 Luis Fernando,Tarqui Condori,Unidad de Normas Municipales y Asuntos Administrativos,Dirección General de Asesoría Legal,,
 Martha,Poma Quisbert,Unidad de Asuntos Jurisdiccionales,Dirección General de Asesoría Legal,,

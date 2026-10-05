@@ -133,6 +133,12 @@ class User(Base, TimestampMixin, UUIDPrimaryKeyMixin):
         nullable=True,
         comment="Timestamp UTC del último inicio de sesión exitoso",
     )
+    assigned_direction: Mapped[str | None] = mapped_column(
+        String(200),
+        nullable=True,
+        default=None,
+        comment="Dirección o dependencia superior asignada al usuario para panel individual",
+    )
 
     # Relaciones
     roles: Mapped[list[Role]] = relationship(

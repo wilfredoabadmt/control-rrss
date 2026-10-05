@@ -37,6 +37,24 @@ import {
 import { monitoringApi } from '../api/monitoring';
 import { ActivePage } from '../components/Sidebar';
 import { LISTA_DIRECCIONES, ORGANIGRAMA_GAMEA } from '../data/organigrama';
+import { useAuth } from '../context/AuthContext';
+import { UserRole } from '../types';
+
+export const getEmployeeDirection = (emp: EmployeeItem): string => {
+  let dir = emp.parent_unit_name || (emp as any).direction_name || '';
+  if (dir && typeof dir === 'string' && dir.trim()) {
+    return dir.replace(/alcaldesa/gi, 'Alcalde');
+  }
+  if (emp.org_unit_name) {
+    const cleanUnit = emp.org_unit_name.trim().toLowerCase();
+    for (const [d, units] of Object.entries(ORGANIGRAMA_GAMEA)) {
+      if (units.some((u) => u.toLowerCase() === cleanUnit)) {
+        return d.replace(/alcaldesa/gi, 'Alcalde');
+      }
+    }
+  }
+  return 'Despacho Alcalde';
+};
 
 // Ícono SVG estilizado de TikTok
 const TikTokIcon: React.FC<{ size?: number; color?: string }> = ({ size = 14, color = 'currentColor' }) => (
@@ -60,6 +78,8 @@ interface EmployeesPageProps {
 }
 
 export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
+  const { user, hasRole } = useAuth();
+
   // Lista de Funcionarios vinculada a la Base de Datos PostgreSQL (limpia, sin datos de ejemplo)
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -67,7 +87,9 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
 
   // Filtros
   const [search, setSearch] = useState('');
-  const [filterDireccion, setFilterDireccion] = useState<string>('ALL');
+  const [filterDireccion, setFilterDireccion] = useState<string>(
+    user?.assigned_direction ? user.assigned_direction.replace(/alcaldesa/gi, 'Alcalde') : 'ALL'
+  );
   const [filterStatus, setFilterStatus] = useState<string>('ALL'); // ALL | ACTIVE | INACTIVE
   const [filterSocial, setFilterSocial] = useState<string>('ALL'); // ALL | HAS_FB | HAS_TT | BOTH | NONE
 
@@ -185,18 +207,10 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
     setEditLastName(emp.last_name);
     setEditCi(emp.id_document?.replace('***', '') || emp.id);
 
-    // Intentar deducir la Dirección
-    let dir = emp.parent_unit_name || '';
-    if (!dir && emp.org_unit_name) {
-      for (const [d, units] of Object.entries(ORGANIGRAMA_GAMEA)) {
-        if (units.includes(emp.org_unit_name)) {
-          dir = d;
-          break;
-        }
-      }
-    }
+    // Deducir la Dirección con la función unificada del Organigrama
+    const dir = getEmployeeDirection(emp);
     setEditDireccion(dir);
-    setEditUnit(emp.org_unit_name || '');
+    setEditUnit(emp.org_unit_name ? emp.org_unit_name.replace(/alcaldesa/gi, 'Alcalde') : '');
     setEditPosition(emp.position_title || 'Funcionario Municipal');
     setEditEmail(emp.email || '');
     setEditFacebook(emp.facebook_account || '');
@@ -214,14 +228,17 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
     setEditLoading(true);
     const empId = editingEmployee.id || (editingEmployee as any).employee_id;
 
+    const sanitizedDirection = editDireccion.replace(/alcaldesa/gi, 'Alcalde');
+    const sanitizedUnit = editUnit.replace(/alcaldesa/gi, 'Alcalde');
+
     try {
       await updateEmployeeApi(empId, {
         first_name: editFirstName,
         last_name: editLastName,
         id_document: editCi,
         document_number: editCi,
-        org_unit_name: editUnit,
-        parent_unit_name: editDireccion,
+        org_unit_name: sanitizedUnit,
+        parent_unit_name: sanitizedDirection,
         position_title: editPosition,
         email: editEmail,
         facebook_account: editFacebook,
@@ -352,6 +369,11 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateLoading(true);
+
+    const targetDir = newDireccion || user?.assigned_direction || 'Despacho Alcalde';
+    const sanitizedDirection = targetDir.replace(/alcaldesa/gi, 'Alcalde');
+    const sanitizedUnit = newUnit.replace(/alcaldesa/gi, 'Alcalde');
+
     try {
       await createEmployeeApi({
         first_name: newFirstName,
@@ -359,8 +381,8 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         id_document: newCi || `${Math.floor(1000000 + Math.random() * 9000000)} LP`,
         document_number: newCi || `${Math.floor(1000000 + Math.random() * 9000000)} LP`,
         email: newEmail || `${newFirstName.toLowerCase()[0]}${newLastName.toLowerCase().split(' ')[0]}@elalto.gob.bo`,
-        org_unit_name: newUnit,
-        parent_unit_name: newDireccion,
+        org_unit_name: sanitizedUnit,
+        parent_unit_name: sanitizedDirection,
         position_title: newPosition,
         facebook_account: newFacebook,
         tiktok_account: newTiktok,
@@ -416,7 +438,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         const q = search.toLowerCase();
         const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
         const unit = (emp.org_unit_name || '').toLowerCase();
-        const dir = (emp.parent_unit_name || '').toLowerCase();
+        const dir = getEmployeeDirection(emp).toLowerCase();
         const fb = (emp.facebook_account || '').toLowerCase();
         const tt = (emp.tiktok_account || '').toLowerCase();
         const doc = (emp.id_document || '').toLowerCase();
@@ -432,7 +454,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
 
       // Filtro de Dirección
       if (filterDireccion !== 'ALL') {
-        const empDir = emp.parent_unit_name || '';
+        const empDir = getEmployeeDirection(emp);
         if (empDir !== filterDireccion) {
           // Revisar si la unidad pertenece a esa dirección en el organigrama
           const validUnits = ORGANIGRAMA_GAMEA[filterDireccion] || [];
@@ -470,7 +492,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fff', letterSpacing: '-0.02em', margin: 0 }}>
               Directorio de Funcionarios & Gestión CRUD
             </h2>
@@ -480,6 +502,41 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
             >
               <Users size={12} /> {total} Registrados
             </span>
+            {user?.assigned_direction ? (
+              <span
+                style={{
+                  background: 'rgba(56, 189, 248, 0.12)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  color: '#38bdf8',
+                  padding: '3px 10px',
+                  borderRadius: '12px',
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+              >
+                🏢 {user.assigned_direction.replace(/alcaldesa/gi, 'Alcalde')}
+              </span>
+            ) : !hasRole(UserRole.SUPER_ADMIN) ? (
+              <span
+                style={{
+                  background: 'rgba(52, 211, 153, 0.12)',
+                  border: '1px solid rgba(52, 211, 153, 0.35)',
+                  color: '#34d399',
+                  padding: '3px 10px',
+                  borderRadius: '12px',
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+              >
+                🛡️ Panel Individual Autónomo
+              </span>
+            ) : null}
           </div>
           <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: '4px', marginBottom: 0 }}>
             Administración completa (Altas, Modificaciones, Bajas y Cuentas Sociales) para interacción con posts enviados
@@ -966,7 +1023,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                             flexShrink: 0,
                           }}
                         />
-                        <span>{emp.org_unit_name || 'Unidad de Prensa'}</span>
+                        <span>{emp.org_unit_name ? emp.org_unit_name.replace(/alcaldesa/gi, 'Alcalde') : 'Sin Unidad Asignada'}</span>
                       </div>
                     </td>
 
@@ -984,7 +1041,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                             display: 'inline-block',
                           }}
                         >
-                          {emp.parent_unit_name || 'Dirección de Comunicación'}
+                          {getEmployeeDirection(emp)}
                         </span>
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-faint)', marginTop: '3px' }}>
                           {emp.position_title || 'Funcionario Municipal'}

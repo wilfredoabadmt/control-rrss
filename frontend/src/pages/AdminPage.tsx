@@ -30,6 +30,7 @@ import { monitoringApi } from '../api/monitoring';
 import { useAuth } from '../context/AuthContext';
 import { formatUserRole } from '../utils/formatters';
 import { ConnectorsDiagnosticResponse, UserRole } from '../types';
+import { LISTA_DIRECCIONES } from '../data/organigrama';
 
 export interface RoleMeta {
   role: string;
@@ -174,6 +175,7 @@ export const AdminPage: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [newFullName, setNewFullName] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newAssignedDirection, setNewAssignedDirection] = useState('');
   const [selectedRoles, setSelectedRoles] = useState<string[]>(['VIEWER']);
   const [submittingUser, setSubmittingUser] = useState(false);
 
@@ -182,11 +184,13 @@ export const AdminPage: React.FC = () => {
   const [editEmail, setEditEmail] = useState('');
   const [editFullName, setEditFullName] = useState('');
   const [editPassword, setEditPassword] = useState('');
+  const [editAssignedDirection, setEditAssignedDirection] = useState('');
   const [editRoles, setEditRoles] = useState<string[]>([]);
   const [editIsActive, setEditIsActive] = useState<boolean>(true);
   const [submittingEdit, setSubmittingEdit] = useState(false);
 
   const isSuperAdmin = hasRole(UserRole.SUPER_ADMIN);
+  const canManageUsers = hasRole([UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD]);
 
   // Estado del Diagnóstico Exhaustivo de Conectores API
   const [connectorsDiag, setConnectorsDiag] = useState<ConnectorsDiagnosticResponse | null>(null);
@@ -221,13 +225,13 @@ export const AdminPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isSuperAdmin && tab === 'users') {
+    if (canManageUsers && tab === 'users') {
       fetchUsers();
     }
-    if (tab === 'connectors') {
+    if (isSuperAdmin && tab === 'connectors') {
       fetchDiagnostics();
     }
-  }, [tab]);
+  }, [tab, canManageUsers, isSuperAdmin]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -238,12 +242,14 @@ export const AdminPage: React.FC = () => {
         full_name: newFullName.trim(),
         password: newPassword,
         role_names: selectedRoles,
+        assigned_direction: newAssignedDirection.trim() || undefined,
       });
       setUsers([created, ...users.filter((u) => u.id !== created.id)]);
       setShowCreateUserModal(false);
       setNewEmail('');
       setNewFullName('');
       setNewPassword('');
+      setNewAssignedDirection('');
       setSelectedRoles(['VIEWER']);
     } catch (err: any) {
       alert(err.response?.data?.detail || err.message || 'Error al crear el usuario en la base de datos.');
@@ -258,6 +264,7 @@ export const AdminPage: React.FC = () => {
     setEditFullName(user.full_name);
     setEditRoles(user.roles.map((r) => r.name));
     setEditIsActive(user.is_active);
+    setEditAssignedDirection(user.assigned_direction || '');
     setEditPassword('');
     setShowEditUserModal(true);
   };
@@ -272,6 +279,7 @@ export const AdminPage: React.FC = () => {
         is_active: editIsActive,
         password: editPassword.trim() ? editPassword.trim() : undefined,
         role_names: editRoles,
+        assigned_direction: editAssignedDirection.trim() || undefined,
       });
       setUsers(
         users.map((u) =>
@@ -282,6 +290,7 @@ export const AdminPage: React.FC = () => {
                 email: updated.email || editEmail,
                 is_active: updated.is_active !== undefined ? updated.is_active : editIsActive,
                 roles: updated.roles || editRoles.map((r, i) => ({ id: `r-${i}`, name: r })),
+                assigned_direction: updated.assigned_direction !== undefined ? updated.assigned_direction : (editAssignedDirection.trim() || null),
               }
             : u
         )
@@ -323,11 +332,12 @@ export const AdminPage: React.FC = () => {
     return (
       u.full_name.toLowerCase().includes(term) ||
       u.email.toLowerCase().includes(term) ||
+      (u.assigned_direction && u.assigned_direction.toLowerCase().includes(term)) ||
       u.roles.some((r) => r.name.toLowerCase().includes(term))
     );
   });
 
-  if (!isSuperAdmin) {
+  if (!canManageUsers) {
     return (
       <div
         className="glass-panel"
@@ -343,8 +353,7 @@ export const AdminPage: React.FC = () => {
           Módulo de Administración Restringido
         </h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '8px', lineHeight: 1.5 }}>
-          Solo los usuarios con el rol constitucional <strong>SUPER_ADMIN</strong> tienen autorización para gestionar
-          credenciales de redes, credenciales de acceso de usuarios y parámetros globales de retención.
+          Solo los usuarios con roles directivos o administrativos autorizados (<strong>SUPER_ADMIN</strong>, <strong>DIRECTOR</strong> o <strong>COMMUNICATIONS_LEAD</strong>) tienen autorización para gestionar usuarios y alcances institucionales.
         </p>
       </div>
     );
@@ -428,47 +437,51 @@ export const AdminPage: React.FC = () => {
             <span>Funciones por Rol</span>
           </button>
 
-          <button
-            onClick={() => setTab('connectors')}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 'var(--radius-sm)',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              fontWeight: '700',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: tab === 'connectors' ? 'var(--primary-500)' : 'transparent',
-              color: tab === 'connectors' ? '#fff' : 'var(--text-muted)',
-              transition: 'all 0.2s',
-            }}
-          >
-            <Sliders size={16} />
-            <span>Conectores API</span>
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setTab('connectors')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: tab === 'connectors' ? 'var(--primary-500)' : 'transparent',
+                color: tab === 'connectors' ? '#fff' : 'var(--text-muted)',
+                transition: 'all 0.2s',
+              }}
+            >
+              <Sliders size={16} />
+              <span>Conectores API</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setTab('policies')}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 'var(--radius-sm)',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              fontWeight: '700',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: tab === 'policies' ? 'var(--primary-500)' : 'transparent',
-              color: tab === 'policies' ? '#fff' : 'var(--text-muted)',
-              transition: 'all 0.2s',
-            }}
-          >
-            <ShieldCheck size={16} />
-            <span>Seguridad & Políticas</span>
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setTab('policies')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: tab === 'policies' ? 'var(--primary-500)' : 'transparent',
+                color: tab === 'policies' ? '#fff' : 'var(--text-muted)',
+                transition: 'all 0.2s',
+              }}
+            >
+              <ShieldCheck size={16} />
+              <span>Seguridad & Políticas</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -558,6 +571,7 @@ export const AdminPage: React.FC = () => {
                     <th style={{ padding: '14px 20px', fontWeight: 600 }}>USUARIO / CORREO</th>
                     <th style={{ padding: '14px 20px', fontWeight: 600 }}>NOMBRE COMPLETO</th>
                     <th style={{ padding: '14px 20px', fontWeight: 600 }}>ROLES CONSTITUCIONALES</th>
+                    <th style={{ padding: '14px 20px', fontWeight: 600 }}>ÁREA / PANEL ASIGNADO</th>
                     <th style={{ padding: '14px 20px', fontWeight: 600 }}>ESTADO</th>
                     <th style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 600 }}>ACCIONES</th>
                   </tr>
@@ -629,6 +643,44 @@ export const AdminPage: React.FC = () => {
                         </div>
                       </td>
 
+                      {/* ÁREA / ALCANCE ASIGNADO */}
+                      <td style={{ padding: '14px 20px' }}>
+                        {u.assigned_direction ? (
+                          <span
+                            style={{
+                              background: 'rgba(56, 189, 248, 0.12)',
+                              border: '1px solid rgba(56, 189, 248, 0.35)',
+                              color: '#38bdf8',
+                              padding: '4px 10px',
+                              borderRadius: 'var(--radius-sm)',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            🏢 {u.assigned_direction}
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              background: 'rgba(148, 163, 184, 0.1)',
+                              border: '1px solid rgba(148, 163, 184, 0.25)',
+                              color: '#94a3b8',
+                              padding: '4px 10px',
+                              borderRadius: 'var(--radius-sm)',
+                              fontSize: '0.75rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            🛡️ Panel Individual / Autónomo
+                          </span>
+                        )}
+                      </td>
+
                       <td style={{ padding: '14px 20px' }}>
                         <span className={`badge ${u.is_active ? 'badge-success' : 'badge-warning'}`}>
                           {u.is_active ? 'ACTIVO' : 'INACTIVO'}
@@ -689,7 +741,7 @@ export const AdminPage: React.FC = () => {
 
                   {filteredUsers.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={5} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
                         No se encontraron usuarios institucionales registrados en la base de datos.
                       </td>
                     </tr>
@@ -1404,6 +1456,26 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Área / Dirección Asignada */}
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label">Área / Dirección Asignada (Alcance de Funcionarios)</label>
+                <select
+                  className="form-input"
+                  value={editAssignedDirection}
+                  onChange={(e) => setEditAssignedDirection(e.target.value)}
+                >
+                  <option value="">🛡️ Panel Individual Autónomo (Solo ve funcionarios que él cree)</option>
+                  {LISTA_DIRECCIONES.map((dir) => (
+                    <option key={dir} value={dir}>
+                      🏢 {dir}
+                    </option>
+                  ))}
+                </select>
+                <small style={{ color: 'var(--text-faint)', fontSize: '0.74rem', marginTop: '4px', display: 'block' }}>
+                  Define si este usuario ve únicamente su propia nómina individual o la de toda una Dirección específica.
+                </small>
+              </div>
+
               {/* Estado de la cuenta & Contraseña opcional */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
                 <div className="form-group">
@@ -1536,6 +1608,26 @@ export const AdminPage: React.FC = () => {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
+              </div>
+
+              {/* Área / Dirección Asignada */}
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label">Área / Dirección Asignada (Alcance de Funcionarios)</label>
+                <select
+                  className="form-input"
+                  value={newAssignedDirection}
+                  onChange={(e) => setNewAssignedDirection(e.target.value)}
+                >
+                  <option value="">🛡️ Panel Individual Autónomo (Inicia 100% Vacío - Solo ve funcionarios que él cree)</option>
+                  {LISTA_DIRECCIONES.map((dir) => (
+                    <option key={dir} value={dir}>
+                      🏢 {dir}
+                    </option>
+                  ))}
+                </select>
+                <small style={{ color: 'var(--text-faint)', fontSize: '0.74rem', marginTop: '4px', display: 'block' }}>
+                  Si se deja en "Panel Individual Autónomo", el usuario dispondrá de un panel totalmente individual y vacío para su unidad respectiva sin mezclar datos con otras áreas.
+                </small>
               </div>
 
               {/* Selector de Roles */}

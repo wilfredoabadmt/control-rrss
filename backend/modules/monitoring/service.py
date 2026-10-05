@@ -63,6 +63,7 @@ from modules.shared.enums import (
     InteractionType,
     SocialPlatformType,
     SyncJobStatus,
+    UserRole,
     VerificationStatus,
 )
 from modules.social_accounts.models import SocialAccount, SocialPlatform
@@ -773,8 +774,8 @@ class MonitoringHubService:
     # -------------------------------------------------------------------------
 
     @staticmethod
-    async def get_audience(db: AsyncSession) -> list[MonitoredPersonResponse]:
-        """Obtiene la lista consolidada de funcionarios y personas en monitoreo activo."""
+    async def get_audience(db: AsyncSession, current_user: User | None = None) -> list[MonitoredPersonResponse]:
+        """Obtiene la lista consolidada de funcionarios y personas en monitoreo activo con aislamiento individual."""
         stmt = (
             select(Employee)
             .where(Employee.status == EmployeeStatus.ACTIVE.value)
@@ -784,6 +785,28 @@ class MonitoringHubService:
             )
             .order_by(Employee.last_name.asc(), Employee.first_name.asc())
         )
+
+        if current_user:
+            user_roles = {r.name for r in current_user.roles}
+            is_superadmin = (
+                UserRole.SUPER_ADMIN.value in user_roles or UserRole.COMMUNICATIONS_LEAD.value in user_roles
+            ) and not getattr(current_user, "assigned_direction", None)
+
+            if not is_superadmin:
+                user_dir = getattr(current_user, "assigned_direction", None)
+                if user_dir:
+                    dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip())
+                    dir_filter = or_(
+                        func.lower(Employee.direction_name) == dir_norm.lower(),
+                        Employee.organizational_unit.has(
+                            OrganizationalUnit.parent.has(func.lower(OrganizationalUnit.name) == dir_norm.lower())
+                        ),
+                        Employee.created_by_user_id == current_user.id,
+                    )
+                    stmt = stmt.where(dir_filter)
+                else:
+                    stmt = stmt.where(Employee.created_by_user_id == current_user.id)
+
         employees = list((await db.execute(stmt)).scalars().all())
 
         # Cargar cuentas sociales activas
@@ -888,6 +911,7 @@ class MonitoringHubService:
                 organizational_unit_id=ou.id,
                 position_id=pos.id,
                 status=EmployeeStatus.ACTIVE.value,
+                created_by_user_id=current_user.id if current_user else None,
             )
             db.add(emp)
             await db.flush()
@@ -1551,13 +1575,14 @@ class MonitoringHubService:
         department: str | None = None,
         search: str | None = None,
         participation_status: str | None = "ALL",
+        current_user: User | None = None,
     ) -> ActivityMatrixResponse:
         """
         Genera la matriz de auditoría cruzada:
         Cada persona de la lista vs Cada publicación evaluada -> Reacción, Comentario, Estado Epistémico.
         """
         # 1. Obtener audiencia monitoreada
-        audience = await MonitoringHubService.get_audience(db)
+        audience = await MonitoringHubService.get_audience(db, current_user=current_user)
 
         # Filtrar por departamento o búsqueda
         if department and department != "ALL":
@@ -1751,6 +1776,7 @@ class MonitoringHubService:
         publication_id: uuid.UUID | None = None,
         platform_name: str | None = None,
         department: str | None = None,
+        current_user: User | None = None,
     ) -> io.BytesIO:
         """
         Genera el documento Excel formal e inmutable para presentación a autoridades del GAMEA.
@@ -1762,6 +1788,7 @@ class MonitoringHubService:
             platform_name=platform_name,
             department=department,
             participation_status="ALL",
+            current_user=current_user,
         )
 
         wb = Workbook()

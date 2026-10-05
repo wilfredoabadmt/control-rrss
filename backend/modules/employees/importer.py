@@ -152,8 +152,8 @@ class EmployeePayrollImporter:
             doc_num = str(row.get("document_number", "")).strip()
             first_name = str(row.get("first_name", "")).strip()
             last_name = str(row.get("last_name", "")).strip()
-            raw_unit = str(row.get("org_unit_code", "")).strip().upper()
-            raw_parent_unit = str(row.get("parent_unit_name", "")).strip().upper()
+            raw_unit = re.sub(r'(?i)alcaldesa', 'Alcalde', str(row.get("org_unit_code", "")).strip().upper())
+            raw_parent_unit = re.sub(r'(?i)alcaldesa', 'Alcalde', str(row.get("parent_unit_name", "")).strip().upper())
             raw_pos = str(row.get("position_title", "")).strip().upper()
             raw_status = str(row.get("status", EmployeeStatus.ACTIVE.value)).strip().upper() or EmployeeStatus.ACTIVE.value
             raw_facebook = str(row.get("facebook_account", "")).strip()
@@ -211,8 +211,8 @@ class EmployeePayrollImporter:
                     units_by_name[raw_unit.lower()] = target_unit
                     units_by_name[target_unit.name.upper()] = target_unit
                     units_by_name[target_unit.name.lower()] = target_unit
-                elif parent_unit and target_unit.parent_id is None:
-                    # Vincular unidad existente a su dirección padre si no estaba asignada
+                elif parent_unit and target_unit.parent_id != parent_unit.id:
+                    # Vincular unidad existente a su dirección padre si cambió o no estaba asignada
                     target_unit.parent_id = parent_unit.id
 
             # Resolver o crear Cargo si no existe
@@ -238,6 +238,8 @@ class EmployeePayrollImporter:
             stmt_emp = select(Employee).where(Employee.employee_id == emp_id)
             existing_emp = (await db.execute(stmt_emp)).scalar_one_or_none()
 
+            dir_for_emp = parent_unit.name if parent_unit else (raw_parent_unit.title() if raw_parent_unit else None)
+
             if not existing_emp:
                 # ALTA: Nuevo funcionario
                 new_emp = Employee(
@@ -247,8 +249,10 @@ class EmployeePayrollImporter:
                     first_name=first_name,
                     last_name=last_name,
                     organizational_unit_id=target_unit.id if target_unit else None,
+                    direction_name=dir_for_emp,
                     position_id=target_pos.id if target_pos else None,
                     status=raw_status,
+                    created_by_user_id=current_user.id if current_user else None,
                 )
                 db.add(new_emp)
                 created_count += 1
@@ -278,6 +282,10 @@ class EmployeePayrollImporter:
                         existing_emp.document_hash = hash_blind_index(doc_num)
                     if new_unit_id:
                         existing_emp.organizational_unit_id = new_unit_id
+                    if dir_for_emp:
+                        existing_emp.direction_name = dir_for_emp
+                    if not existing_emp.created_by_user_id and current_user:
+                        existing_emp.created_by_user_id = current_user.id
                     if new_pos_id:
                         existing_emp.position_id = new_pos_id
                     existing_emp.status = raw_status

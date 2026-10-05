@@ -3,6 +3,7 @@ Routers para Directorio de Funcionarios, Estructura Organizacional y Cargos — 
 """
 
 import pathlib
+import re
 import uuid
 
 from core.pagination import PageResponse
@@ -157,12 +158,19 @@ def _format_employee_response(emp: Employee, current_user: User) -> EmployeeResp
     org_unit_name = None
     parent_unit_name = None
     try:
+        if getattr(emp, "direction_name", None):
+            parent_unit_name = emp.direction_name
         if getattr(emp, "organizational_unit", None):
             org_unit_name = emp.organizational_unit.name
             if getattr(emp.organizational_unit, "parent", None):
                 parent_unit_name = emp.organizational_unit.parent.name
     except Exception:
         pass
+
+    if parent_unit_name:
+        parent_unit_name = re.sub(r'(?i)alcaldesa', 'Alcalde', parent_unit_name)
+    if org_unit_name:
+        org_unit_name = re.sub(r'(?i)alcaldesa', 'Alcalde', org_unit_name)
 
     position_title = None
     try:
@@ -216,19 +224,22 @@ def _format_employee_response(emp: Employee, current_user: User) -> EmployeeResp
 async def list_employees(
     pagination: PaginationDep,
     unit_id: uuid.UUID | None = Query(None, description="Filtrar por unidad organizacional"),
+    direction: str | None = Query(None, description="Filtrar por dirección superior"),
     status: str | None = Query(None, description="Filtrar por estado"),
     search: str | None = Query(None, description="Búsqueda por nombre o ID"),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Consulta paginada del directorio de funcionarios."""
+    """Consulta paginada del directorio de funcionarios con aislamiento individual."""
     employees, total = await EmployeeService.list_employees(
         db=db,
         unit_id=unit_id,
+        direction=direction,
         status=status,
         search=search,
         offset=pagination.offset,
         limit=pagination.limit,
+        current_user=current_user,
     )
     items = [_format_employee_response(e, current_user) for e in employees]
     return PageResponse.create(items=items, total=total, page=pagination.page, page_size=pagination.page_size)

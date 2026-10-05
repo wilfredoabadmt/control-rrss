@@ -141,12 +141,25 @@ class Employee(Base, TimestampMixin):
         index=True,
         comment="Unidad organizacional actual a la que pertenece",
     )
+    direction_name: Mapped[str | None] = mapped_column(
+        String(200),
+        nullable=True,
+        index=True,
+        comment="Dirección o dependencia superior del funcionario",
+    )
     position_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("positions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
         comment="Cargo actual desempeñado",
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Usuario que creó o gestiona este funcionario en su panel individual",
     )
 
     # Estado y Fechas de Vinculación

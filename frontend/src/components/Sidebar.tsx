@@ -86,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) =>
       id: 'admin',
       label: 'Administración',
       icon: Settings,
-      roles: [UserRole.SUPER_ADMIN],
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD],
     },
   ];
 

@@ -5,11 +5,11 @@
  */
 
 export const ORGANIGRAMA_GAMEA: Record<string, string[]> = {
-  'Despacho Alcaldesa': [
+  'Despacho Alcalde': [
     'Unidad de Relaciones Públicas y Protocolo',
     'Unidad Sumariante',
     'Unidad de Auditoria Interna',
-    'Despacho Central de la Alcaldesa',
+    'Despacho Central del Alcalde',
   ],
   'Dirección de Comunicación': [
     'Unidad de Prensa',

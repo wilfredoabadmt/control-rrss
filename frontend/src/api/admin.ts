@@ -6,6 +6,7 @@ export interface UserAdminItem {
   email: string;
   full_name: string;
   is_active: boolean;
+  assigned_direction?: string | null;
   roles: Array<{ id: string; name: string; description?: string }>;
   failed_login_attempts: number;
   locked_until?: string;
@@ -26,6 +27,7 @@ export const createUserApi = async (data: {
   email: string;
   full_name: string;
   password: string;
+  assigned_direction?: string | null;
   role_names: string[];
 }): Promise<UserAdminItem> => {
   const res = await apiClient.post('/users/', data);
@@ -38,6 +40,7 @@ export const updateUserApi = async (
     full_name?: string;
     email?: string;
     is_active?: boolean;
+    assigned_direction?: string | null;
     password?: string;
     role_names?: string[];
   }

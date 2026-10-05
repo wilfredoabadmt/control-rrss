@@ -37,6 +37,7 @@ class UserBase(BaseModel):
     email: EmailStr = Field(..., description="Correo institucional único")
     full_name: str = Field(..., min_length=3, max_length=150, description="Nombre completo")
     is_active: bool = Field(default=True, description="Estado de la cuenta")
+    assigned_direction: str | None = Field(default=None, description="Dirección o dependencia asignada para panel individual")
 
 
 class UserCreate(UserBase):
@@ -48,6 +49,7 @@ class UserUpdate(BaseModel):
     full_name: str | None = Field(None, min_length=3, max_length=150)
     email: EmailStr | None = None
     is_active: bool | None = None
+    assigned_direction: str | None = None
     password: str | None = Field(None, min_length=6, description="Nueva contraseña si se desea actualizar")
     role_names: list[str] | None = Field(None, description="Lista de roles asignados al usuario")
 

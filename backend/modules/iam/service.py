@@ -223,6 +223,7 @@ class IAMService:
             full_name=user_in.full_name.strip(),
             password_hash=hash_password(user_in.password),
             is_active=user_in.is_active,
+            assigned_direction=user_in.assigned_direction.strip() if user_in.assigned_direction else None,
             roles=roles,
         )
         db.add(new_user)
@@ -235,7 +236,7 @@ class IAMService:
             entity_id=str(new_user.id),
             user_id=str(current_user.id) if current_user else None,
             user_email=current_user.email if current_user else None,
-            new_state={"email": new_user.email, "full_name": new_user.full_name, "roles": [r.name for r in roles]},
+            new_state={"email": new_user.email, "full_name": new_user.full_name, "roles": [r.name for r in roles], "assigned_direction": new_user.assigned_direction},
         )
         await db.refresh(new_user)
         return new_user
@@ -256,6 +257,7 @@ class IAMService:
             "email": user.email,
             "full_name": user.full_name,
             "is_active": user.is_active,
+            "assigned_direction": user.assigned_direction,
             "roles": [r.name for r in user.roles],
         }
 
@@ -263,6 +265,8 @@ class IAMService:
             user.full_name = user_in.full_name.strip()
         if user_in.is_active is not None:
             user.is_active = user_in.is_active
+        if user_in.assigned_direction is not None:
+            user.assigned_direction = user_in.assigned_direction.strip() or None
         if user_in.email is not None:
             new_email = str(user_in.email).lower().strip()
             if new_email != user.email:

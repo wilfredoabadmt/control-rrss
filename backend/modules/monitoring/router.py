@@ -102,7 +102,7 @@ async def get_audience(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await MonitoringHubService.get_audience(db)
+    return await MonitoringHubService.get_audience(db, current_user=current_user)
 
 
 @monitoring_router.post(
@@ -174,6 +174,7 @@ async def get_activity_matrix(
         department=department,
         search=search,
         participation_status=participation_status,
+        current_user=current_user,
     )
 
 
@@ -197,6 +198,7 @@ async def export_matrix_excel(
         publication_id=publication_id,
         platform_name=platform,
         department=department,
+        current_user=current_user,
     )
     timestamp_str = datetime.now(UTC).strftime("%Y%m%d_%H%M")
     filename = f"GAMEA_Informe_Fiscalizacion_Redes_{timestamp_str}.xlsx"

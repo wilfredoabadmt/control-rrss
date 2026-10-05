@@ -5,6 +5,7 @@ Principio VIII: Fuente Maestra de Recursos Humanos
 Principio XX: Protección de Datos Personales
 """
 
+import re
 import uuid
 
 from core.audit.service import record_audit_event
@@ -20,7 +21,7 @@ from modules.employees.schemas import (
     PositionCreate,
 )
 from modules.iam.models import User
-from modules.shared.enums import AuditAction, BindingStatus, EmployeeStatus
+from modules.shared.enums import AuditAction, BindingStatus, EmployeeStatus, UserRole
 from modules.shared.exceptions import EntityNotFoundException, ValidationException
 from modules.social_accounts.models import SocialAccount, SocialPlatform
 from sqlalchemy import func, or_, select
@@ -165,17 +166,33 @@ class EmployeeService:
     @staticmethod
     async def _resolve_or_create_unit(db: AsyncSession, unit_name: str, parent_name: str | None = None) -> OrganizationalUnit:
         clean_name = unit_name.strip()
-        stmt = select(OrganizationalUnit).where(func.lower(OrganizationalUnit.name) == clean_name.lower())
-        unit = (await db.execute(stmt)).scalar_one_or_none()
-        if unit:
-            return unit
+        clean_name = re.sub(r'(?i)alcaldesa', 'Alcalde', clean_name)
 
         parent_id = None
         if parent_name and parent_name.strip():
-            stmt_p = select(OrganizationalUnit).where(func.lower(OrganizationalUnit.name) == parent_name.strip().lower())
+            clean_parent = parent_name.strip()
+            clean_parent = re.sub(r'(?i)alcaldesa', 'Alcalde', clean_parent)
+            stmt_p = select(OrganizationalUnit).where(func.lower(OrganizationalUnit.name) == clean_parent.lower())
             p_unit = (await db.execute(stmt_p)).scalar_one_or_none()
-            if p_unit:
-                parent_id = p_unit.id
+            if not p_unit:
+                code_cand = "".join(c for c in clean_parent[:6] if c.isalnum()).upper() or "DIR"
+                p_unit = OrganizationalUnit(
+                    name=clean_parent,
+                    code=f"{code_cand}-{uuid.uuid4().hex[:4].upper()}",
+                    parent_id=None,
+                    status="ACTIVE",
+                )
+                db.add(p_unit)
+                await db.flush()
+            parent_id = p_unit.id
+
+        stmt = select(OrganizationalUnit).where(func.lower(OrganizationalUnit.name) == clean_name.lower())
+        unit = (await db.execute(stmt)).scalar_one_or_none()
+        if unit:
+            if parent_id and unit.parent_id != parent_id:
+                unit.parent_id = parent_id
+                await db.flush()
+            return unit
 
         code_cand = "".join(c for c in clean_name[:6] if c.isalnum()).upper() or "OU"
         code = f"{code_cand}-{uuid.uuid4().hex[:4].upper()}"
@@ -319,6 +336,10 @@ class EmployeeService:
         encrypted_doc = encrypt_field(doc_raw) if doc_raw else encrypt_field(emp_id)
         doc_hash = hash_blind_index(doc_raw) if doc_raw else hash_blind_index(emp_id)
 
+        norm_dir = None
+        if emp_in.parent_unit_name and emp_in.parent_unit_name.strip():
+            norm_dir = re.sub(r'(?i)alcaldesa', 'Alcalde', emp_in.parent_unit_name.strip())
+
         emp = Employee(
             employee_id=emp_id,
             document_number_encrypted=encrypted_doc,
@@ -326,10 +347,12 @@ class EmployeeService:
             first_name=emp_in.first_name.strip(),
             last_name=emp_in.last_name.strip(),
             organizational_unit_id=ou_id,
+            direction_name=norm_dir,
             position_id=pos_id,
             status=emp_in.status,
             hire_date=emp_in.hire_date,
             termination_date=emp_in.termination_date,
+            created_by_user_id=current_user.id if current_user else None,
         )
         db.add(emp)
         await db.flush()
@@ -409,6 +432,11 @@ class EmployeeService:
         if doc_raw is not None and doc_raw.strip():
             emp.document_number_encrypted = encrypt_field(doc_raw.strip())
             emp.document_hash = hash_blind_index(doc_raw.strip())
+
+        if emp_in.parent_unit_name is not None and emp_in.parent_unit_name.strip():
+            emp.direction_name = re.sub(r'(?i)alcaldesa', 'Alcalde', emp_in.parent_unit_name.strip())
+        if current_user and emp.created_by_user_id is None:
+            emp.created_by_user_id = current_user.id
 
         if unit_changed:
             emp.organizational_unit_id = new_unit_id
@@ -545,14 +573,53 @@ class EmployeeService:
     async def list_employees(
         db: AsyncSession,
         unit_id: uuid.UUID | None = None,
+        direction: str | None = None,
         status: str | None = None,
         search: str | None = None,
         offset: int = 0,
         limit: int = 20,
+        current_user: User | None = None,
     ) -> tuple[list[Employee], int]:
-        """Consulta paginada con filtros organizacionales y búsqueda."""
+        """Consulta paginada con filtros organizacionales, búsqueda y aislamiento individual por usuario."""
         query = select(Employee)
         count_query = select(func.count()).select_from(Employee)
+
+        # Aislamiento individual y multi-área por usuario / dirección
+        if current_user:
+            user_roles = {r.name for r in current_user.roles}
+            is_superadmin = (
+                UserRole.SUPER_ADMIN.value in user_roles or UserRole.COMMUNICATIONS_LEAD.value in user_roles
+            ) and not getattr(current_user, "assigned_direction", None)
+
+            if not is_superadmin:
+                user_dir = getattr(current_user, "assigned_direction", None)
+                if user_dir:
+                    dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip())
+                    dir_filter = or_(
+                        func.lower(Employee.direction_name) == dir_norm.lower(),
+                        Employee.organizational_unit.has(
+                            OrganizationalUnit.parent.has(func.lower(OrganizationalUnit.name) == dir_norm.lower())
+                        ),
+                        Employee.created_by_user_id == current_user.id,
+                    )
+                    query = query.where(dir_filter)
+                    count_query = count_query.where(dir_filter)
+                else:
+                    # Usuario individual sin dirección asignada: panel 100% individual y vacío para nuevas cuentas
+                    indiv_filter = (Employee.created_by_user_id == current_user.id)
+                    query = query.where(indiv_filter)
+                    count_query = count_query.where(indiv_filter)
+
+        if direction and direction.strip():
+            clean_dir = re.sub(r'(?i)alcaldesa', 'Alcalde', direction.strip())
+            dir_cond = or_(
+                func.lower(Employee.direction_name) == clean_dir.lower(),
+                Employee.organizational_unit.has(
+                    OrganizationalUnit.parent.has(func.lower(OrganizationalUnit.name) == clean_dir.lower())
+                ),
+            )
+            query = query.where(dir_cond)
+            count_query = count_query.where(dir_cond)
 
         if unit_id:
             query = query.where(Employee.organizational_unit_id == unit_id)

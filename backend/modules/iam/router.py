@@ -153,11 +153,11 @@ async def list_users(
 async def create_user(
     user_in: UserCreate,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD)),
 ):
     """
     Crea un nuevo usuario institucional.
-    Exclusivo para rol SUPER_ADMIN.
+    Permitido para SUPER_ADMIN, DIRECTOR y COMMUNICATIONS_LEAD.
     """
     try:
         user = await IAMService.create_user(db=db, user_in=user_in, current_user=current_user)
@@ -179,10 +179,10 @@ async def get_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
 
-    # Control de acceso: Solo el mismo usuario, SUPER_ADMIN, AUDITOR o DIRECTOR pueden consultarlo
+    # Control de acceso: Solo el mismo usuario, SUPER_ADMIN, AUDITOR, DIRECTOR o COMMUNICATIONS_LEAD pueden consultarlo
     is_self = current_user.id == user.id
     user_roles_set = {r.name for r in current_user.roles}
-    privileged = {UserRole.SUPER_ADMIN.value, UserRole.AUDITOR.value, UserRole.DIRECTOR.value}
+    privileged = {UserRole.SUPER_ADMIN.value, UserRole.AUDITOR.value, UserRole.DIRECTOR.value, UserRole.COMMUNICATIONS_LEAD.value}
     if not is_self and not user_roles_set.intersection(privileged):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes.")
 
@@ -194,10 +194,10 @@ async def update_user(
     user_id: uuid.UUID,
     user_in: UserUpdate,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD)),
 ):
     """
-    Actualiza datos de un usuario. Exclusivo para SUPER_ADMIN.
+    Actualiza datos de un usuario.
     """
     try:
         user = await IAMService.update_user(db, user_id, user_in, current_user)
@@ -211,10 +211,10 @@ async def assign_user_roles(
     user_id: uuid.UUID,
     roles_in: UserRolesUpdate,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD)),
 ):
     """
-    Asigna roles a un usuario institucional. Exclusivo para SUPER_ADMIN (BR-IAM-008).
+    Asigna roles a un usuario institucional.
     """
     try:
         user = await IAMService.assign_roles(db, user_id, roles_in.role_names, current_user)
@@ -227,7 +227,7 @@ async def assign_user_roles(
 async def deactivate_user(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD)),
 ):
     """
     Baja lógica de usuario (BR-IAM-009). Nunca se elimina físicamente.

@@ -80,6 +80,7 @@ export interface UserProfile {
   full_name: string;
   roles: UserRole[];
   is_active: boolean;
+  assigned_direction?: string | null;
   last_login_at?: string;
 }
 

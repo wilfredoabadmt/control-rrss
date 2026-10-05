@@ -70,6 +70,24 @@ async def lifespan(app: FastAPI):
         async with async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
+        # Migraciones idempotentes de esquema para tablas existentes en PostgreSQL / SQLite
+        try:
+            async with async_engine.begin() as conn:
+                is_pg = "postgresql" in async_engine.dialect.name
+                if is_pg:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_direction VARCHAR(200);"))
+                    await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS created_by_user_id UUID;"))
+                    await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS direction_name VARCHAR(200);"))
+                    await conn.execute(text("UPDATE organizational_units SET name = 'Despacho Alcalde' WHERE lower(name) = 'despacho alcaldesa';"))
+                    await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'Alcaldesa', 'Alcalde') WHERE name LIKE '%Alcaldesa%';"))
+                    await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'alcaldesa', 'alcalde') WHERE name LIKE '%alcaldesa%';"))
+                    await conn.execute(text("UPDATE organizational_units SET parent_id = (SELECT id FROM organizational_units WHERE lower(name) = 'despacho alcalde' LIMIT 1) WHERE lower(name) = 'unidad de relaciones públicas y protocolo' AND (SELECT count(*) FROM organizational_units WHERE lower(name) = 'despacho alcalde') > 0;"))
+                    await conn.execute(text("UPDATE employees SET direction_name = 'Despacho Alcalde' WHERE lower(first_name) LIKE '%wilfredo%' OR employee_id LIKE '%8736490%';"))
+                    await conn.execute(text("UPDATE employees SET created_by_user_id = (SELECT id FROM users WHERE lower(email) LIKE '%wilfredo%' OR lower(full_name) LIKE '%wilfredo%' LIMIT 1) WHERE created_by_user_id IS NULL AND (SELECT count(*) FROM users WHERE lower(email) LIKE '%wilfredo%' OR lower(full_name) LIKE '%wilfredo%') > 0;"))
+                    await conn.execute(text("INSERT INTO user_roles (user_id, role_id) SELECT u.id, r.id FROM users u, roles r WHERE (lower(u.email) LIKE '%wilfredo%' OR lower(u.full_name) LIKE '%wilfredo%') AND r.name = 'SUPER_ADMIN' ON CONFLICT DO NOTHING;"))
+        except Exception as e_mig:
+            logger.warning("schema_migration_step_warning", error=str(e_mig))
+
         async with AsyncSessionLocal() as session:
             await seed_roles_and_permissions(session)
             await seed_social_platforms(session)
