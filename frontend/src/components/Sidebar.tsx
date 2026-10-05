@@ -56,7 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) =>
       id: 'employees',
       label: 'Funcionarios',
       icon: Users,
-      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.ANALYST, UserRole.OPERATOR],
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
     },
     {
       id: 'publications',

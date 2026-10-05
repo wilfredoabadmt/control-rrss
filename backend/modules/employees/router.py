@@ -41,6 +41,15 @@ positions_router = APIRouter()
 employees_router = APIRouter()
 
 
+# Roles con permiso de gestión de funcionarios, unidades y nómina
+EMPLOYEE_MANAGE_ROLES = (
+    UserRole.SUPER_ADMIN,
+    UserRole.DIRECTOR,
+    UserRole.COMMUNICATIONS_LEAD,
+    UserRole.ANALYST,
+    UserRole.OPERATOR,
+)
+
 # -----------------------------------------------------------------------------
 # Endpoints de Unidades Organizacionales (/api/v1/org-units)
 # -----------------------------------------------------------------------------
@@ -69,7 +78,7 @@ async def list_org_units(
 async def create_org_unit(
     org_in: OrganizationalUnitCreate,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR)),
+    current_user: User = Depends(require_roles(*EMPLOYEE_MANAGE_ROLES)),
 ):
     """Crea una nueva unidad organizacional."""
     try:
@@ -84,7 +93,7 @@ async def update_org_unit(
     unit_id: uuid.UUID,
     org_in: OrganizationalUnitUpdate,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR)),
+    current_user: User = Depends(require_roles(*EMPLOYEE_MANAGE_ROLES)),
 ):
     """Actualiza una unidad organizacional existente."""
     try:
@@ -115,7 +124,7 @@ async def list_positions(
 async def create_position(
     pos_in: PositionCreate,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR)),
+    current_user: User = Depends(require_roles(*EMPLOYEE_MANAGE_ROLES)),
 ):
     """Crea un nuevo cargo institucional."""
     pos = await EmployeeService.create_position(db, pos_in, current_user)
@@ -129,9 +138,16 @@ async def create_position(
 def _format_employee_response(emp: Employee, current_user: User) -> EmployeeResponse:
     """Aplica protección PII: Oculta CI si el usuario no tiene permisos suficientes."""
     user_roles = {r.name for r in current_user.roles}
-    privileged_roles = {UserRole.SUPER_ADMIN.value, UserRole.AUDITOR.value, UserRole.DIRECTOR.value}
+    privileged_roles = {
+        UserRole.SUPER_ADMIN.value,
+        UserRole.AUDITOR.value,
+        UserRole.DIRECTOR.value,
+        UserRole.COMMUNICATIONS_LEAD.value,
+        UserRole.ANALYST.value,
+        UserRole.OPERATOR.value,
+    }
 
-    # Si es privilegiado, descifra la cédula; si es visor o analista, la oculta/enmascara
+    # Si es privilegiado, descifra la cédula; si es visor, la oculta/enmascara
     doc_number = None
     if user_roles.intersection(privileged_roles):
         doc_number = decrypt_field(emp.document_number_encrypted)
@@ -222,7 +238,7 @@ async def list_employees(
 async def create_employee(
     emp_in: EmployeeCreate,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR)),
+    current_user: User = Depends(require_roles(*EMPLOYEE_MANAGE_ROLES)),
 ):
     """Crea un funcionario institucional."""
     try:
@@ -267,7 +283,7 @@ async def download_import_template(
 async def import_employees_payroll(
     file: UploadFile = File(..., description="Archivo Excel (.xlsx) o CSV de nómina"),
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR)),
+    current_user: User = Depends(require_roles(*EMPLOYEE_MANAGE_ROLES)),
 ):
     """
     Importación y sincronización de nómina institucional (REQ-EMP-003).
@@ -328,7 +344,7 @@ async def update_employee(
     employee_id: str,
     emp_in: EmployeeUpdate,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR)),
+    current_user: User = Depends(require_roles(*EMPLOYEE_MANAGE_ROLES)),
 ):
     """
     Actualiza datos de un funcionario. Si cambia de unidad o cargo, registra en el historial (T-204).
@@ -348,7 +364,7 @@ async def delete_employee(
     reason: str | None = Query("Desvinculación institucional", description="Motivo de la baja"),
     permanent: bool = Query(False, description="Eliminación física definitiva de la base de datos"),
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.DIRECTOR)),
+    current_user: User = Depends(require_roles(*EMPLOYEE_MANAGE_ROLES)),
 ):
     """
     Baja lógica o eliminación de funcionario (BR-EMP-004).
