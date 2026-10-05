@@ -1,8 +1,9 @@
+import contextlib
 import os
 import re
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from core.audit.service import record_audit_event
@@ -255,18 +256,16 @@ class PublicationService:
         """
         Obtiene los últimos posts oficiales directamente desde la API Graph de Meta para la página GAMEA.
         """
-        from modules.monitoring.models import SocialConnectorConfig
         from core.security.encryption import decrypt_field
+        from modules.monitoring.models import SocialConnectorConfig
 
         # 1. Obtener token de BD o variables de entorno
         stmt_cfg = select(SocialConnectorConfig).where(SocialConnectorConfig.platform_name == "FACEBOOK")
         fb_cfg = (await db.execute(stmt_cfg)).scalar_one_or_none()
         fb_token = ""
         if fb_cfg and fb_cfg.access_token_encrypted:
-            try:
+            with contextlib.suppress(Exception):
                 fb_token = decrypt_field(fb_cfg.access_token_encrypted)
-            except Exception:
-                pass
         if not fb_token:
             fb_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
 
@@ -294,7 +293,7 @@ class PublicationService:
                         },
                     )
                     if resp.status_code == 200:
-                        return resp.json().get("data", [])
+                        return cast("list[dict[str, Any]]", resp.json().get("data", []))
             except Exception:
                 pass
             return []

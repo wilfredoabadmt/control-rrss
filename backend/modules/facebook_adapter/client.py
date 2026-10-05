@@ -6,7 +6,7 @@ Principio V: No Inventar Datos
 REQ-FBI-001, REQ-FBI-002, REQ-FBI-003, REQ-FBI-004
 """
 
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from config import settings
@@ -188,7 +188,7 @@ class FacebookGraphClient:
             raise AuthenticationException(f"Token de Meta inválido o sin permisos: {resp.text}")
         resp.raise_for_status()
         data = resp.json()
-        return data.get("data", [])
+        return cast("list[dict[str, Any]]", data.get("data", []))
 
     async def validate_token(
         self,

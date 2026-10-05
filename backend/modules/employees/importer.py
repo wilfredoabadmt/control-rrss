@@ -5,7 +5,6 @@ Principio IX: Modelo de Datos Normalizado
 """
 
 import io
-import uuid as uuid_mod
 
 import pandas as pd
 from core.audit.service import record_audit_event
@@ -279,11 +278,11 @@ class EmployeePayrollImporter:
                 current_emp_id = emp_id
                 await cls._link_social_account(
                     db, current_emp_id, "FACEBOOK", raw_facebook,
-                    platforms_by_name, correlation_id, current_user,
+                    platforms_by_name,
                 )
                 await cls._link_social_account(
                     db, current_emp_id, "TIKTOK", raw_tiktok,
-                    platforms_by_name, correlation_id, current_user,
+                    platforms_by_name,
                 )
 
         # Registrar auditoría del lote completo (Principio X y VIII)
@@ -323,8 +322,6 @@ class EmployeePayrollImporter:
         platform_name: str,
         account_value: str,
         platforms_by_name: dict[str, SocialPlatform],
-        correlation_id: str,
-        current_user: User,
     ) -> None:
         """Vincula o actualiza una cuenta social para un funcionario importado."""
         if not account_value:
@@ -360,9 +357,7 @@ class EmployeePayrollImporter:
         if existing:
             if existing.current_username != username:
                 existing.current_username = username
-                if "facebook.com" in account_value or "fb.com" in account_value:
-                    existing.profile_url = account_value if account_value.startswith("http") else f"https://{account_value}"
-                elif "tiktok.com" in account_value:
+                if "facebook.com" in account_value or "fb.com" in account_value or "tiktok.com" in account_value:
                     existing.profile_url = account_value if account_value.startswith("http") else f"https://{account_value}"
         else:
             # Construir URL de perfil

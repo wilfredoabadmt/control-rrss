@@ -9,9 +9,11 @@ Cumplimiento Constitucional SDD:
 - Principio XX: Cifrado PII
 """
 
+import contextlib
 import csv
 import io
 import json
+import logging
 import os
 import re
 import time
@@ -19,11 +21,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import HTTPException, status
 from config import settings
 from core.audit.service import record_audit_event
 from core.logging_config import get_correlation_id
 from core.security.encryption import decrypt_field, encrypt_field, hash_blind_index
+from fastapi import HTTPException, status
 from modules.employees.models import Employee, OrganizationalUnit, Position
 from modules.iam.models import User
 from modules.interactions.matcher import InteractionMatcher, MatchStatus
@@ -68,10 +70,9 @@ from modules.verification.models import Verification
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import func, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-import logging
 
 logger = logging.getLogger("modules.monitoring.service")
 
@@ -254,15 +255,11 @@ class MonitoringHubService:
                 stmt_cfg = select(SocialConnectorConfig).where(SocialConnectorConfig.platform_name == "FACEBOOK")
                 fb_cfg = (await db.execute(stmt_cfg)).scalar_one_or_none()
                 if fb_cfg and fb_cfg.access_token_encrypted:
-                    try:
+                    with contextlib.suppress(Exception):
                         token = decrypt_field(fb_cfg.access_token_encrypted)
-                    except Exception:
-                        pass
                 if fb_cfg and fb_cfg.api_secret_encrypted and not app_secret:
-                    try:
+                    with contextlib.suppress(Exception):
                         app_secret = decrypt_field(fb_cfg.api_secret_encrypted)
-                    except Exception:
-                        pass
 
             if not token:
                 token = (
@@ -383,10 +380,8 @@ class MonitoringHubService:
                 stmt_cfg = select(SocialConnectorConfig).where(SocialConnectorConfig.platform_name == "TIKTOK")
                 tt_cfg = (await db.execute(stmt_cfg)).scalar_one_or_none()
                 if tt_cfg and tt_cfg.access_token_encrypted:
-                    try:
+                    with contextlib.suppress(Exception):
                         token = decrypt_field(tt_cfg.access_token_encrypted)
-                    except Exception:
-                        pass
 
             if not token:
                 token = (os.environ.get("TIKTOK_ACCESS_TOKEN") or getattr(settings, "TIKTOK_ACCESS_TOKEN", "") or "").strip()
@@ -544,7 +539,8 @@ class MonitoringHubService:
             "Obtener el App ID desde developers.facebook.com y configurarlo en las variables de entorno de Coolify o archivo .env."
         )
         fb_vars.append(v1)
-        if n1: fb_missing.append(n1)
+        if n1:
+            fb_missing.append(n1)
 
         v2, n2 = eval_var(
             "FACEBOOK_APP_SECRET", "Meta App Secret", fb_app_secret, True, True,
@@ -553,7 +549,8 @@ class MonitoringHubService:
             "Copiar el App Secret desde el portal Meta Developers y asignarlo a FACEBOOK_APP_SECRET."
         )
         fb_vars.append(v2)
-        if n2: fb_missing.append(n2)
+        if n2:
+            fb_missing.append(n2)
 
         v3, n3 = eval_var(
             "FACEBOOK_PAGE_ACCESS_TOKEN", "Page Access Token", fb_page_token, True, True,
@@ -562,7 +559,8 @@ class MonitoringHubService:
             "Generar un Token de Página permanente en el Explorador de la Graph API de Meta y colocarlo en FACEBOOK_PAGE_ACCESS_TOKEN."
         )
         fb_vars.append(v3)
-        if n3: fb_missing.append(n3)
+        if n3:
+            fb_missing.append(n3)
 
         v4, n4 = eval_var(
             "FACEBOOK_PAGE_ID", "ID de Fanpage Oficial", fb_page_id, False, False,
@@ -571,7 +569,8 @@ class MonitoringHubService:
             "Ingresar el ID numérico de la fanpage en FACEBOOK_PAGE_ID."
         )
         fb_vars.append(v4)
-        if n4: fb_missing.append(n4)
+        if n4:
+            fb_missing.append(n4)
 
         v5, n5 = eval_var(
             "FACEBOOK_VERIFY_TOKEN", "Webhook Verify Token", fb_verify_token, False, True,
@@ -580,7 +579,8 @@ class MonitoringHubService:
             "Definir una frase secreta segura en FACEBOOK_VERIFY_TOKEN y sincronizarla en la consola de Meta."
         )
         fb_vars.append(v5)
-        if n5: fb_missing.append(n5)
+        if n5:
+            fb_missing.append(n5)
 
         fb_configured_count = sum(1 for v in fb_vars if v.configured and v.required)
         fb_required_count = sum(1 for v in fb_vars if v.required)
@@ -694,7 +694,8 @@ class MonitoringHubService:
             "Obtener el Client Key en developers.tiktok.com y agregarlo a las variables del servidor en TIKTOK_CLIENT_KEY."
         )
         tt_vars.append(tv1)
-        if tn1: tt_missing.append(tn1)
+        if tn1:
+            tt_missing.append(tn1)
 
         tv2, tn2 = eval_var(
             "TIKTOK_CLIENT_SECRET", "TikTok Client Secret", tt_client_secret, True, True,
@@ -703,7 +704,8 @@ class MonitoringHubService:
             "Copiar el Client Secret de TikTok Developers y configurarlo en TIKTOK_CLIENT_SECRET."
         )
         tt_vars.append(tv2)
-        if tn2: tt_missing.append(tn2)
+        if tn2:
+            tt_missing.append(tn2)
 
         tv3, tn3 = eval_var(
             "TIKTOK_ACCESS_TOKEN", "TikTok Access Token", tt_access_token, True, True,
@@ -712,7 +714,8 @@ class MonitoringHubService:
             "Completar la autorización OAuth en TikTok for Developers y definir TIKTOK_ACCESS_TOKEN."
         )
         tt_vars.append(tv3)
-        if tn3: tt_missing.append(tn3)
+        if tn3:
+            tt_missing.append(tn3)
 
         tv4, tn4 = eval_var(
             "TIKTOK_ACCOUNT_HANDLE", "Cuenta Oficial TikTok", tt_account_handle, False, False,
@@ -721,7 +724,8 @@ class MonitoringHubService:
             "Configurar el handle en la base de datos o módulo de conectores."
         )
         tt_vars.append(tv4)
-        if tn4: tt_missing.append(tn4)
+        if tn4:
+            tt_missing.append(tn4)
 
         tt_configured_count = sum(1 for v in tt_vars if v.configured and v.required)
         tt_required_count = sum(1 for v in tt_vars if v.required)
@@ -1159,8 +1163,10 @@ class MonitoringHubService:
                     select(Publication)
                     .where(
                         or_(
-                            Publication.id.in_(uuid_list) if uuid_list else False,
-                            Publication.external_post_id.in_(ext_id_list) if ext_id_list else False,
+                            Publication.id.in_(uuid_list)
+                            if uuid_list else false(),
+                            Publication.external_post_id.in_(ext_id_list)
+                            if ext_id_list else false(),
                         )
                     )
                     .options(selectinload(Publication.platform))
@@ -1174,10 +1180,8 @@ class MonitoringHubService:
                     fb_cfg = (await db.execute(select(SocialConnectorConfig).where(SocialConnectorConfig.platform_name == "FACEBOOK"))).scalar_one_or_none()
                     fb_token = ""
                     if fb_cfg and fb_cfg.access_token_encrypted:
-                        try:
+                        with contextlib.suppress(Exception):
                             fb_token = decrypt_field(fb_cfg.access_token_encrypted)
-                        except Exception:
-                            pass
                     if not fb_token:
                         fb_token = (
                             os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
@@ -1211,10 +1215,8 @@ class MonitoringHubService:
                                         created_time_str = fp.get("created_time")
                                         pub_dt = datetime.now(UTC)
                                         if created_time_str:
-                                            try:
+                                            with contextlib.suppress(Exception):
                                                 pub_dt = datetime.fromisoformat(created_time_str.replace("Z", "+00:00"))
-                                            except Exception:
-                                                pass
                                         new_p = Publication(
                                             platform_id=fb_plat_obj.id,
                                             external_post_id=f_id,
@@ -1326,10 +1328,8 @@ class MonitoringHubService:
                         fb_cfg = (await db.execute(select(SocialConnectorConfig).where(SocialConnectorConfig.platform_name == "FACEBOOK"))).scalar_one_or_none()
                         fb_token = ""
                         if fb_cfg and fb_cfg.access_token_encrypted:
-                            try:
+                            with contextlib.suppress(Exception):
                                 fb_token = decrypt_field(fb_cfg.access_token_encrypted)
-                            except Exception:
-                                pass
                         if not fb_token:
                             fb_token = (
                                 os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
@@ -1523,7 +1523,7 @@ class MonitoringHubService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error al ejecutar la extracción y cruce: {str(e)}",
-            )
+            ) from e
 
 
         exec_time = round(time.perf_counter() - start_time, 2)
@@ -1772,7 +1772,7 @@ class MonitoringHubService:
         cyan_fill = PatternFill(start_color="0891B2", end_color="0891B2", fill_type="solid")
         alt_row_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
         success_fill = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
-        warning_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
+        PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
 
         font_title = Font(name="Calibri", size=15, bold=True, color="FFFFFF")
         font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")

@@ -5,7 +5,6 @@ Routers para Directorio de Funcionarios, Estructura Organizacional y Cargos — 
 import pathlib
 import uuid
 
-
 from core.pagination import PageResponse
 from core.security.auth import get_current_user
 from core.security.encryption import decrypt_field
@@ -32,7 +31,7 @@ from modules.employees.schemas import (
 )
 from modules.employees.service import EmployeeService
 from modules.iam.models import User
-from modules.shared.enums import UserRole
+from modules.shared.enums import EmployeeStatus, UserRole
 from modules.shared.exceptions import EntityNotFoundException, ValidationException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

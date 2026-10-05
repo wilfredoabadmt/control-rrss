@@ -106,8 +106,8 @@ async def lifespan(app: FastAPI):
 
             # Sincronización de conectores oficiales con variables de entorno reales
             try:
-                from modules.monitoring.models import SocialConnectorConfig
                 from core.security.encryption import encrypt_field
+                from modules.monitoring.models import SocialConnectorConfig
                 stmt_cfg = select(SocialConnectorConfig)
                 existing_cfgs = list((await session.execute(stmt_cfg)).scalars().all())
                 for cfg in existing_cfgs:
