@@ -4,6 +4,7 @@ Principio VIII: Fuente Maestra de Recursos Humanos
 Principio IX: Modelo de Datos Normalizado
 """
 
+import hashlib
 import io
 import re
 import uuid
@@ -17,7 +18,7 @@ from modules.employees.schemas import EmployeeImportReport
 from modules.iam.models import User
 from modules.shared.enums import AuditAction, BindingStatus, EmployeeStatus
 from modules.social_accounts.models import SocialAccount, SocialPlatform
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -25,40 +26,101 @@ class EmployeePayrollImporter:
 
     @staticmethod
     def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-        """Mapea encabezados comunes en archivos de nómina a campos estándar."""
+        """Mapea encabezados comunes en archivos de nómina a campos estándar con eliminación de acentos."""
+        import unicodedata
+
         mapping = {
             "id": "employee_id",
             "codigo": "employee_id",
+            "cod": "employee_id",
             "item": "employee_id",
+            "nro_item": "employee_id",
             "matricula": "employee_id",
+            "employee_id": "employee_id",
+
             "ci": "document_number",
             "cedula": "document_number",
+            "cedula_de_identidad": "document_number",
+            "carnet": "document_number",
+            "carnet_de_identidad": "document_number",
             "documento": "document_number",
+            "nro_documento": "document_number",
+            "document_number": "document_number",
+
             "nombres": "first_name",
             "nombre": "first_name",
-            "nombres_y_apellidos": "full_name",
+            "primer_nombre": "first_name",
+            "first_name": "first_name",
+
             "apellidos": "last_name",
             "apellido": "last_name",
+            "primer_apellido": "last_name",
+            "segundo_apellido": "last_name",
+            "last_name": "last_name",
+
+            "nombres_y_apellidos": "full_name",
+            "nombre_y_apellido": "full_name",
+            "nombre_completo": "full_name",
+            "funcionario": "full_name",
+            "servidor": "full_name",
+            "servidor_publico": "full_name",
+            "full_name": "full_name",
+
             "unidad": "org_unit_code",
             "unidad_organizacional": "org_unit_code",
             "secretaria": "org_unit_code",
+            "area": "org_unit_code",
+            "departamento": "org_unit_code",
+            "division": "org_unit_code",
+            "unidad_municipal": "org_unit_code",
+            "org_unit_code": "org_unit_code",
+
             "direccion": "parent_unit_name",
+            "direccion_general": "parent_unit_name",
+            "direccion_administrativa": "parent_unit_name",
+            "secretaria_municipal": "parent_unit_name",
+            "dependencia": "parent_unit_name",
+            "parent_unit_name": "parent_unit_name",
+
             "cargo": "position_title",
             "puesto": "position_title",
+            "posicion": "position_title",
+            "denominacion": "position_title",
+            "position_title": "position_title",
+
             "estado": "status",
+            "status": "status",
+
             "cuenta_facebook": "facebook_account",
             "cuenta_de_facebook": "facebook_account",
             "facebook": "facebook_account",
+            "fb": "facebook_account",
+            "perfil_facebook": "facebook_account",
+            "facebook_account": "facebook_account",
+
             "cuenta_tiktok": "tiktok_account",
             "cuenta_de_tik_tok": "tiktok_account",
             "cuenta_de_tiktok": "tiktok_account",
             "tiktok": "tiktok_account",
             "tik_tok": "tiktok_account",
+            "tk": "tiktok_account",
+            "tt": "tiktok_account",
+            "perfil_tiktok": "tiktok_account",
+            "tiktok_account": "tiktok_account",
+
+            "correo": "email",
+            "email": "email",
+            "correo_electronico": "email",
         }
         renamed = {}
         for col in df.columns:
-            clean_col = str(col).lower().strip().replace(" ", "_")
-            renamed[col] = mapping.get(clean_col, clean_col)
+            raw_str = str(col)
+            norm_str = unicodedata.normalize("NFKD", raw_str).encode("ASCII", "ignore").decode("utf-8")
+            clean_col = re.sub(r"[^a-z0-9_]", "", norm_str.lower().strip().replace(" ", "_"))
+            if clean_col in mapping:
+                renamed[col] = mapping[clean_col]
+            else:
+                renamed[col] = clean_col
         return df.rename(columns=renamed)
 
     @classmethod
@@ -71,13 +133,54 @@ class EmployeePayrollImporter:
     ) -> EmployeeImportReport:
         """
         Procesa e importa un archivo Excel (.xlsx) o CSV de forma estrictamente idempotente.
+        Soporta múltiples delimitadores (, ; \t) y codificaciones (UTF-8, UTF-8 con BOM, Latin-1, CP1252).
         """
         correlation_id = get_correlation_id()
 
-        # 1. Cargar archivo con pandas
+        # 1. Cargar archivo con pandas de forma tolerante a codificaciones y delimitadores
         try:
             if filename.lower().endswith(".csv"):
-                df = pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False)
+                decoded_df = None
+                # Probar codificaciones típicas de Windows y Excel con distintos delimitadores
+                for enc in ("utf-8-sig", "utf-8", "latin-1", "cp1252", "iso-8859-1"):
+                    for sep in (None, ",", ";", "\t", "|"):
+                        try:
+                            temp_df = pd.read_csv(
+                                io.BytesIO(file_content),
+                                sep=sep,
+                                engine="python" if sep is None else "c",
+                                encoding=enc,
+                                dtype=str,
+                                keep_default_na=False,
+                            )
+                            if temp_df is not None and len(temp_df.columns) > 1 and len(temp_df) > 0:
+                                decoded_df = temp_df
+                                break
+                        except Exception:
+                            continue
+                    if decoded_df is not None:
+                        break
+
+                if decoded_df is None:
+                    for enc in ("utf-8-sig", "utf-8", "latin-1"):
+                        try:
+                            decoded_df = pd.read_csv(
+                                io.BytesIO(file_content),
+                                sep=None,
+                                engine="python",
+                                encoding=enc,
+                                dtype=str,
+                                keep_default_na=False,
+                            )
+                            if decoded_df is not None and len(decoded_df) > 0:
+                                break
+                        except Exception:
+                            continue
+
+                if decoded_df is None:
+                    df = pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False)
+                else:
+                    df = decoded_df
             else:
                 df = pd.read_excel(io.BytesIO(file_content), dtype=str, keep_default_na=False)
         except Exception as e:
@@ -93,30 +196,64 @@ class EmployeePayrollImporter:
 
         df = cls._normalize_columns(df)
 
-        # Si se recibió "full_name" (nombres_y_apellidos) sin first_name/last_name separados, dividir
-        if "full_name" in df.columns and "first_name" not in df.columns:
-            df[["first_name", "last_name"]] = df["full_name"].str.split(" ", n=1, expand=True)
-            df["last_name"] = df["last_name"].fillna("")
+        # Si se recibió "full_name" sin first_name ni last_name separados
+        if "full_name" in df.columns:
+            if "first_name" not in df.columns and "last_name" not in df.columns:
+                split_fn = df["full_name"].astype(str).str.strip().str.split(" ", n=1, expand=True)
+                df["first_name"] = split_fn[0]
+                df["last_name"] = split_fn[1].fillna("") if split_fn.shape[1] > 1 else ""
+            elif "first_name" not in df.columns:
+                df["first_name"] = df["full_name"]
 
-        # Plantilla simplificada: si no hay employee_id ni document_number, generarlos automáticamente
-        is_simplified_template = "employee_id" not in df.columns and "document_number" not in df.columns
-        if is_simplified_template:
-            # Auto-generar IDs para la plantilla simplificada de funcionarios
-            df["employee_id"] = [f"EMP-{i+1:04d}" for i in range(len(df))]
-            df["document_number"] = [f"AUTO-{i+1:06d}" for i in range(len(df))]
+        # Si falta first_name pero hay last_name
+        if "first_name" not in df.columns and "last_name" in df.columns:
+            df["first_name"] = df["last_name"]
+            df["last_name"] = ""
 
-        required_cols = ["employee_id", "first_name", "last_name", "document_number"]
-        missing = [c for c in required_cols if c not in df.columns]
-        if missing:
+        # Si falta last_name
+        if "last_name" not in df.columns:
+            df["last_name"] = ""
+
+        # Auto-generar document_number y employee_id si faltan o vienen vacíos de forma determinista
+        if "first_name" not in df.columns:
             return EmployeeImportReport(
                 total_records=len(df),
                 created_count=0,
                 updated_count=0,
                 unchanged_count=0,
                 deactivated_count=0,
-                errors=[f"Faltan columnas requeridas en el archivo: {', '.join(missing)}"],
+                errors=["No se encontró columna de nombres en el archivo (ej: nombres, nombre, funcionario)."],
                 correlation_id=correlation_id,
             )
+
+        if "document_number" not in df.columns:
+            df["document_number"] = ""
+        if "employee_id" not in df.columns:
+            df["employee_id"] = ""
+        if "last_name" not in df.columns:
+            df["last_name"] = ""
+
+        for i in range(len(df)):
+            first_name = str(df.at[i, "first_name"]).strip()
+            last_name = str(df.at[i, "last_name"]).strip()
+            name_seed = f"{first_name.lower()}_{last_name.lower()}".strip("_") or f"row_{i+1}"
+            name_hash = hashlib.sha256(name_seed.encode("utf-8")).hexdigest()[:8].upper()
+
+            # document_number
+            doc_val = str(df.at[i, "document_number"]).strip()
+            if not doc_val:
+                doc_val = f"AUTO-{name_hash}"
+                df.at[i, "document_number"] = doc_val
+
+            # employee_id
+            emp_val = str(df.at[i, "employee_id"]).strip()
+            if not emp_val:
+                if doc_val and not doc_val.startswith("AUTO-"):
+                    df.at[i, "employee_id"] = f"EMP-{doc_val}"
+                else:
+                    df.at[i, "employee_id"] = f"EMP-{name_hash}"
+            else:
+                df.at[i, "employee_id"] = emp_val
 
         # 2. Cargar catálogos de Unidades y Cargos existentes
         stmt_units = select(OrganizationalUnit)
@@ -159,9 +296,17 @@ class EmployeePayrollImporter:
             raw_facebook = str(row.get("facebook_account", "")).strip()
             raw_tiktok = str(row.get("tiktok_account", "")).strip()
 
-            if not emp_id or not doc_num or not first_name or not last_name:
-                errors.append(f"Fila {row_num}: Datos obligatorios incompletos.")
+            if not first_name:
+                errors.append(f"Fila {row_num}: El nombre del funcionario es obligatorio.")
                 continue
+
+            if not emp_id or not doc_num:
+                name_seed = f"{first_name.lower()}_{last_name.lower()}".strip("_") or f"row_{row_num}"
+                name_hash = hashlib.sha256(name_seed.encode("utf-8")).hexdigest()[:8].upper()
+                if not doc_num:
+                    doc_num = f"AUTO-{name_hash}"
+                if not emp_id:
+                    emp_id = f"EMP-{name_hash}"
 
             # Resolver o crear la Dirección padre si se proporcionó
             parent_unit: OrganizationalUnit | None = None
@@ -234,9 +379,29 @@ class EmployeePayrollImporter:
                     positions_by_title[target_pos.title.upper()] = target_pos
                     positions_by_title[target_pos.title.lower()] = target_pos
 
-            # Buscar funcionario existente por employee_id
+            # Buscar funcionario existente por:
+            # 1. employee_id exacto
             stmt_emp = select(Employee).where(Employee.employee_id == emp_id)
             existing_emp = (await db.execute(stmt_emp)).scalar_one_or_none()
+
+            # 2. Si no se encontró por employee_id y tenemos un documento real (no AUTO):
+            if not existing_emp and doc_num and not doc_num.startswith("AUTO-"):
+                doc_hash = hash_blind_index(doc_num)
+                stmt_doc = select(Employee).where(Employee.document_hash == doc_hash)
+                existing_emp = (await db.execute(stmt_doc)).scalar_one_or_none()
+
+            # 3. Si sigue sin encontrarse, buscar por coincidencia de nombre
+            if not existing_emp and first_name:
+                if last_name:
+                    stmt_name = select(Employee).where(
+                        func.lower(Employee.first_name) == first_name.lower(),
+                        func.lower(Employee.last_name) == last_name.lower(),
+                    )
+                else:
+                    stmt_name = select(Employee).where(
+                        func.lower(Employee.first_name) == first_name.lower(),
+                    )
+                existing_emp = (await db.execute(stmt_name)).scalars().first()
 
             dir_for_emp = parent_unit.name if parent_unit else (raw_parent_unit.title() if raw_parent_unit else None)
 
@@ -270,13 +435,14 @@ class EmployeePayrollImporter:
                 status_changed = raw_status != prev_status
                 name_changed = (first_name != existing_emp.first_name) or (last_name != existing_emp.last_name)
 
-                # Verificar si el documento cambió
+                # Verificar si el documento cambió (no sobreescribir documento real con AUTO generado)
                 current_doc = decrypt_field(existing_emp.document_number_encrypted)
-                doc_changed = doc_num != current_doc
+                doc_changed = doc_num != current_doc and not doc_num.startswith("AUTO-")
 
                 if unit_changed or pos_changed or status_changed or name_changed or doc_changed:
                     existing_emp.first_name = first_name
-                    existing_emp.last_name = last_name
+                    if last_name:
+                        existing_emp.last_name = last_name
                     if doc_changed:
                         existing_emp.document_number_encrypted = encrypt_field(doc_num)
                         existing_emp.document_hash = hash_blind_index(doc_num)
@@ -315,7 +481,7 @@ class EmployeePayrollImporter:
 
             # Vincular cuentas sociales (Facebook / TikTok) si se proporcionaron
             if has_social_cols:
-                current_emp_id = emp_id
+                current_emp_id = existing_emp.employee_id if existing_emp else emp_id
                 await cls._link_social_account(
                     db, current_emp_id, "FACEBOOK", raw_facebook,
                     platforms_by_name,

@@ -358,10 +358,22 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
       const res = await importPayrollExcelApi(importFile);
       setImportResult(res);
       await fetchEmployees();
-      setFeedback({
-        type: 'success',
-        text: `Nómina importada exitosamente en PostgreSQL: ${res.created} nuevos funcionarios registrados y ${res.updated} actualizados.`,
-      });
+      if (res.errors && res.errors.length > 0 && res.created === 0 && res.updated === 0) {
+        setFeedback({
+          type: 'error',
+          text: `La importación no pudo registrar funcionarios: ${res.errors[0]}`,
+        });
+      } else if (res.errors && res.errors.length > 0) {
+        setFeedback({
+          type: 'info',
+          text: `Importación parcial: ${res.created} nuevos, ${res.updated} actualizados, pero hubieron ${res.errors.length} observaciones. Revise el detalle en el modal.`,
+        });
+      } else {
+        setFeedback({
+          type: 'success',
+          text: `Nómina importada exitosamente en PostgreSQL: ${res.created} nuevos funcionarios registrados y ${res.updated} actualizados.`,
+        });
+      }
     } catch (err: any) {
       const errorMsg = err?.response?.data?.detail || err?.message || 'Error al procesar la importación en el servidor PostgreSQL.';
       console.error('Error importando nómina:', err);
@@ -2541,6 +2553,28 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                       <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#38bdf8' }}>{importResult.updated}</div>
                     </div>
                   </div>
+
+                  {importResult.errors && importResult.errors.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: '12px',
+                        padding: '10px 14px',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: 'var(--radius-sm)',
+                        maxHeight: '130px',
+                        overflowY: 'auto',
+                        fontSize: '0.75rem',
+                        color: '#f87171',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <div style={{ fontWeight: '700', marginBottom: '4px' }}>Observaciones ({importResult.errors.length}):</div>
+                      {importResult.errors.map((err, idx) => (
+                        <div key={idx} style={{ marginBottom: '2px' }}>• {err}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

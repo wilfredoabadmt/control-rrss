@@ -104,3 +104,44 @@ async def test_payroll_import_strict_idempotency(async_db, mock_admin):
     emp = await EmployeeService.get_employee_by_id(async_db, "GAMEA-1001")
     assert len(emp.history) == 1
     assert "Sincronización de nómina" in emp.history[0].change_reason
+
+
+@pytest.mark.asyncio
+async def test_payroll_import_spanish_semicolon_format(async_db, mock_admin):
+    """
+    Soporte para archivos CSV exportados desde Excel en español:
+    - Delimitador ';' (punto y coma)
+    - Codificación ISO-8859-1 (Latin-1) con tildes
+    - Encabezados en español sin employee_id ni cédula explícitos
+    - Creación automática de cuentas de Facebook y TikTok vinculadas
+    """
+    spanish_csv_text = (
+        "Nombres;Apellidos;Unidad;Dirección;Cuenta Facebook;Cuenta TikTok\n"
+        "Juan Carlos;Mamani Quispe;Unidad de Prensa;Dirección de Comunicación;facebook.com/jc;@jcmamani\n"
+        "María Elena;Flores Perez;Unidad de Protocolo;Dirección de Comunicación;facebook.com/mflores;@maria_elena\n"
+    )
+    latin1_bytes = spanish_csv_text.encode("latin-1")
+
+    report = await EmployeePayrollImporter.import_payroll_file(
+        db=async_db,
+        file_content=latin1_bytes,
+        filename="Prensa.csv",
+        current_user=mock_admin,
+    )
+
+    assert report.total_records == 2
+    assert report.created_count == 2
+    assert report.updated_count == 0
+    assert len(report.errors) == 0
+
+    # Idempotencia con el mismo archivo
+    report_reintento = await EmployeePayrollImporter.import_payroll_file(
+        db=async_db,
+        file_content=latin1_bytes,
+        filename="Prensa.csv",
+        current_user=mock_admin,
+    )
+    assert report_reintento.total_records == 2
+    assert report_reintento.created_count == 0
+    assert report_reintento.unchanged_count == 2
+
