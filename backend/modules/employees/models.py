@@ -56,6 +56,7 @@ class OrganizationalUnit(Base, TimestampMixin, UUIDPrimaryKeyMixin):
         "OrganizationalUnit",
         back_populates="children",
         remote_side="OrganizationalUnit.id",
+        lazy="selectin",
     )
     employees: Mapped[list["Employee"]] = relationship(
         "Employee",
@@ -171,16 +172,19 @@ class Employee(Base, TimestampMixin):
     organizational_unit: Mapped[OrganizationalUnit | None] = relationship(
         OrganizationalUnit,
         back_populates="employees",
+        lazy="selectin",
     )
     position: Mapped[Position | None] = relationship(
         Position,
         back_populates="employees",
+        lazy="selectin",
     )
     history: Mapped[list["EmployeeHistory"]] = relationship(
         "EmployeeHistory",
         back_populates="employee",
         order_by="desc(EmployeeHistory.effective_date)",
         cascade="all, delete-orphan",
+        lazy="selectin",
     )
 
 

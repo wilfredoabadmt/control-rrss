@@ -60,6 +60,7 @@ class EmployeeService:
             new_state={"name": unit.name, "code": unit.code, "parent_id": str(unit.parent_id) if unit.parent_id else None},
         )
         await db.refresh(unit)
+        await db.commit()
         return unit
 
     @staticmethod
@@ -99,6 +100,7 @@ class EmployeeService:
             new_state={"name": unit.name, "code": unit.code, "parent_id": str(unit.parent_id) if unit.parent_id else None},
         )
         await db.refresh(unit)
+        await db.commit()
         return unit
 
     @staticmethod
@@ -153,6 +155,7 @@ class EmployeeService:
             new_state={"title": pos.title, "code": pos.code},
         )
         await db.refresh(pos)
+        await db.commit()
         return pos
 
     # -------------------------------------------------------------------------
@@ -353,8 +356,9 @@ class EmployeeService:
             correlation_id=cid,
         )
         await db.flush()
-        await db.refresh(emp)
-        return emp
+        await db.commit()
+        loaded = await EmployeeService.get_employee_by_id(db, emp.employee_id)
+        return loaded or emp
 
     @staticmethod
     async def update_employee(
@@ -451,8 +455,9 @@ class EmployeeService:
             correlation_id=cid,
         )
         await db.flush()
-        await db.refresh(emp)
-        return emp
+        await db.commit()
+        loaded = await EmployeeService.get_employee_by_id(db, emp.employee_id)
+        return loaded or emp
 
     @staticmethod
     async def delete_employee(
@@ -487,6 +492,7 @@ class EmployeeService:
                 correlation_id=cid,
             )
             await db.flush()
+            await db.commit()
         else:
             await EmployeeService.deactivate_employee(db, employee_id, current_user, reason=reason)
 
@@ -531,8 +537,9 @@ class EmployeeService:
             correlation_id=cid,
         )
         await db.flush()
-        await db.refresh(emp)
-        return emp
+        await db.commit()
+        loaded = await EmployeeService.get_employee_by_id(db, emp.employee_id)
+        return loaded or emp
 
     @staticmethod
     async def list_employees(

@@ -5,6 +5,8 @@ Principio IX: Modelo de Datos Normalizado
 """
 
 import io
+import re
+import uuid
 
 import pandas as pd
 from core.audit.service import record_audit_event
@@ -119,8 +121,10 @@ class EmployeePayrollImporter:
         # 2. Cargar catálogos de Unidades y Cargos existentes
         stmt_units = select(OrganizationalUnit)
         all_units = list((await db.execute(stmt_units)).scalars().all())
-        units_by_code: dict[str, OrganizationalUnit] = {u.code.upper(): u for u in all_units}
-        units_by_name: dict[str, OrganizationalUnit] = {u.name.upper(): u for u in all_units}
+        units_by_code: dict[str, OrganizationalUnit] = {u.code.strip().upper(): u for u in all_units}
+        units_by_name: dict[str, OrganizationalUnit] = {u.name.strip().upper(): u for u in all_units}
+        for u in all_units:
+            units_by_name[u.name.strip().lower()] = u
 
         # Cargar plataformas sociales para vincular cuentas de Facebook y TikTok
         stmt_platforms = select(SocialPlatform)
@@ -131,7 +135,9 @@ class EmployeePayrollImporter:
 
         stmt_pos = select(Position)
         all_positions = list((await db.execute(stmt_pos)).scalars().all())
-        positions_by_title: dict[str, Position] = {p.title.upper(): p for p in all_positions}
+        positions_by_title: dict[str, Position] = {p.title.strip().upper(): p for p in all_positions}
+        for p in all_positions:
+            positions_by_title[p.title.strip().lower()] = p
 
         # 3. Procesar cada registro
         created_count = 0
@@ -160,32 +166,51 @@ class EmployeePayrollImporter:
             # Resolver o crear la Dirección padre si se proporcionó
             parent_unit: OrganizationalUnit | None = None
             if raw_parent_unit:
-                parent_unit = units_by_code.get(raw_parent_unit) or units_by_name.get(raw_parent_unit)
+                parent_unit = (
+                    units_by_code.get(raw_parent_unit)
+                    or units_by_name.get(raw_parent_unit)
+                    or units_by_name.get(raw_parent_unit.lower())
+                )
                 if not parent_unit:
+                    code_cand = re.sub(r"[^A-Za-z0-9]", "", raw_parent_unit)[:8].upper() or "DIR"
+                    parent_code = f"{code_cand}-{uuid.uuid4().hex[:6].upper()}"
                     parent_unit = OrganizationalUnit(
                         name=raw_parent_unit.title(),
-                        code=raw_parent_unit[:20],
+                        code=parent_code,
                         status="ACTIVE",
                     )
                     db.add(parent_unit)
                     await db.flush()  # Ensure parent_unit gets an ID
-                    units_by_code[parent_unit.code.upper()] = parent_unit
+                    units_by_code[parent_code.upper()] = parent_unit
+                    units_by_name[raw_parent_unit] = parent_unit
+                    units_by_name[raw_parent_unit.lower()] = parent_unit
                     units_by_name[parent_unit.name.upper()] = parent_unit
+                    units_by_name[parent_unit.name.lower()] = parent_unit
 
             # Resolver o crear Unidad Organizacional si no existe
             target_unit: OrganizationalUnit | None = None
             if raw_unit:
-                target_unit = units_by_code.get(raw_unit) or units_by_name.get(raw_unit)
+                target_unit = (
+                    units_by_code.get(raw_unit)
+                    or units_by_name.get(raw_unit)
+                    or units_by_name.get(raw_unit.lower())
+                )
                 if not target_unit:
+                    code_cand = re.sub(r"[^A-Za-z0-9]", "", raw_unit)[:8].upper() or "UND"
+                    unit_code = f"{code_cand}-{uuid.uuid4().hex[:6].upper()}"
                     target_unit = OrganizationalUnit(
                         name=raw_unit.title(),
-                        code=raw_unit[:20],
+                        code=unit_code,
                         status="ACTIVE",
                         parent_id=parent_unit.id if parent_unit else None,
                     )
                     db.add(target_unit)
-                    units_by_code[target_unit.code.upper()] = target_unit
+                    await db.flush()
+                    units_by_code[unit_code.upper()] = target_unit
+                    units_by_name[raw_unit] = target_unit
+                    units_by_name[raw_unit.lower()] = target_unit
                     units_by_name[target_unit.name.upper()] = target_unit
+                    units_by_name[target_unit.name.lower()] = target_unit
                 elif parent_unit and target_unit.parent_id is None:
                     # Vincular unidad existente a su dirección padre si no estaba asignada
                     target_unit.parent_id = parent_unit.id
@@ -193,14 +218,21 @@ class EmployeePayrollImporter:
             # Resolver o crear Cargo si no existe
             target_pos: Position | None = None
             if raw_pos:
-                target_pos = positions_by_title.get(raw_pos)
+                target_pos = (
+                    positions_by_title.get(raw_pos)
+                    or positions_by_title.get(raw_pos.lower())
+                )
                 if not target_pos:
                     target_pos = Position(
                         title=raw_pos.title(),
                         status="ACTIVE",
                     )
                     db.add(target_pos)
+                    await db.flush()
+                    positions_by_title[raw_pos] = target_pos
+                    positions_by_title[raw_pos.lower()] = target_pos
                     positions_by_title[target_pos.title.upper()] = target_pos
+                    positions_by_title[target_pos.title.lower()] = target_pos
 
             # Buscar funcionario existente por employee_id
             stmt_emp = select(Employee).where(Employee.employee_id == emp_id)
@@ -304,6 +336,8 @@ class EmployeePayrollImporter:
             },
             correlation_id=correlation_id,
         )
+
+        await db.commit()
 
         return EmployeeImportReport(
             total_records=len(df),

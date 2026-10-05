@@ -138,26 +138,39 @@ def _format_employee_response(emp: Employee, current_user: User) -> EmployeeResp
     else:
         doc_number = "••••••"
 
-    org_unit_name = emp.organizational_unit.name if emp.organizational_unit else None
-    parent_unit_name = (
-        emp.organizational_unit.parent.name
-        if emp.organizational_unit and getattr(emp.organizational_unit, "parent", None)
-        else None
-    )
-    position_title = emp.position.title if emp.position else None
+    org_unit_name = None
+    parent_unit_name = None
+    try:
+        if getattr(emp, "organizational_unit", None):
+            org_unit_name = emp.organizational_unit.name
+            if getattr(emp.organizational_unit, "parent", None):
+                parent_unit_name = emp.organizational_unit.parent.name
+    except Exception:
+        pass
+
+    position_title = None
+    try:
+        if getattr(emp, "position", None):
+            position_title = emp.position.title
+    except Exception:
+        pass
 
     # Redes sociales asociadas
     fb_acc = None
     tt_acc = None
-    if hasattr(emp, "social_accounts") and emp.social_accounts:
-        for sa in emp.social_accounts:
-            p_code = getattr(getattr(sa, "platform", None), "code", "")
-            url = (getattr(sa, "profile_url", None) or "").lower()
-            username = getattr(sa, "current_username", None) or ""
-            if p_code == "FACEBOOK" or "facebook" in url:
-                fb_acc = username or getattr(sa, "profile_url", None)
-            elif p_code == "TIKTOK" or "tiktok" in url:
-                tt_acc = username or getattr(sa, "profile_url", None)
+    try:
+        socials = getattr(emp, "social_accounts", None)
+        if socials:
+            for sa in socials:
+                p_code = getattr(getattr(sa, "platform", None), "name", "") or getattr(getattr(sa, "platform", None), "code", "")
+                url = (getattr(sa, "profile_url", None) or "").lower()
+                username = getattr(sa, "current_username", None) or ""
+                if p_code == "FACEBOOK" or "facebook" in url:
+                    fb_acc = username or getattr(sa, "profile_url", None)
+                elif p_code == "TIKTOK" or "tiktok" in url:
+                    tt_acc = username or getattr(sa, "profile_url", None)
+    except Exception:
+        pass
 
     return EmployeeResponse(
         id=emp.employee_id,

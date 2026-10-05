@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime
 
 from modules.shared.enums import EmployeeStatus
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 # -----------------------------------------------------------------------------
 # Esquemas de Cargos (Positions)
@@ -180,3 +180,23 @@ class EmployeeImportReport(BaseModel):
     deactivated_count: int = Field(..., description="Funcionarios marcados como inactivos (Bajas)")
     errors: list[str] = Field(default=[], description="Errores encontrados en filas específicas")
     correlation_id: str
+
+    @computed_field
+    @property
+    def total_processed(self) -> int:
+        return self.total_records
+
+    @computed_field
+    @property
+    def created(self) -> int:
+        return self.created_count
+
+    @computed_field
+    @property
+    def updated(self) -> int:
+        return self.updated_count
+
+    @computed_field
+    @property
+    def unchanged(self) -> int:
+        return self.unchanged_count

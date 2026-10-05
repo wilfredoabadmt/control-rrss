@@ -25,7 +25,7 @@ export interface EmployeeImportResult {
   created: number;
   updated: number;
   unchanged: number;
-  errors: Array<{ row: number; reason: string }>;
+  errors: any[];
 }
 
 export interface OrgUnitNode {
@@ -57,7 +57,14 @@ export const importPayrollExcelApi = async (file: File): Promise<EmployeeImportR
   const res = await apiClient.post('/employees/import', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-  return res.data;
+  const data = res.data;
+  return {
+    total_processed: data.total_processed ?? data.total_records ?? 0,
+    created: data.created ?? data.created_count ?? 0,
+    updated: data.updated ?? data.updated_count ?? 0,
+    unchanged: data.unchanged ?? data.unchanged_count ?? 0,
+    errors: data.errors ?? [],
+  };
 };
 
 export const updateEmployeeApi = async (id: string, data: Partial<EmployeeItem> & { change_reason?: string; status?: string }): Promise<EmployeeItem> => {

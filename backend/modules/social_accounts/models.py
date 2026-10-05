@@ -113,6 +113,7 @@ class SocialAccount(Base, TimestampMixin, UUIDPrimaryKeyMixin):
     platform: Mapped[SocialPlatform] = relationship(
         SocialPlatform,
         back_populates="accounts",
+        lazy="selectin",
     )
     username_history: Mapped[list["UsernameHistory"]] = relationship(
         "UsernameHistory",

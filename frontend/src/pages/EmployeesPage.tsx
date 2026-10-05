@@ -215,7 +215,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
     const empId = editingEmployee.id || (editingEmployee as any).employee_id;
 
     try {
-      const updated = await updateEmployeeApi(empId, {
+      await updateEmployeeApi(empId, {
         first_name: editFirstName,
         last_name: editLastName,
         id_document: editCi,
@@ -231,59 +231,19 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         change_reason: editReason,
       });
 
-      // Actualizar estado local
-      setEmployees((prev) =>
-        prev.map((item) => {
-          if (item.id === empId || (item as any).employee_id === empId) {
-            return {
-              ...item,
-              ...updated,
-              first_name: editFirstName,
-              last_name: editLastName,
-              org_unit_name: editUnit,
-              parent_unit_name: editDireccion,
-              position_title: editPosition,
-              email: editEmail,
-              facebook_account: editFacebook,
-              tiktok_account: editTiktok,
-              is_active: editIsActive,
-            };
-          }
-          return item;
-        })
-      );
-
+      setShowEditModal(false);
+      await fetchEmployees();
       setFeedback({
         type: 'success',
-        text: `Funcionario ${editFirstName} ${editLastName} modificado exitosamente. Sus redes sociales han sido vinculadas a las publicaciones institucionales.`,
+        text: `Funcionario ${editFirstName} ${editLastName} modificado exitosamente en PostgreSQL. Sus redes sociales han sido vinculadas.`,
       });
-      setShowEditModal(false);
-    } catch {
-      // Actualización optimista local en caso de desconexión
-      setEmployees((prev) =>
-        prev.map((item) => {
-          if (item.id === empId || (item as any).employee_id === empId) {
-            return {
-              ...item,
-              first_name: editFirstName,
-              last_name: editLastName,
-              org_unit_name: editUnit,
-              parent_unit_name: editDireccion,
-              position_title: editPosition,
-              email: editEmail,
-              facebook_account: editFacebook,
-              tiktok_account: editTiktok,
-              is_active: editIsActive,
-            };
-          }
-          return item;
-        })
-      );
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || err?.message || 'Error al actualizar funcionario en PostgreSQL.';
+      console.error('Error editando funcionario:', err);
       setFeedback({
-        type: 'success',
-        text: `Datos de ${editFirstName} ${editLastName} actualizados localmente y enlazados para fiscalización.`,
+        type: 'error',
+        text: `Error al actualizar: ${errorMsg}`,
       });
-      setShowEditModal(false);
     } finally {
       setEditLoading(false);
     }
@@ -306,43 +266,21 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
 
     try {
       await deleteEmployeeApi(empId, deletePermanent, deleteReason);
-
-      if (deletePermanent) {
-        setEmployees((prev) => prev.filter((e) => e.id !== empId && (e as any).employee_id !== empId));
-        setTotal((prev) => Math.max(0, prev - 1));
-        setFeedback({
-          type: 'info',
-          text: `El funcionario ${deletingEmployee.first_name} ${deletingEmployee.last_name} fue eliminado permanentemente de la base de datos.`,
-        });
-      } else {
-        setEmployees((prev) =>
-          prev.map((e) =>
-            e.id === empId || (e as any).employee_id === empId ? { ...e, is_active: false } : e
-          )
-        );
-        setFeedback({
-          type: 'info',
-          text: `El funcionario ${deletingEmployee.first_name} ${deletingEmployee.last_name} fue dado de baja lógica (Inactivo). Su historial permanece íntegro.`,
-        });
-      }
       setShowDeleteModal(false);
-    } catch {
-      // Fallback local
-      if (deletePermanent) {
-        setEmployees((prev) => prev.filter((e) => e.id !== empId && (e as any).employee_id !== empId));
-        setTotal((prev) => Math.max(0, prev - 1));
-      } else {
-        setEmployees((prev) =>
-          prev.map((e) =>
-            e.id === empId || (e as any).employee_id === empId ? { ...e, is_active: false } : e
-          )
-        );
-      }
+      await fetchEmployees();
       setFeedback({
         type: 'info',
-        text: `Operación registrada: ${deletingEmployee.first_name} ${deletingEmployee.last_name} procesado correctamente.`,
+        text: deletePermanent
+          ? `El funcionario ${deletingEmployee.first_name} ${deletingEmployee.last_name} fue eliminado permanentemente de PostgreSQL.`
+          : `El funcionario ${deletingEmployee.first_name} ${deletingEmployee.last_name} fue dado de baja lógica (Inactivo). Su historial permanece íntegro.`,
       });
-      setShowDeleteModal(false);
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || err?.message || 'Error al procesar eliminación.';
+      console.error('Error eliminando funcionario:', err);
+      setFeedback({
+        type: 'error',
+        text: `Error en la operación: ${errorMsg}`,
+      });
     } finally {
       setDeleteLoading(false);
     }
@@ -359,17 +297,18 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         status: newStatus ? 'ACTIVE' : 'INACTIVE',
         change_reason: newStatus ? 'Reincorporación de funcionario' : 'Suspensión temporal',
       });
-      setEmployees((prev) =>
-        prev.map((e) => (e.id === empId || (e as any).employee_id === empId ? { ...e, is_active: newStatus } : e))
-      );
+      await fetchEmployees();
       setFeedback({
         type: 'info',
-        text: `Estado de ${emp.first_name} ${emp.last_name} cambiado a ${newStatus ? 'ACTIVO' : 'INACTIVO'}.`,
+        text: `Estado de ${emp.first_name} ${emp.last_name} actualizado a ${newStatus ? 'ACTIVO' : 'INACTIVO'} en PostgreSQL.`,
       });
-    } catch {
-      setEmployees((prev) =>
-        prev.map((e) => (e.id === empId || (e as any).employee_id === empId ? { ...e, is_active: newStatus } : e))
-      );
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || err?.message || 'Error al cambiar estado.';
+      console.error('Error alternando estado:', err);
+      setFeedback({
+        type: 'error',
+        text: `Error al alternar estado: ${errorMsg}`,
+      });
     }
   };
 
@@ -389,67 +328,20 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
     setImportLoading(true);
     setImportResult(null);
 
-    if (importFile.name.toLowerCase().endsWith('.csv')) {
-      try {
-        const text = await importFile.text();
-        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-        if (lines.length > 1) {
-          const header = lines[0].split(',').map((h) => h.trim().toLowerCase());
-          const nameIdx = header.indexOf('nombres');
-          const lastIdx = header.indexOf('apellidos');
-          const unitIdx = header.indexOf('unidad');
-          const dirIdx = header.indexOf('direccion');
-          const fbIdx = header.indexOf('cuenta_facebook');
-          const ttIdx = header.indexOf('cuenta_tiktok');
-
-          const parsedList: EmployeeItem[] = [];
-          for (let i = 1; i < lines.length; i++) {
-            const cols = lines[i].split(',').map((c) => c.trim());
-            if (cols.length >= 2 && (cols[nameIdx] || cols[lastIdx])) {
-              parsedList.push({
-                id: `emp-imp-${Date.now()}-${i}`,
-                first_name: cols[nameIdx] || '',
-                last_name: cols[lastIdx] || '',
-                id_document: `${6000 + i}*** LP`,
-                org_unit_name: cols[unitIdx] || 'Unidad Institucional',
-                parent_unit_name: cols[dirIdx] || 'Dirección General',
-                position_title: 'Servidor Público',
-                facebook_account: cols[fbIdx] || undefined,
-                tiktok_account: cols[ttIdx] || undefined,
-                is_active: true,
-                created_at: new Date().toISOString(),
-              });
-            }
-          }
-          if (parsedList.length > 0) {
-            setEmployees(parsedList);
-            setTotal(parsedList.length);
-          }
-        }
-      } catch (err) {
-        console.warn('Error parseando CSV en cliente:', err);
-      }
-    }
-
     try {
       const res = await importPayrollExcelApi(importFile);
       setImportResult(res);
-      fetchEmployees();
+      await fetchEmployees();
       setFeedback({
         type: 'success',
-        text: `Nómina importada: ${res.created} nuevos funcionarios registrados y ${res.updated} actualizados.`,
+        text: `Nómina importada exitosamente en PostgreSQL: ${res.created} nuevos funcionarios registrados y ${res.updated} actualizados.`,
       });
-    } catch {
-      setImportResult({
-        total_processed: 107,
-        created: 85,
-        updated: 22,
-        unchanged: 0,
-        errors: [],
-      });
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || err?.message || 'Error al procesar la importación en el servidor PostgreSQL.';
+      console.error('Error importando nómina:', err);
       setFeedback({
-        type: 'success',
-        text: 'Nómina municipal importada y sincronizada con el Organigrama GAMEA 2026.',
+        type: 'error',
+        text: `Error al importar nómina: ${errorMsg}`,
       });
     } finally {
       setImportLoading(false);
@@ -476,34 +368,12 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
       });
 
       setShowCreateModal(false);
-      fetchEmployees();
+      await fetchEmployees();
       setFeedback({
         type: 'success',
-        text: `¡Funcionario ${newFirstName} ${newLastName} registrado con éxito! Sus cuentas sociales fueron vinculadas para interactuar con los posts.`,
+        text: `¡Funcionario ${newFirstName} ${newLastName} guardado exitosamente en PostgreSQL! Sus cuentas sociales fueron vinculadas para interactuar con los posts.`,
       });
-    } catch {
-      const newEmp: EmployeeItem = {
-        id: `emp-${Date.now()}`,
-        first_name: newFirstName,
-        last_name: newLastName,
-        id_document: newCi ? `${newCi.slice(0, 4)}*** LP` : '7892*** LP',
-        email: newEmail || `${newFirstName.toLowerCase()[0]}${newLastName.toLowerCase().split(' ')[0]}@elalto.gob.bo`,
-        org_unit_name: newUnit || 'Unidad de Difusión y Prensa',
-        parent_unit_name: newDireccion || 'Dirección de Comunicación',
-        position_title: newPosition || 'Especialista en Redes Sociales',
-        facebook_account: newFacebook || undefined,
-        tiktok_account: newTiktok || undefined,
-        is_active: true,
-        created_at: new Date().toISOString(),
-      };
-      setEmployees([newEmp, ...employees]);
-      setTotal(total + 1);
-      setShowCreateModal(false);
-      setFeedback({
-        type: 'success',
-        text: `Funcionario ${newFirstName} ${newLastName} añadido y listo para la fiscalización de posts.`,
-      });
-    } finally {
+      // Limpiar formulario sólo en éxito
       setNewFirstName('');
       setNewLastName('');
       setNewUnit('');
@@ -513,6 +383,14 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
       setNewTiktok('');
       setNewCi('');
       setNewEmail('');
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || err?.message || 'Error al guardar funcionario en PostgreSQL.';
+      console.error('Error creando funcionario:', err);
+      setFeedback({
+        type: 'error',
+        text: `Error al crear funcionario: ${errorMsg}`,
+      });
+    } finally {
       setCreateLoading(false);
     }
   };
