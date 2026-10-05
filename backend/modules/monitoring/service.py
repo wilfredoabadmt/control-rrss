@@ -43,6 +43,8 @@ from modules.monitoring.schemas import (
     ConnectorDiagnosticDetail,
     ConnectorsDiagnosticResponse,
     ConnectorVariableDetail,
+    EmployeeActivityVerifyRequest,
+    EmployeeActivityVerifyResponse,
     MissingDataNotice,
     MonitoredPersonBulkImportRequest,
     MonitoredPersonBulkImportResponse,
@@ -1411,9 +1413,20 @@ class MonitoringHubService:
                                 ),
                             )
 
+                        # Resolver post ID completo (requiere page_id_post_id en Meta Graph API)
+                        target_post_id = pub.external_post_id
+                        page_id = (os.environ.get("FACEBOOK_PAGE_ID") or getattr(settings, "FACEBOOK_PAGE_ID", "") or "1612864202296619").strip()
+                        if "_" not in target_post_id and page_id:
+                            target_post_id = f"{page_id}_{target_post_id}"
+
                         # Extraer comentarios REALES de Meta
                         try:
-                            comments, _ = await fb_client.fetch_comments(pub.external_post_id, fb_token, limit=req.max_comments_per_post)
+                            comments, _ = await fb_client.fetch_comments(target_post_id, fb_token, limit=req.max_comments_per_post)
+                            if not comments and target_post_id != pub.external_post_id:
+                                try:
+                                    comments, _ = await fb_client.fetch_comments(pub.external_post_id, fb_token, limit=req.max_comments_per_post)
+                                except Exception:
+                                    pass
                             for c in comments:
                                 extracted_items.append({
                                     "ext_id": c.get("external_interaction_id") or f"comm_{pub.external_post_id}_{c.get('external_author_id')}",
@@ -1430,7 +1443,12 @@ class MonitoringHubService:
 
                         # Extraer reacciones REALES de Meta
                         try:
-                            reactions, _ = await fb_client.fetch_reactions(pub.external_post_id, fb_token, limit=100)
+                            reactions, _ = await fb_client.fetch_reactions(target_post_id, fb_token, limit=100)
+                            if not reactions and target_post_id != pub.external_post_id:
+                                try:
+                                    reactions, _ = await fb_client.fetch_reactions(pub.external_post_id, fb_token, limit=100)
+                                except Exception:
+                                    pass
                             for r in reactions:
                                 extracted_items.append({
                                     "ext_id": r.get("external_interaction_id") or f"react_{pub.external_post_id}_{r.get('external_author_id')}",
@@ -1442,8 +1460,8 @@ class MonitoringHubService:
                                     "created_at": datetime.now(UTC),
                                     "origin": DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
                                 })
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.info(f"Reacciones Meta restringidas por privacidad para {target_post_id}: {str(e)}")
 
                 # B) Procesar e ingerir cada interacción
                 for item_dict in extracted_items:
@@ -1619,17 +1637,41 @@ class MonitoringHubService:
         )
         interactions = list((await db.execute(stmt_ints)).scalars().all())
 
-        # Mapear interacciones por (publication_id, author_id)
-        interactions_by_pub_and_author: dict[tuple[uuid.UUID, str], list[Interaction]] = {}
-        for it in interactions:
-            author_key = (it.external_author_id or "").strip().lower()
-            if not author_key and it.external_author_name:
-                author_key = it.external_author_name.strip().lower()
+        # Mapear interacciones por publicación y criterios múltiples de coincidencia
+        ints_by_pub_and_emp_id: dict[tuple[uuid.UUID, str], list[Interaction]] = {}
+        ints_by_pub_and_name: dict[tuple[uuid.UUID, str], list[Interaction]] = {}
+        ints_by_pub_and_author_id: dict[tuple[uuid.UUID, str], list[Interaction]] = {}
+        ints_by_pub: dict[uuid.UUID, list[Interaction]] = {}
 
-            key = (it.publication_id, author_key)
-            if key not in interactions_by_pub_and_author:
-                interactions_by_pub_and_author[key] = []
-            interactions_by_pub_and_author[key].append(it)
+        import unicodedata
+
+        def _clean_n(t: str | None) -> str:
+            if not t:
+                return ""
+            norm = unicodedata.normalize("NFKD", t).encode("ASCII", "ignore").decode("utf-8")
+            return re.sub(r"[^a-z0-9]", "", norm.lower().strip())
+
+        for it in interactions:
+            ints_by_pub.setdefault(it.publication_id, []).append(it)
+
+            # 1. Por verification employee_id
+            for v in it.verifications:
+                if v.employee_id:
+                    k_emp = (it.publication_id, v.employee_id.strip().lower())
+                    ints_by_pub_and_emp_id.setdefault(k_emp, []).append(it)
+
+            # 2. Por external_author_id (CI, handle o ID de usuario)
+            if it.external_author_id:
+                raw_auth = it.external_author_id.strip().lower()
+                clean_auth = raw_auth.lstrip("@")
+                ints_by_pub_and_author_id.setdefault((it.publication_id, raw_auth), []).append(it)
+                ints_by_pub_and_author_id.setdefault((it.publication_id, clean_auth), []).append(it)
+
+            # 3. Por external_author_name normalizado
+            if it.external_author_name:
+                norm_author = _clean_n(it.external_author_name)
+                if norm_author:
+                    ints_by_pub_and_name.setdefault((it.publication_id, norm_author), []).append(it)
 
         # 4. Construir filas de la matriz
         rows: list[ActivityMatrixRow] = []
@@ -1645,26 +1687,50 @@ class MonitoringHubService:
             person_comments = 0
             person_shares = 0
 
-            # Claves posibles para matching de autor
-            possible_keys = set()
-            possible_keys.add(aud.ci.lower())
-            possible_keys.add(aud.full_name.lower())
-            if aud.facebook_account:
-                clean_fb = aud.facebook_account.lstrip("@").lower()
-                possible_keys.add(clean_fb)
-                possible_keys.add(f"@{clean_fb}")
-            if aud.tiktok_account:
-                clean_tt = aud.tiktok_account.lstrip("@").lower()
-                possible_keys.add(clean_tt)
-                possible_keys.add(f"@{clean_tt}")
+            norm_full_name = _clean_n(aud.full_name)
+            first_name_clean = aud.first_name.strip() if aud.first_name else ""
+            last_name_clean = aud.last_name.strip().split()[0] if aud.last_name else ""
+            norm_first_last = _clean_n(f"{first_name_clean} {last_name_clean}")
+
+            clean_fb = aud.facebook_account.lstrip("@").lower().strip() if aud.facebook_account else ""
+            clean_tt = aud.tiktok_account.lstrip("@").lower().strip() if aud.tiktok_account else ""
+            emp_ci_clean = aud.ci.strip().lower()
 
             for pub in publications:
-                # Buscar si hay interacciones para esta publicación y este autor
                 matched_for_pub: list[Interaction] = []
-                for k in possible_keys:
-                    lookup = (pub.id, k)
-                    if lookup in interactions_by_pub_and_author:
-                        matched_for_pub.extend(interactions_by_pub_and_author[lookup])
+                seen_ids: set[uuid.UUID] = set()
+
+                def _add(cand_list):
+                    for item in cand_list:
+                        if item.id not in seen_ids:
+                            seen_ids.add(item.id)
+                            matched_for_pub.append(item)
+
+                # A. Coincidencia por Verificación registrada o external_author_id = CI
+                _add(ints_by_pub_and_emp_id.get((pub.id, emp_ci_clean), []))
+                _add(ints_by_pub_and_author_id.get((pub.id, emp_ci_clean), []))
+
+                # B. Coincidencia por Cuenta de Facebook / TikTok
+                if clean_fb:
+                    _add(ints_by_pub_and_author_id.get((pub.id, clean_fb), []))
+                    _add(ints_by_pub_and_name.get((pub.id, _clean_n(clean_fb)), []))
+                if clean_tt:
+                    _add(ints_by_pub_and_author_id.get((pub.id, clean_tt), []))
+                    _add(ints_by_pub_and_name.get((pub.id, _clean_n(clean_tt)), []))
+
+                # C. Coincidencia por Nombre Completo y Primer Nombre + Apellido
+                if norm_full_name:
+                    _add(ints_by_pub_and_name.get((pub.id, norm_full_name), []))
+                if norm_first_last and norm_first_last != norm_full_name:
+                    _add(ints_by_pub_and_name.get((pub.id, norm_first_last), []))
+
+                # D. Coincidencia Parcial de Autor si no se encontró coincidencia directa
+                if not matched_for_pub and norm_full_name and pub.id in ints_by_pub:
+                    for pub_it in ints_by_pub[pub.id]:
+                        if pub_it.external_author_name:
+                            c_norm = _clean_n(pub_it.external_author_name)
+                            if c_norm and len(c_norm) >= 6 and (c_norm in norm_full_name or norm_full_name in c_norm):
+                                _add([pub_it])
 
                 reaction_found: str | None = None
                 comment_found: str | None = None
@@ -1673,37 +1739,64 @@ class MonitoringHubService:
                 verif_status = "NOT_FOUND"
 
                 for m in matched_for_pub:
-                    if m.interaction_type in ["LIKE", "REACTION"] or m.reaction_type:
-                        reaction_found = m.reaction_type or "LIKE"
-                        person_reactions += 1
-                        total_reactions_all += 1
-                        reactions_count_by_type[reaction_found] = (
-                            reactions_count_by_type.get(reaction_found, 0) + 1
-                        )
+                    # Reacción
+                    if m.reaction_type:
+                        reaction_found = m.reaction_type
+                    elif m.interaction_type in ["LIKE", "REACTION", "LOVE", "CARE", "HAHA", "WOW"]:
+                        reaction_found = m.interaction_type
+
+                    # Comentario
                     if m.interaction_type in ["COMMENT", "REPLY"] or m.content_text:
-                        comment_found = m.content_text
-                        comment_date = m.external_created_at
-                        person_comments += 1
-                        total_comments_all += 1
+                        comment_found = m.content_text or "(Comentario registrado)"
+                        comment_date = m.external_created_at or m.captured_at
+
+                    # Compartido
                     if m.interaction_type in ["SHARE", "RETWEET", "REPOST"]:
                         shared_found = True
-                        person_shares += 1
-                        total_shares_all += 1
+                    elif m.raw_payload_ref and '"shared": true' in m.raw_payload_ref.lower():
+                        shared_found = True
 
+                    # Estado epistémico
                     if m.verifications:
-                        verif_status = "CONFIRMED"
+                        for v in m.verifications:
+                            if v.employee_id and v.employee_id.strip().lower() == emp_ci_clean:
+                                verif_status = v.verification_status
+                                break
+                            verif_status = v.verification_status
                     elif verif_status == "NOT_FOUND":
-                        verif_status = "OBSERVED"
+                        verif_status = "CONFIRMED"
 
-                # Si es TikTok y no hay like pero es un video monitoreado
-                if not matched_for_pub and pub.platform and pub.platform.name == "TIKTOK":
-                    epistemic_display = "Restricción API (TikTok)"
-                elif verif_status == "CONFIRMED":
+                if reaction_found:
+                    person_reactions += 1
+                    total_reactions_all += 1
+                    reactions_count_by_type[reaction_found] = (
+                        reactions_count_by_type.get(reaction_found, 0) + 1
+                    )
+                if comment_found:
+                    person_comments += 1
+                    total_comments_all += 1
+                if shared_found:
+                    person_shares += 1
+                    total_shares_all += 1
+
+                has_post_activity = bool(
+                    reaction_found
+                    or comment_found
+                    or shared_found
+                    or (verif_status in ["CONFIRMED", "DECLARED_CONFIRMED", "VERIFIED_AUTOMATIC", "VERIFIED_MANUAL"])
+                )
+
+                # Determinar etiqueta epistémica visible
+                if verif_status in ["CONFIRMED", "DECLARED_CONFIRMED", "VERIFIED_AUTOMATIC", "VERIFIED_MANUAL"]:
                     epistemic_display = "Dato Confirmado"
                 elif verif_status == "OBSERVED":
                     epistemic_display = "Dato Observado"
-                else:
+                elif pub.platform and pub.platform.name == "TIKTOK" and not has_post_activity:
+                    epistemic_display = "Restricción API (TikTok)"
+                elif not has_post_activity:
                     epistemic_display = "Sin Actividad"
+                else:
+                    epistemic_display = "Confirmado Técnicamente"
 
                 aud_posts.append(
                     ActivityMatrixPersonPost(
@@ -1722,7 +1815,12 @@ class MonitoringHubService:
                     )
                 )
 
-            has_participated = (person_reactions > 0 or person_comments > 0 or person_shares > 0)
+            has_participated = (
+                person_reactions > 0
+                or person_comments > 0
+                or person_shares > 0
+                or any(p.verification_status in ["CONFIRMED", "DECLARED_CONFIRMED", "VERIFIED_AUTOMATIC", "VERIFIED_MANUAL"] for p in aud_posts)
+            )
             if has_participated:
                 participated_count += 1
 
@@ -1776,6 +1874,8 @@ class MonitoringHubService:
         publication_id: uuid.UUID | None = None,
         platform_name: str | None = None,
         department: str | None = None,
+        search: str | None = None,
+        participation_status: str | None = "ALL",
         current_user: User | None = None,
     ) -> io.BytesIO:
         """
@@ -1787,7 +1887,8 @@ class MonitoringHubService:
             publication_id=publication_id,
             platform_name=platform_name,
             department=department,
-            participation_status="ALL",
+            search=search,
+            participation_status=participation_status or "ALL",
             current_user=current_user,
         )
 
@@ -1951,3 +2052,223 @@ class MonitoringHubService:
         wb.save(buf)
         buf.seek(0)
         return buf
+
+    # -------------------------------------------------------------------------
+    # 6. Verificación y Fiscalización Asistida / Manual de Funcionarios
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    async def verify_employee_activity(
+        db: AsyncSession,
+        req: EmployeeActivityVerifyRequest,
+        current_user: User,
+    ) -> EmployeeActivityVerifyResponse:
+        """
+        Registra, actualiza y audita de forma asistida o manual la interacción de un funcionario.
+        Permite documentar Likes/Reacciones (restringidos por privacidad de Meta Graph API),
+        comentarios, compartidos y vincular permanentemente la cuenta de Facebook del servidor público.
+        """
+        stmt_pub = (
+            select(Publication)
+            .options(selectinload(Publication.platform))
+            .where(Publication.id == req.publication_id)
+        )
+        pub = (await db.execute(stmt_pub)).scalar_one_or_none()
+        if not pub:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Publicación institucional no encontrada.",
+            )
+
+        emp_ci_clean = req.employee_id.strip()
+        stmt_emp = select(Employee).where(
+            or_(
+                Employee.employee_id == emp_ci_clean,
+                func.lower(Employee.first_name + " " + Employee.last_name) == emp_ci_clean.lower(),
+            )
+        )
+        employee = (await db.execute(stmt_emp)).scalars().first()
+        author_display = (
+            f"{employee.first_name} {employee.last_name}".strip()
+            if employee
+            else emp_ci_clean
+        )
+
+        # Si se suministró cuenta de Facebook, registrarla/vincularla
+        if req.facebook_account and req.facebook_account.strip():
+            fb_handle = req.facebook_account.strip().lstrip("@")
+            stmt_plat = select(SocialPlatform).where(SocialPlatform.name == "FACEBOOK")
+            fb_plat = (await db.execute(stmt_plat)).scalar_one_or_none()
+            if fb_plat and employee:
+                stmt_sa = select(SocialAccount).where(
+                    SocialAccount.employee_id == employee.employee_id,
+                    SocialAccount.platform_id == fb_plat.id,
+                )
+                sa = (await db.execute(stmt_sa)).scalar_one_or_none()
+                profile_link = (
+                    req.facebook_account.strip()
+                    if req.facebook_account.strip().startswith("http")
+                    else f"https://facebook.com/{fb_handle}"
+                )
+                if not sa:
+                    sa = SocialAccount(
+                        employee_id=employee.employee_id,
+                        platform_id=fb_plat.id,
+                        current_username=fb_handle,
+                        profile_url=profile_link,
+                        binding_status=BindingStatus.ACTIVE.value,
+                        verified_at=datetime.now(UTC),
+                    )
+                    db.add(sa)
+                else:
+                    sa.current_username = fb_handle
+                    sa.profile_url = profile_link
+                    sa.binding_status = BindingStatus.ACTIVE.value
+                    sa.verified_at = datetime.now(UTC)
+
+        # Buscar si ya existe una interacción previa para esta publicación y funcionario
+        manual_ext_id = f"manual_{pub.id}_{emp_ci_clean}"
+        stmt_int = select(Interaction).where(
+            Interaction.publication_id == pub.id,
+            or_(
+                Interaction.external_interaction_id == manual_ext_id,
+                Interaction.external_author_id == emp_ci_clean,
+            ),
+        )
+        interaction = (await db.execute(stmt_int)).scalars().first()
+
+        if not interaction:
+            stmt_v = (
+                select(Verification)
+                .join(Interaction)
+                .where(
+                    Interaction.publication_id == pub.id,
+                    Verification.employee_id == emp_ci_clean,
+                )
+            )
+            v_exist = (await db.execute(stmt_v)).scalars().first()
+            if v_exist:
+                stmt_int_v = select(Interaction).where(Interaction.id == v_exist.interaction_id)
+                interaction = (await db.execute(stmt_int_v)).scalar_one_or_none()
+
+        payload_data = {
+            "manual_audit": True,
+            "shared": bool(req.shared),
+            "reaction_type": req.reaction_type,
+            "comment_text": req.comment_text,
+            "audited_by": current_user.email,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+
+        if not interaction:
+            interaction_type = (
+                "COMMENT"
+                if req.comment_text
+                else ("LIKE" if req.reaction_type else ("SHARE" if req.shared else "LIKE"))
+            )
+            interaction = Interaction(
+                publication_id=pub.id,
+                platform_id=pub.platform_id,
+                interaction_type=interaction_type,
+                external_interaction_id=manual_ext_id,
+                external_post_id=pub.external_post_id,
+                external_author_id=emp_ci_clean,
+                external_author_name=author_display,
+                reaction_type=req.reaction_type,
+                content_text=req.comment_text,
+                captured_at=datetime.now(UTC),
+                capture_method=CaptureMethod.MANUAL_IMPORT.value,
+                data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
+                source_platform=pub.platform.name if pub.platform else "FACEBOOK",
+                raw_payload_ref=json.dumps(payload_data),
+            )
+            db.add(interaction)
+            await db.flush()
+        else:
+            if req.reaction_type:
+                interaction.reaction_type = req.reaction_type
+            if req.comment_text:
+                interaction.content_text = req.comment_text
+            if req.reaction_type and not req.comment_text:
+                interaction.interaction_type = "LIKE"
+            elif req.comment_text:
+                interaction.interaction_type = "COMMENT"
+            elif req.shared:
+                interaction.interaction_type = "SHARE"
+            interaction.raw_payload_ref = json.dumps(payload_data)
+
+        # Crear o actualizar Verificación formal
+        stmt_ver = select(Verification).where(
+            Verification.interaction_id == interaction.id,
+            Verification.employee_id == emp_ci_clean,
+        )
+        verification = (await db.execute(stmt_ver)).scalars().first()
+
+        status_val = (
+            req.verification_status
+            if req.verification_status
+            in [
+                VerificationStatus.CONFIRMED.value,
+                VerificationStatus.DECLARED_CONFIRMED.value,
+                "VERIFIED_MANUAL",
+            ]
+            else VerificationStatus.DECLARED_CONFIRMED.value
+        )
+
+        justification_text = (
+            req.justification.strip()
+            if req.justification and req.justification.strip()
+            else f"Fiscalización asistida realizada por {current_user.email} con base en evidencia."
+        )
+
+        if not verification:
+            verification = Verification(
+                interaction_id=interaction.id,
+                employee_id=emp_ci_clean,
+                verification_status=status_val,
+                verification_method="MANUAL_OPERATOR",
+                verified_at=datetime.now(UTC),
+                verified_by_user_id=str(current_user.id),
+                explanation=justification_text,
+            )
+            db.add(verification)
+            await db.flush()
+        else:
+            verification.verification_status = status_val
+            verification.verification_method = "MANUAL_OPERATOR"
+            verification.verified_at = datetime.now(UTC)
+            verification.verified_by_user_id = str(current_user.id)
+            verification.explanation = justification_text
+
+        cid = get_correlation_id()
+        await record_audit_event(
+            db=db,
+            action=AuditAction.CREATE,
+            entity_name="Verification",
+            entity_id=str(verification.id),
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            new_state={
+                "employee_id": emp_ci_clean,
+                "publication_id": str(pub.id),
+                "reaction_type": req.reaction_type,
+                "shared": req.shared,
+                "comment_text": req.comment_text,
+                "status": status_val,
+            },
+            correlation_id=cid,
+        )
+
+        await db.commit()
+
+        return EmployeeActivityVerifyResponse(
+            success=True,
+            message="Interacción fiscalizada y registrada con éxito en la matriz.",
+            employee_id=emp_ci_clean,
+            publication_id=pub.id,
+            reaction_type=req.reaction_type,
+            shared=req.shared,
+            comment_text=req.comment_text,
+            verification_status=status_val,
+        )
+

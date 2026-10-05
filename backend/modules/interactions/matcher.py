@@ -91,9 +91,67 @@ class InteractionMatcher:
                 message=f"Interacción cruzada con éxito con el funcionario {account.employee.employee_id} ({account.employee.first_name} {account.employee.last_name}).",
             )
 
+        # 3. Si aún no coincide por cuenta social, probar cruce por nombre de funcionario
+        if author_name and len(author_name) >= 3:
+            import re
+            import unicodedata
+
+            def _clean_n(t: str | None) -> str:
+                if not t:
+                    return ""
+                norm = unicodedata.normalize("NFKD", t).encode("ASCII", "ignore").decode("utf-8")
+                return re.sub(r"[^a-z0-9]", "", norm.lower().strip())
+
+            norm_author = _clean_n(author_name)
+            stmt_emps = (
+                select(Employee)
+                .where(Employee.status == EmployeeStatus.ACTIVE.value)
+                .options(selectinload(Employee.organizational_unit))
+            )
+            all_active_emps = list((await db.execute(stmt_emps)).scalars().all())
+
+            for emp in all_active_emps:
+                emp_full = _clean_n(f"{emp.first_name} {emp.last_name}")
+                first_last = _clean_n(f"{emp.first_name} {emp.last_name.split()[0] if emp.last_name else ''}")
+                
+                # Coincidencia exacta o primer nombre + primer apellido
+                matched_name = False
+                if norm_author == emp_full or (first_last and norm_author == first_last):
+                    matched_name = True
+                elif len(norm_author) >= 7 and (norm_author in emp_full or emp_full in norm_author):
+                    matched_name = True
+
+                if matched_name:
+                    # Enlazar o asociar la cuenta social de forma automática
+                    stmt_exist = select(SocialAccount).where(
+                        SocialAccount.employee_id == emp.employee_id,
+                        SocialAccount.platform_id == interaction.platform_id,
+                    )
+                    emp_acc = (await db.execute(stmt_exist)).scalar_one_or_none()
+                    if emp_acc:
+                        if not emp_acc.external_user_id and author_id and not author_id.startswith("anonimo"):
+                            emp_acc.external_user_id = author_id
+                    else:
+                        emp_acc = SocialAccount(
+                            employee_id=emp.employee_id,
+                            platform_id=interaction.platform_id,
+                            external_user_id=author_id if not author_id.startswith("anonimo") else None,
+                            current_username=interaction.external_author_name,
+                            binding_status=BindingStatus.ACTIVE.value,
+                        )
+                        db.add(emp_acc)
+                        await db.flush()
+
+                    return MatchResult(
+                        status=MatchStatus.MATCHED,
+                        employee=emp,
+                        social_account=emp_acc,
+                        message=f"Interacción cruzada por nombre con el funcionario {emp.employee_id} ({emp.first_name} {emp.last_name}).",
+                    )
+
         # BR-INT-008: No se encontró coincidencia en el directorio municipal
         return MatchResult(
             status=MatchStatus.UNMATCHED,
-            message=f"El identificador externo '{author_id}' no corresponde a ningún funcionario municipal activo registrado.",
+            message=f"El identificador externo '{author_id}' ('{author_name}') no corresponde a ningún funcionario municipal activo registrado.",
         )
 

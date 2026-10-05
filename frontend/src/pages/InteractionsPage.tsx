@@ -23,7 +23,6 @@ import {
   X,
 } from 'lucide-react';
 import { monitoringApi } from '../api/monitoring';
-import { manualVerificationApi } from '../api/interactions';
 import {
   listPublicationsApi,
   importPublicationFromUrlApi,
@@ -64,13 +63,22 @@ export const InteractionsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showHelpBanner, setShowHelpBanner] = useState(true);
 
-  // Modal de Detalle / Verificación Manual
+  // Exportar Excel
+  const [exportingExcel, setExportingExcel] = useState(false);
+
+  // Modal de Detalle / Fiscalización Manual
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedRowDetail, setSelectedRowDetail] = useState<{
     row: ActivityMatrixRow;
     postIndex: number;
   } | null>(null);
-  const [manualNote, setManualNote] = useState('');
+  const [auditReaction, setAuditReaction] = useState<string>('');
+  const [auditShared, setAuditShared] = useState<boolean>(false);
+  const [auditComment, setAuditComment] = useState<string>('');
+  const [auditFacebookAccount, setAuditFacebookAccount] = useState<string>('');
+  const [auditJustification, setAuditJustification] = useState<string>('');
+  const [auditStatus, setAuditStatus] = useState<string>('DECLARED_CONFIRMED');
+  const [auditError, setAuditError] = useState<string | null>(null);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualSuccess, setManualSuccess] = useState(false);
 
@@ -277,13 +285,19 @@ export const InteractionsPage: React.FC = () => {
 
   // Exportar a Excel
   const handleExportExcel = async () => {
+    setExportingExcel(true);
     try {
       await monitoringApi.exportMatrixExcel({
         publication_id: selectedPublicationId === 'ALL' ? undefined : selectedPublicationId,
         department: selectedDirection === 'ALL' ? undefined : selectedDirection,
+        search: searchQuery.trim() || undefined,
+        participation_status: selectedInteractionFilter === 'ALL' ? undefined : selectedInteractionFilter,
       });
-    } catch {
-      alert('Error descargando reporte Excel.');
+    } catch (err: any) {
+      console.error(err);
+      alert('Error descargando reporte oficial de fiscalización en Excel.');
+    } finally {
+      setExportingExcel(false);
     }
   };
 
@@ -379,40 +393,66 @@ export const InteractionsPage: React.FC = () => {
     };
   }, [matrixData, currentPost]);
 
-  // Manejar apertura de modal de detalle
+  // Manejar apertura de modal de detalle y fiscalización manual
   const handleOpenDetail = (row: ActivityMatrixRow) => {
     const postIdx = currentPost
       ? row.posts.findIndex((p) => p.publication_id === currentPost.id)
       : 0;
+    const effectiveIdx = postIdx >= 0 ? postIdx : 0;
+    const post = row.posts[effectiveIdx] || row.posts[0];
+
     setSelectedRowDetail({
       row,
-      postIndex: postIdx >= 0 ? postIdx : 0,
+      postIndex: effectiveIdx,
     });
-    setManualNote('');
+    setAuditReaction(post?.reaction_type || '');
+    setAuditShared(Boolean(post?.shared));
+    setAuditComment(post?.comment_text || '');
+    setAuditFacebookAccount(row.facebook_handle || '');
+    setAuditJustification(
+      post?.epistemic_status_display === 'Dato Confirmado'
+        ? 'Fiscalización de interacción confirmada con evidencia.'
+        : 'Verificación de interacción asistida por analista institucional conforme a evidencia observada.'
+    );
+    setAuditStatus(post?.verification_status || 'DECLARED_CONFIRMED');
+    setAuditError(null);
     setManualSuccess(false);
     setDetailModalOpen(true);
   };
 
-  // Guardar verificación manual asistida
+  // Guardar fiscalización manual asistida
   const handleSaveManualVerification = async () => {
-    if (!selectedRowDetail || !manualNote.trim()) return;
+    if (!selectedRowDetail) return;
+    const post = selectedRowDetail.row.posts[selectedRowDetail.postIndex] || selectedRowDetail.row.posts[0];
+    const pubId = post?.publication_id || (currentPost ? currentPost.id : null);
+    if (!pubId) {
+      setAuditError('No se pudo identificar la publicación evaluada para este funcionario.');
+      return;
+    }
+
     setManualSaving(true);
+    setAuditError(null);
     try {
-      await manualVerificationApi({
-        interaction_id: `manual-${selectedRowDetail.row.employee_id}-${Date.now()}`,
-        status: 'DECLARED_CONFIRMED',
-        justification: manualNote,
+      await monitoringApi.verifyEmployeeActivity({
+        employee_id: selectedRowDetail.row.employee_id,
+        publication_id: pubId,
+        reaction_type: auditReaction || null,
+        shared: auditShared,
+        comment_text: auditComment.trim() || null,
+        facebook_account: auditFacebookAccount.trim() || null,
+        verification_status: auditStatus,
+        justification: auditJustification.trim() || 'Verificación manual registrada en panel de fiscalización.',
       });
+
       setManualSuccess(true);
+      await fetchActivityMatrix();
       setTimeout(() => {
         setDetailModalOpen(false);
-        fetchActivityMatrix();
-      }, 1200);
-    } catch {
-      setManualSuccess(true);
-      setTimeout(() => {
-        setDetailModalOpen(false);
-      }, 1200);
+        setManualSuccess(false);
+      }, 1000);
+    } catch (err: any) {
+      console.error(err);
+      setAuditError(err.response?.data?.detail || 'No se pudo guardar la fiscalización manual del funcionario.');
     } finally {
       setManualSaving(false);
     }
@@ -473,6 +513,96 @@ export const InteractionsPage: React.FC = () => {
           }}
         >
           <Heart size={12} fill="#f43f5e" /> Me Encanta
+        </span>
+      );
+    }
+    if (rUpper === 'CARE' || rUpper === 'ME_IMPORTA') {
+      return (
+        <span
+          className="badge"
+          style={{
+            background: 'rgba(234, 179, 8, 0.15)',
+            color: '#eab308',
+            border: '1px solid rgba(234, 179, 8, 0.3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            fontWeight: 600,
+          }}
+        >
+          🤗 Me Importa
+        </span>
+      );
+    }
+    if (rUpper === 'HAHA' || rUpper === 'ME_DIVIERTE') {
+      return (
+        <span
+          className="badge"
+          style={{
+            background: 'rgba(245, 158, 11, 0.15)',
+            color: '#f59e0b',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            fontWeight: 600,
+          }}
+        >
+          😆 Me Divierte
+        </span>
+      );
+    }
+    if (rUpper === 'WOW' || rUpper === 'ME_ASOMBRA') {
+      return (
+        <span
+          className="badge"
+          style={{
+            background: 'rgba(59, 130, 246, 0.15)',
+            color: '#60a5fa',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            fontWeight: 600,
+          }}
+        >
+          😮 Me Asombra
+        </span>
+      );
+    }
+    if (rUpper === 'SAD' || rUpper === 'ME_ENTRISTECE') {
+      return (
+        <span
+          className="badge"
+          style={{
+            background: 'rgba(148, 163, 184, 0.15)',
+            color: '#94a3b8',
+            border: '1px solid rgba(148, 163, 184, 0.3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            fontWeight: 600,
+          }}
+        >
+          😢 Me Entristece
+        </span>
+      );
+    }
+    if (rUpper === 'ANGRY' || rUpper === 'ME_ENOJA') {
+      return (
+        <span
+          className="badge"
+          style={{
+            background: 'rgba(239, 68, 68, 0.15)',
+            color: '#ef4444',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            fontWeight: 600,
+          }}
+        >
+          😡 Me Enoja
         </span>
       );
     }
@@ -558,10 +688,11 @@ export const InteractionsPage: React.FC = () => {
 
           <button
             onClick={handleExportExcel}
+            disabled={exportingExcel}
             style={{
-              background: 'rgba(31, 41, 55, 0.8)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              color: '#e2e8f0',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.3))',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              color: '#34d399',
               padding: '9px 16px',
               borderRadius: '8px',
               fontSize: '0.85rem',
@@ -569,11 +700,14 @@ export const InteractionsPage: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              cursor: 'pointer',
+              cursor: exportingExcel ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.15)',
+              opacity: exportingExcel ? 0.7 : 1,
             }}
+            title="Descargar informe oficial de fiscalización en Excel (.xlsx)"
           >
             <Download size={15} color="#10b981" />
-            <span>Descargar Excel</span>
+            <span>{exportingExcel ? 'Exportando Excel...' : 'Descargar Excel (.xlsx)'}</span>
           </button>
         </div>
       </div>
@@ -1007,16 +1141,41 @@ export const InteractionsPage: React.FC = () => {
 
       {/* 6. Tabla Detallada Funcionario vs Publicación */}
       <div className="glass-panel" style={{ overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
             Mostrando <strong style={{ color: '#fff' }}>{filteredRows.length}</strong> funcionarios correspondientes al post seleccionado
           </div>
-          {loading && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: '#06b6d4' }}>
-              <RefreshCw size={13} className="animate-spin" />
-              <span>Actualizando matriz...</span>
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {loading && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: '#06b6d4' }}>
+                <RefreshCw size={13} className="animate-spin" />
+                <span>Actualizando matriz...</span>
+              </div>
+            )}
+            <button
+              onClick={handleExportExcel}
+              disabled={exportingExcel}
+              style={{
+                background: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                color: '#34d399',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: exportingExcel ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.2)',
+                opacity: exportingExcel ? 0.7 : 1,
+              }}
+              title="Descargar datos de la tabla actual en formato Excel"
+            >
+              <Download size={14} />
+              <span>{exportingExcel ? 'Exportando Excel...' : 'Exportar a Excel (.xlsx)'}</span>
+            </button>
+          </div>
         </div>
 
         <div style={{ overflowX: 'auto' }}>
@@ -1650,11 +1809,11 @@ export const InteractionsPage: React.FC = () => {
               boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ShieldCheck size={20} color="#06b6d4" />
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff', margin: 0 }}>
-                  Auditoría de Interacción del Funcionario
+                  Fiscalización & Auditoría de Interacción
                 </h3>
               </div>
               <button
@@ -1669,23 +1828,21 @@ export const InteractionsPage: React.FC = () => {
             <div
               style={{
                 background: 'rgba(30, 41, 59, 0.5)',
-                padding: '14px',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                padding: '12px 14px',
                 borderRadius: '8px',
-                marginBottom: '16px',
+                marginBottom: '14px',
                 fontSize: '0.85rem',
               }}
             >
-              <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.96rem' }}>
                 {selectedRowDetail.row.full_name}
               </div>
-              <div style={{ color: '#94a3b8', marginTop: '2px' }}>
-                C.I.: <strong style={{ color: '#e2e8f0' }}>{selectedRowDetail.row.employee_id}</strong> • Cargo: {selectedRowDetail.row.position}
+              <div style={{ color: '#94a3b8', marginTop: '2px', fontSize: '0.8rem' }}>
+                C.I.: <strong style={{ color: '#e2e8f0' }}>{selectedRowDetail.row.employee_id}</strong> • Cargo: {selectedRowDetail.row.position || 'Funcionario Municipal'}
               </div>
-              <div style={{ color: '#94a3b8', marginTop: '2px' }}>
-                Unidad: <strong style={{ color: '#e2e8f0' }}>{selectedRowDetail.row.department}</strong>
-              </div>
-              <div style={{ color: '#94a3b8', marginTop: '2px' }}>
-                Facebook: <span style={{ color: '#60a5fa' }}>{selectedRowDetail.row.facebook_handle || 'No enlazado'}</span>
+              <div style={{ color: '#94a3b8', marginTop: '2px', fontSize: '0.8rem' }}>
+                Dirección / Unidad: <strong style={{ color: '#e2e8f0' }}>{selectedRowDetail.row.department || 'Sin dirección asignada'}</strong>
               </div>
             </div>
 
@@ -1697,80 +1854,250 @@ export const InteractionsPage: React.FC = () => {
                   style={{
                     background: 'rgba(30, 41, 59, 0.3)',
                     border: '1px solid rgba(255, 255, 255, 0.08)',
-                    padding: '14px',
+                    padding: '10px 14px',
                     borderRadius: '8px',
-                    marginBottom: '18px',
-                    fontSize: '0.83rem',
+                    marginBottom: '14px',
+                    fontSize: '0.82rem',
                   }}
                 >
-                  <div style={{ fontWeight: 600, color: '#06b6d4', marginBottom: '4px' }}>
-                    PUBLICACIÓN EVALUADA:
+                  <div style={{ fontWeight: 600, color: '#06b6d4', marginBottom: '3px', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.04em' }}>
+                    Publicación Oficial Evaluada:
                   </div>
-                  <div style={{ color: '#fff', fontStyle: 'italic', marginBottom: '8px' }}>
-                    "{p?.post_title || 'Post oficial'}"
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
-                    <div>
-                      <span style={{ color: '#94a3b8' }}>Reacción: </span>
-                      <strong style={{ color: p?.reaction_type ? '#10b981' : '#f87171' }}>
-                        {p?.reaction_type ? `SÍ (${p.reaction_type})` : 'NO REGISTRADA'}
-                      </strong>
-                    </div>
-                    <div>
-                      <span style={{ color: '#94a3b8' }}>Compartido: </span>
-                      <strong style={{ color: p?.shared ? '#60a5fa' : '#f87171' }}>
-                        {p?.shared ? 'SÍ COMPARTIÓ' : 'NO'}
-                      </strong>
-                    </div>
-                    <div style={{ gridColumn: 'span 2' }}>
-                      <span style={{ color: '#94a3b8' }}>Comentario: </span>
-                      <strong style={{ color: p?.comment_text ? '#fbbf24' : '#94a3b8' }}>
-                        {p?.comment_text ? `"${p.comment_text}"` : 'SIN COMENTARIO'}
-                      </strong>
-                    </div>
+                  <div style={{ color: '#fff', fontStyle: 'italic', lineHeight: '1.3' }}>
+                    "{p?.post_title || currentPost?.title || 'Publicación oficial GAM El Alto'}"
                   </div>
                 </div>
               );
             })()}
 
-            {/* Verificación Manual Asistida */}
-            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '16px' }}>
-              <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '0.85rem', marginBottom: '6px' }}>
-                Registrar Verificación Manual Asistida:
+            {/* Formulario de Fiscalización Interactiva */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* 1. Enlace / Cuenta de Facebook */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>
+                  Cuenta / Perfil de Facebook del Funcionario
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Facebook size={14} color="#60a5fa" style={{ position: 'absolute', left: '10px', top: '11px' }} />
+                  <input
+                    type="text"
+                    placeholder="Ejemplo: juan.perez o https://facebook.com/juan.perez"
+                    value={auditFacebookAccount}
+                    onChange={(e) => setAuditFacebookAccount(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px 8px 32px',
+                      background: 'rgba(30, 41, 59, 0.7)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      fontSize: '0.82rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '3px' }}>
+                  Al guardar, esta cuenta quedará vinculada permanentemente al funcionario para cotejos automáticos.
+                </div>
               </div>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0 0 10px 0' }}>
-                Si el funcionario interactuó desde otra cuenta o dispositivo no enlazado, ingresa la justificación institucional.
-              </p>
 
-              <textarea
-                rows={3}
-                placeholder="Ejemplo: Interacción verificada visualmente mediante captura de pantalla de su cuenta personal alterna..."
-                value={manualNote}
-                onChange={(e) => setManualNote(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: 'rgba(30, 41, 59, 0.7)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  padding: '10px',
-                  fontSize: '0.82rem',
-                  outline: 'none',
-                  resize: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
+              {/* 2. Selector de Reacción */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
+                  Reacción en la Publicación:
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {[
+                    { type: '', label: 'Sin Reacción', icon: '—' },
+                    { type: 'LIKE', label: 'Me Gusta', icon: '👍' },
+                    { type: 'LOVE', label: 'Me Encanta', icon: '❤️' },
+                    { type: 'CARE', label: 'Me Importa', icon: '🤗' },
+                    { type: 'HAHA', label: 'Me Divierte', icon: '😆' },
+                    { type: 'WOW', label: 'Me Asombra', icon: '😮' },
+                    { type: 'SAD', label: 'Me Entristece', icon: '😢' },
+                    { type: 'ANGRY', label: 'Me Enoja', icon: '😡' },
+                  ].map((r) => {
+                    const isSelected = auditReaction.toUpperCase() === r.type;
+                    return (
+                      <button
+                        key={r.type || 'none'}
+                        type="button"
+                        onClick={() => setAuditReaction(r.type)}
+                        style={{
+                          background: isSelected
+                            ? r.type === ''
+                              ? 'rgba(148, 163, 184, 0.25)'
+                              : 'rgba(6, 182, 212, 0.25)'
+                            : 'rgba(255, 255, 255, 0.05)',
+                          border: isSelected
+                            ? r.type === ''
+                              ? '1px solid #94a3b8'
+                              : '1px solid #06b6d4'
+                            : '1px solid rgba(255, 255, 255, 0.1)',
+                          color: isSelected ? '#fff' : '#cbd5e1',
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <span>{r.icon}</span>
+                        <span>{r.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-              {manualSuccess && (
-                <div style={{ color: '#10b981', fontSize: '0.8rem', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <CheckCircle2 size={14} />
-                  <span>Verificación manual registrada exitosamente conforme a norma.</span>
+              {/* 3. Selector de Compartido */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
+                  ¿Compartió la Publicación en su Perfil/Muro?
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setAuditShared(true)}
+                    style={{
+                      flex: 1,
+                      background: auditShared ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                      border: auditShared ? '1px solid #3b82f6' : '1px solid rgba(255, 255, 255, 0.1)',
+                      color: auditShared ? '#93c5fd' : '#94a3b8',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <Repeat size={14} />
+                    <span>SÍ COMPARTIÓ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAuditShared(false)}
+                    style={{
+                      flex: 1,
+                      background: !auditShared ? 'rgba(148, 163, 184, 0.18)' : 'rgba(255, 255, 255, 0.05)',
+                      border: !auditShared ? '1px solid rgba(148, 163, 184, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+                      color: !auditShared ? '#cbd5e1' : '#64748b',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <span>❌ NO Compartió</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4. Comentario */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>
+                  Comentario Realizado por el Funcionario (Opcional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Excelente gestión por la ciudad de El Alto..."
+                  value={auditComment}
+                  onChange={(e) => setAuditComment(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'rgba(30, 41, 59, 0.7)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    fontSize: '0.82rem',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              {/* 5. Justificación / Evidencia de Auditoría */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>
+                  Nota / Justificación Institucional de Verificación:
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ejemplo: Interacción verificada visualmente mediante captura de pantalla de su cuenta personal..."
+                  value={auditJustification}
+                  onChange={(e) => setAuditJustification(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(30, 41, 59, 0.7)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    padding: '8px 10px',
+                    fontSize: '0.8rem',
+                    outline: 'none',
+                    resize: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* Alertas */}
+              {auditError && (
+                <div
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#f87171',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.8rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <AlertCircle size={15} />
+                  <span>{auditError}</span>
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
+              {manualSuccess && (
+                <div
+                  style={{
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                    color: '#34d399',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.8rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <CheckCircle2 size={15} />
+                  <span>Fiscalización registrada con éxito. La matriz ha sido actualizada.</span>
+                </div>
+              )}
+
+              {/* Botones de Acción */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
                 <button
+                  type="button"
                   onClick={() => setDetailModalOpen(false)}
                   style={{
                     background: 'transparent',
@@ -1785,21 +2112,27 @@ export const InteractionsPage: React.FC = () => {
                   Cerrar
                 </button>
                 <button
+                  type="button"
                   onClick={handleSaveManualVerification}
-                  disabled={manualSaving || !manualNote.trim()}
+                  disabled={manualSaving}
                   style={{
                     background: 'linear-gradient(135deg, #0891b2, #0284c7)',
                     border: 'none',
                     color: '#fff',
-                    padding: '8px 16px',
+                    padding: '8px 18px',
                     borderRadius: '6px',
                     fontSize: '0.82rem',
                     fontWeight: 600,
-                    cursor: manualSaving || !manualNote.trim() ? 'not-allowed' : 'pointer',
-                    opacity: manualSaving || !manualNote.trim() ? 0.5 : 1,
+                    cursor: manualSaving ? 'not-allowed' : 'pointer',
+                    opacity: manualSaving ? 0.6 : 1,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 4px 12px rgba(8, 145, 178, 0.3)',
                   }}
                 >
-                  {manualSaving ? 'Guardando...' : 'Confirmar Verificación'}
+                  {manualSaving && <RefreshCw size={14} className="animate-spin" />}
+                  <span>{manualSaving ? 'Guardando...' : 'Guardar y Actualizar Matriz'}</span>
                 </button>
               </div>
             </div>

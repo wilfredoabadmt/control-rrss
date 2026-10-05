@@ -83,6 +83,8 @@ export const monitoringApi = {
     publication_id?: string;
     platform?: string;
     department?: string;
+    search?: string;
+    participation_status?: string;
   }): Promise<void> => {
     const res = await apiClient.get('/monitoring/hub/export-matrix', {
       params,
@@ -98,5 +100,29 @@ export const monitoringApi = {
     document.body.appendChild(link);
     link.click();
     link.remove();
+  },
+
+  // 6. Verificación / Auditoría Manual de Actividad de Funcionario
+  verifyEmployeeActivity: async (data: {
+    employee_id: string;
+    publication_id: string;
+    reaction_type?: string | null;
+    shared?: boolean;
+    comment_text?: string | null;
+    facebook_account?: string | null;
+    verification_status?: string;
+    justification?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    employee_id: string;
+    publication_id: string;
+    reaction_type?: string | null;
+    shared: boolean;
+    comment_text?: string | null;
+    verification_status: string;
+  }> => {
+    const res = await apiClient.post('/monitoring/hub/verify-employee-activity', data);
+    return res.data;
   },
 };

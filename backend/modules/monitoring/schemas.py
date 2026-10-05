@@ -167,6 +167,28 @@ class ActivityMatrixResponse(BaseModel):
     rows: list[ActivityMatrixRow]
 
 
+class EmployeeActivityVerifyRequest(BaseModel):
+    employee_id: str = Field(..., description="C.I. o ID del funcionario municipal")
+    publication_id: uuid.UUID = Field(..., description="UUID de la publicación auditada")
+    reaction_type: str | None = Field(default=None, description="LIKE, LOVE, CARE, HAHA, WOW, SAD, ANGRY o None")
+    shared: bool = Field(default=False, description="Indica si el funcionario compartió la publicación")
+    comment_text: str | None = Field(default=None, description="Texto del comentario si lo realizó")
+    facebook_account: str | None = Field(default=None, description="Cuenta o link de Facebook para enlazarla de forma permanente")
+    verification_status: str = Field(default="DECLARED_CONFIRMED", description="DECLARED_CONFIRMED, VERIFIED_MANUAL, CONFIRMED")
+    justification: str = Field(default="Verificación asistida por analista institucional conforme a evidencia observada.")
+
+
+class EmployeeActivityVerifyResponse(BaseModel):
+    success: bool
+    message: str
+    employee_id: str
+    publication_id: uuid.UUID
+    reaction_type: str | None = None
+    shared: bool = False
+    comment_text: str | None = None
+    verification_status: str = "DECLARED_CONFIRMED"
+
+
 
 class ConnectorVariableDetail(BaseModel):
     key: str = Field(..., description="Nombre de la variable en el sistema, ej. FACEBOOK_APP_ID")

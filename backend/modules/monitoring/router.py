@@ -17,6 +17,8 @@ from modules.monitoring.schemas import (
     ConnectorConfigsResponse,
     ConnectorConfigUpdateRequest,
     ConnectorsDiagnosticResponse,
+    EmployeeActivityVerifyRequest,
+    EmployeeActivityVerifyResponse,
     MonitoredPersonBulkImportRequest,
     MonitoredPersonBulkImportResponse,
     MonitoredPersonCreate,
@@ -179,7 +181,32 @@ async def get_activity_matrix(
 
 
 # -----------------------------------------------------------------------------
-# 5. Exportación en Excel (.xlsx) para Autoridades
+# 5. Verificación Manual de Actividad de Funcionario (Auditoría Asistida)
+# -----------------------------------------------------------------------------
+
+@monitoring_router.post(
+    "/hub/verify-employee-activity",
+    response_model=EmployeeActivityVerifyResponse,
+    summary="Registrar o auditar manualmente la interacción de un funcionario",
+)
+async def verify_employee_activity(
+    req: EmployeeActivityVerifyRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(
+        require_roles(
+            UserRole.SUPER_ADMIN,
+            UserRole.COMMUNICATIONS_LEAD,
+            UserRole.OPERATOR,
+            UserRole.DIRECTOR,
+            UserRole.ANALYST,
+        )
+    ),
+):
+    return await MonitoringHubService.verify_employee_activity(db, req, current_user)
+
+
+# -----------------------------------------------------------------------------
+# 6. Exportación en Excel (.xlsx) para Autoridades
 # -----------------------------------------------------------------------------
 
 @monitoring_router.get(
@@ -190,6 +217,8 @@ async def export_matrix_excel(
     publication_id: uuid.UUID | None = Query(None),
     platform: str | None = Query(None),
     department: str | None = Query(None),
+    search: str | None = Query(None),
+    participation_status: str | None = Query("ALL"),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -198,6 +227,8 @@ async def export_matrix_excel(
         publication_id=publication_id,
         platform_name=platform,
         department=department,
+        search=search,
+        participation_status=participation_status,
         current_user=current_user,
     )
     timestamp_str = datetime.now(UTC).strftime("%Y%m%d_%H%M")
