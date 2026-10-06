@@ -125,4 +125,32 @@ export const monitoringApi = {
     const res = await apiClient.post('/monitoring/hub/verify-employee-activity', data);
     return res.data;
   },
+
+  // 7. Importación Masiva de Reacciones de Facebook
+  importReactionsBatch: async (data: {
+    publication_id: string;
+    raw_text: string;
+    default_reaction_type?: string;
+    platform?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    publication_id: string;
+    total_names_parsed: number;
+    matched_count: number;
+    unmatched_citizens_count: number;
+    matched_employees: Array<{
+      employee_id: string;
+      full_name: string;
+      department: string;
+      reaction_type: string;
+      interaction_id: string;
+      verification_id: string;
+    }>;
+    unmatched_names: string[];
+  }> => {
+    const res = await apiClient.post('/monitoring/hub/import-reactions', data);
+    return res.data;
+  },
 };
+

@@ -19,6 +19,8 @@ from modules.monitoring.schemas import (
     ConnectorsDiagnosticResponse,
     EmployeeActivityVerifyRequest,
     EmployeeActivityVerifyResponse,
+    ImportReactionsBatchRequest,
+    ImportReactionsBatchResponse,
     MonitoredPersonBulkImportRequest,
     MonitoredPersonBulkImportResponse,
     MonitoredPersonCreate,
@@ -203,6 +205,28 @@ async def verify_employee_activity(
     ),
 ):
     return await MonitoringHubService.verify_employee_activity(db, req, current_user)
+
+
+@monitoring_router.post(
+    "/hub/import-reactions",
+    response_model=ImportReactionsBatchResponse,
+    summary="Importación y cruce masivo de reacciones de Facebook contra el padrón municipal",
+)
+async def import_reactions_batch(
+    req: ImportReactionsBatchRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(
+        require_roles(
+            UserRole.SUPER_ADMIN,
+            UserRole.COMMUNICATIONS_LEAD,
+            UserRole.OPERATOR,
+            UserRole.DIRECTOR,
+            UserRole.ANALYST,
+        )
+    ),
+):
+    return await MonitoringHubService.import_reactions_batch(db, req, current_user)
+
 
 
 # -----------------------------------------------------------------------------

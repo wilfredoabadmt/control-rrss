@@ -189,6 +189,34 @@ class EmployeeActivityVerifyResponse(BaseModel):
     verification_status: str = "DECLARED_CONFIRMED"
 
 
+class MatchedEmployeeItem(BaseModel):
+    employee_id: str
+    full_name: str
+    department: str
+    reaction_type: str
+    interaction_id: str
+    verification_id: str
+
+
+class ImportReactionsBatchRequest(BaseModel):
+    publication_id: uuid.UUID = Field(..., description="UUID de la publicación evaluada")
+    raw_text: str = Field(..., description="Texto copiado del diálogo de reacciones de Facebook con los nombres")
+    default_reaction_type: str = Field(default="LIKE", description="LIKE, LOVE, CARE, HAHA, WOW, SAD, ANGRY")
+    platform: str = Field(default="FACEBOOK")
+
+
+class ImportReactionsBatchResponse(BaseModel):
+    success: bool
+    message: str
+    publication_id: uuid.UUID
+    total_names_parsed: int
+    matched_count: int
+    unmatched_citizens_count: int
+    matched_employees: list[MatchedEmployeeItem]
+    unmatched_names: list[str]
+
+
+
 
 class ConnectorVariableDetail(BaseModel):
     key: str = Field(..., description="Nombre de la variable en el sistema, ej. FACEBOOK_APP_ID")
