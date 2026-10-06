@@ -95,6 +95,7 @@ class InteractionMatcher:
         if author_name and len(author_name) >= 3:
             import re
             import unicodedata
+            from difflib import SequenceMatcher
 
             def _clean_n(t: str | None) -> str:
                 if not t:
@@ -118,8 +119,11 @@ class InteractionMatcher:
                 matched_name = False
                 if norm_author == emp_full or (first_last and norm_author == first_last):
                     matched_name = True
-                elif len(norm_author) >= 7 and (norm_author in emp_full or emp_full in norm_author):
-                    matched_name = True
+                else:
+                    # Fuzzy matching estricto (ratio >= 0.92) para evitar falsos positivos
+                    ratio = SequenceMatcher(None, norm_author, emp_full).ratio()
+                    if ratio >= 0.92:
+                        matched_name = True
 
                 if matched_name:
                     # Enlazar o asociar la cuenta social de forma automática

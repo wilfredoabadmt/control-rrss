@@ -9,7 +9,7 @@ from typing import Any
 
 from database import Base, UUIDPrimaryKeyMixin, utc_now
 from modules.shared.exceptions import ImmutableAuditException
-from sqlalchemy import JSON, DateTime, String, event
+from sqlalchemy import JSON, DateTime, Index, String, event
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -20,6 +20,11 @@ class AuditEvent(Base, UUIDPrimaryKeyMixin):
     Esta tabla es estrictamente APPEND-ONLY.
     """
     __tablename__ = "audit_events"
+
+    __table_args__ = (
+        Index("idx_audit_correlation", "correlation_id"),
+        Index("idx_audit_temporal", "timestamp_utc", "entity_name"),
+    )
 
     timestamp_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

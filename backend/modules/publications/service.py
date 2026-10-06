@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import httpx
+from config import settings
 from core.audit.service import record_audit_event
 from core.logging_config import get_correlation_id
 from modules.employees.models import OrganizationalUnit
@@ -285,7 +286,7 @@ class PublicationService:
             try:
                 async with httpx.AsyncClient(timeout=12.0) as client:
                     resp = await client.get(
-                        f"https://graph.facebook.com/v20.0/{page_id}/posts",
+                        f"https://graph.facebook.com/{settings.FACEBOOK_GRAPH_VERSION}/{page_id}/posts",
                         params={
                             "fields": "id,message,created_time,permalink_url,shares",
                             "limit": 15,

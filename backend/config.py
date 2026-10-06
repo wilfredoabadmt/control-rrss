@@ -62,6 +62,9 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://gamea_admin:gamea_secure_password_dev_change_in_prod@localhost:5432/gamea_social_monitor"
     )
     DATABASE_URL_SYNC: str = Field(default="")
+    # Principio XXI: La persistencia SIEMPRE es PostgreSQL. El fallback a SQLite es
+    # opt-in explícito (tests / emergencias) y jamás se activa de forma silenciosa.
+    ALLOW_SQLITE_FALLBACK: bool = Field(default=False)
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -125,7 +128,8 @@ class Settings(BaseSettings):
     FACEBOOK_PAGE_ACCESS_TOKEN: str = Field(default="")
     FACEBOOK_PAGE_ID: str = Field(default="")
     FACEBOOK_VERIFY_TOKEN: str = Field(default="gamea_meta_webhook_verify_token")
-    FACEBOOK_GRAPH_VERSION: str = Field(default="v20.0")
+    # v20.0 fue eliminada de la plataforma el 24/09/2026 (Meta Platform Versioning).
+    FACEBOOK_GRAPH_VERSION: str = Field(default="v26.0")
 
     # Redes Sociales — TikTok
     TIKTOK_CLIENT_KEY: str = Field(default="")

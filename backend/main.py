@@ -55,20 +55,31 @@ async def lifespan(app: FastAPI):
         from sqlalchemy import select, text
         from sqlalchemy.orm import selectinload
 
-        # Comprobar si PostgreSQL responde; de lo contrario activar SQLite fallback transparente
+        # Comprobar si PostgreSQL responde. Sin PostgreSQL NO hay persistencia:
+        # solo se permite el fallback si está habilitado explícitamente (ALLOW_SQLITE_FALLBACK).
         try:
             async with async_engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             logger.info("database_connected_successfully", dialect=async_engine.dialect.name)
         except Exception as conn_err:
-            logger.warning(
-                "postgres_connection_failed_using_sqlite_fallback",
-                error=str(conn_err),
-            )
-            async_engine = activate_sqlite_fallback()
+            if settings.ALLOW_SQLITE_FALLBACK:
+                logger.warning(
+                    "postgres_connection_failed_using_sqlite_fallback_explicit",
+                    error=str(conn_err),
+                )
+                async_engine = activate_sqlite_fallback()
+            else:
+                logger.critical(
+                    "postgres_unavailable_data_will_not_be_persisted",
+                    error=str(conn_err),
+                    hint="Levante PostgreSQL o defina ALLOW_SQLITE_FALLBACK=true solo para emergencias.",
+                )
 
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        try:
+            async with async_engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        except Exception as e_schema:
+            logger.error("schema_create_failed", error=str(e_schema))
 
         # Migraciones idempotentes de esquema para tablas existentes en PostgreSQL / SQLite
         try:

@@ -102,7 +102,7 @@ class MonitoringHubService:
                 display_name="Gobierno Autónomo Municipal de El Alto (Facebook Oficial)",
                 access_token_encrypted=encrypt_field(fb_token) if fb_token else "",
                 api_secret_encrypted=encrypt_field(settings.FACEBOOK_APP_SECRET) if settings.FACEBOOK_APP_SECRET else "",
-                api_version="v20.0",
+                api_version=settings.FACEBOOK_GRAPH_VERSION,
                 extraction_mode="OFFICIAL_API",
                 rate_limit_per_minute=60,
                 max_posts_per_sync=25,
@@ -232,7 +232,7 @@ class MonitoringHubService:
                         "page_id": req.target_account_id or "test_page_123",
                         "page_name": "Gobierno Autónomo Municipal de El Alto",
                         "permissions": ["pages_read_engagement", "pages_read_user_content"],
-                        "graph_version": "v20.0",
+                        "graph_version": settings.FACEBOOK_GRAPH_VERSION,
                         "latency_ms": 52,
                     },
                 )
@@ -253,6 +253,7 @@ class MonitoringHubService:
             secret = (req.api_secret or "").strip()
             app_id = (os.environ.get("FACEBOOK_APP_ID") or settings.FACEBOOK_APP_ID or "").strip()
             app_secret = secret or (os.environ.get("FACEBOOK_APP_SECRET") or settings.FACEBOOK_APP_SECRET or "").strip()
+            fb_cfg: SocialConnectorConfig | None = None
 
             if not token and db:
                 stmt_cfg = select(SocialConnectorConfig).where(SocialConnectorConfig.platform_name == "FACEBOOK")
@@ -301,7 +302,9 @@ class MonitoringHubService:
                         if fb_cfg and db:
                             fb_cfg.access_token_encrypted = encrypt_field(env_tok)
                             fb_cfg.is_active = True
-                            fb_cfg.last_sync_status = "OPERATIONAL"
+                            fb_cfg.last_status = "ONLINE"
+                            fb_cfg.status_message = "Token de entorno válido auto-recuperado y persistido."
+                            fb_cfg.last_sync_at = datetime.now(UTC)
                             db.add(fb_cfg)
                             await db.commit()
 
@@ -403,19 +406,55 @@ class MonitoringHubService:
 
             latency_ms = int((time.perf_counter() - t0) * 1000)
             target = req.target_account_id or "@alcaldia_elalto"
+
+            # Principio V: validación REAL contra TikTok Display API (sin cuentas inventadas)
+            import httpx
+
+            account_name: str | None = None
+            tt_error: str | None = None
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as http:
+                    resp = await http.post(
+                        "https://open.tiktokapis.com/v2/user/info/",
+                        params={"fields": "open_id,display_name,avatar_url"},
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                payload = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                err = payload.get("error") or {}
+                user = ((payload.get("data") or {}).get("user")) or {}
+                err_code = str(err.get("code", "0"))
+                if resp.status_code == 200 and user.get("display_name") and err_code in ("0", "ok", "None"):
+                    account_name = user.get("display_name")
+                else:
+                    tt_error = err.get("message") or f"HTTP {resp.status_code} (código {err_code})"
+            except Exception as exc:
+                tt_error = f"Sin conectividad con open.tiktokapis.com: {exc}"
+
+            if tt_error:
+                return TestConnectionResponse(
+                    platform_name="TIKTOK",
+                    success=False,
+                    status="AUTH_FAILED" if "HTTP" in tt_error or "código" in tt_error else "UNREACHABLE",
+                    message=(
+                        "FALLO DE CONEXIÓN con TikTok Display API: "
+                        f"{tt_error}. Verifique TIKTOK_ACCESS_TOKEN vigente y permisos de la app."
+                    ),
+                    account_info={"is_valid": False, "error": tt_error, "latency_ms": latency_ms},
+                )
+
             return TestConnectionResponse(
                 platform_name="TIKTOK",
                 success=True,
                 status="ONLINE_RESTRICTED",
                 message=(
-                    f"Conexión con TikTok Display API para canal '{target}'. "
+                    f"Conexión verificada en vivo con TikTok Display API para '{account_name or target}'. "
                     "Aviso normativo (Principio IV y V): TikTok restringe la exposición de identidades individuales "
                     "en Likes/Reacciones (estado epistémico API_RESTRICTED)."
                 ),
                 account_info={
                     "handle": target,
-                    "account_name": "Alcaldía de El Alto Oficial",
-                    "status": "Verified Public Entity",
+                    "account_name": account_name,
+                    "verified_live": True,
                     "api_version": "v2.0",
                     "latency_ms": latency_ms,
                 },
@@ -530,7 +569,7 @@ class MonitoringHubService:
             or ""
         ).strip()
         fb_verify_token = (os.environ.get("FACEBOOK_VERIFY_TOKEN") or settings.FACEBOOK_VERIFY_TOKEN or "").strip()
-        fb_version = (os.environ.get("FACEBOOK_GRAPH_VERSION") or settings.FACEBOOK_GRAPH_VERSION or "v20.0").strip()
+        fb_version = (os.environ.get("FACEBOOK_GRAPH_VERSION") or settings.FACEBOOK_GRAPH_VERSION or "v26.0").strip()
 
         fb_vars: list[ConnectorVariableDetail] = []
         fb_missing: list[MissingDataNotice] = []
@@ -621,9 +660,14 @@ class MonitoringHubService:
                         fb_summary = f"Fallo al autenticar credencial en Meta Graph API: {err_msg}"
 
                     fb_missing.append(MissingDataNotice(
-                        variable_key="FACEBOOK_PAGE_ACCESS_TOKEN",
+                        variable_name="FACEBOOK_PAGE_ACCESS_TOKEN",
                         display_name="Token de Página de Meta",
+                        variable_key="FACEBOOK_PAGE_ACCESS_TOKEN",
                         impact="Impide consultar publicaciones, comentarios y reacciones de Facebook en tiempo real.",
+                        instructions=(
+                            "1) Ingrese a developers.facebook.com/tools/explorer, 2) Seleccione la App 'Control RRSS', "
+                            "3) En 'User or Page' elija su Fanpage para obtener un Token Permanente, 4) Cópielo y péguelo en el campo Token."
+                        ),
                         resolution_step=(
                             "1) Ingrese a developers.facebook.com/tools/explorer, 2) Seleccione la App 'Control RRSS', "
                             "3) En 'User or Page' elija su Fanpage para obtener un Token Permanente, 4) Cópielo y péguelo en el campo Token."
@@ -1220,9 +1264,14 @@ class MonitoringHubService:
                     if fb_token and len(fb_token) > 20:
                         import httpx
                         target_limit = max(min(req.max_posts, 25), 15)
+                        graph_version = (
+                            os.environ.get("FACEBOOK_GRAPH_VERSION")
+                            or settings.FACEBOOK_GRAPH_VERSION
+                            or "v26.0"
+                        ).strip()
                         async with httpx.AsyncClient(timeout=10.0) as client:
                             resp = await client.get(
-                                f"https://graph.facebook.com/v20.0/{page_id}/posts",
+                                f"https://graph.facebook.com/{graph_version}/{page_id}/posts",
                                 params={
                                     "fields": "id,message,created_time,permalink_url",
                                     "limit": target_limit,
@@ -1421,10 +1470,11 @@ class MonitoringHubService:
 
                         # Extraer comentarios REALES de Meta
                         try:
-                            comments, _ = await fb_client.fetch_comments(target_post_id, fb_token, limit=req.max_comments_per_post)
+                            comment_limit = getattr(req, "max_comments_per_post", 100) or 100
+                            comments, _ = await fb_client.fetch_comments(target_post_id, fb_token, limit=comment_limit)
                             if not comments and target_post_id != pub.external_post_id:
                                 try:
-                                    comments, _ = await fb_client.fetch_comments(pub.external_post_id, fb_token, limit=req.max_comments_per_post)
+                                    comments, _ = await fb_client.fetch_comments(pub.external_post_id, fb_token, limit=comment_limit)
                                 except Exception:
                                     pass
                             for c in comments:
@@ -1461,7 +1511,11 @@ class MonitoringHubService:
                                     "origin": DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
                                 })
                         except Exception as e:
-                            logger.info(f"Reacciones Meta restringidas por privacidad para {target_post_id}: {str(e)}")
+                            logger.warning(f"Reacciones Meta restringidas por privacidad para {target_post_id}: {str(e)}")
+                            if sync_job.error_details:
+                                sync_job.error_details += f"; Reacciones restringidas: {str(e)}"
+                            else:
+                                sync_job.error_details = f"Reacciones restringidas: {str(e)}"
 
                 # B) Procesar e ingerir cada interacción
                 for item_dict in extracted_items:
@@ -1497,13 +1551,20 @@ class MonitoringHubService:
                         raw_payload=raw_payload,
                     )
 
-                    # Ingesta idempotente
+                    # Ingesta idempotente (solo se cuentan como "nuevos" los realmente creados)
+                    stmt_dup = select(Interaction.id).where(
+                        Interaction.platform_id == pub.platform_id,
+                        Interaction.external_interaction_id == item_dict["ext_id"],
+                    )
+                    already_exists = (await db.execute(stmt_dup)).scalar_one_or_none() is not None
+
                     interaction = await InteractionProcessor.process_interaction(
                         db=db,
                         item=item_create,
                         current_user_id=str(current_user.id),
                     )
-                    new_interactions_created += 1
+                    if not already_exists:
+                        new_interactions_created += 1
 
                     # Ejecutar Cruce (Matcher) con la audiencia
                     match_res = await InteractionMatcher.match_interaction(db, interaction)
@@ -1686,6 +1747,7 @@ class MonitoringHubService:
             person_reactions = 0
             person_comments = 0
             person_shares = 0
+            person_reactions_by_type: dict[str, int] = {}
 
             norm_full_name = _clean_n(aud.full_name)
             first_name_clean = aud.first_name.strip() if aud.first_name else ""
@@ -1764,20 +1826,19 @@ class MonitoringHubService:
                                 break
                             verif_status = v.verification_status
                     elif verif_status == "NOT_FOUND":
-                        verif_status = "CONFIRMED"
+                        # Hay interacción observada en la API pero sin verificación formal:
+                        # se tipifica como OBSERVADO (nunca como "Confirmado" — Principio V).
+                        verif_status = "OBSERVED"
 
                 if reaction_found:
                     person_reactions += 1
-                    total_reactions_all += 1
-                    reactions_count_by_type[reaction_found] = (
-                        reactions_count_by_type.get(reaction_found, 0) + 1
+                    person_reactions_by_type[reaction_found] = (
+                        person_reactions_by_type.get(reaction_found, 0) + 1
                     )
                 if comment_found:
                     person_comments += 1
-                    total_comments_all += 1
                 if shared_found:
                     person_shares += 1
-                    total_shares_all += 1
 
                 has_post_activity = bool(
                     reaction_found
@@ -1829,6 +1890,14 @@ class MonitoringHubService:
                 continue
             if participation_status == "NO_ACTIVITY" and has_participated:
                 continue
+
+            # Los totales del resumen se acumulan SOLO sobre las filas efectivamente
+            # devueltas, de modo que el resumen siempre corresponde a lo visible/exportado.
+            total_reactions_all += person_reactions
+            total_comments_all += person_comments
+            total_shares_all += person_shares
+            for r_type, r_count in person_reactions_by_type.items():
+                reactions_count_by_type[r_type] = reactions_count_by_type.get(r_type, 0) + r_count
 
             rows.append(
                 ActivityMatrixRow(
@@ -2088,11 +2157,19 @@ class MonitoringHubService:
             )
         )
         employee = (await db.execute(stmt_emp)).scalars().first()
-        author_display = (
-            f"{employee.first_name} {employee.last_name}".strip()
-            if employee
-            else emp_ci_clean
-        )
+        if not employee:
+            # Principio VII/V: no se crea ninguna verificación "suelta" sin funcionario real
+            # (provocaría un error de integridad referencial / dato imputado a nadie).
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"FUNCIONARIO_NO_ENCONTRADO: '{emp_ci_clean}' no existe en el directorio. "
+                    "Agréguelo primero en Funcionarios o en la Audiencia del Hub de Monitoreo."
+                ),
+            )
+        # Identificador canónico del funcionario (FK de verifications.employee_id)
+        emp_key = employee.employee_id
+        author_display = f"{employee.first_name} {employee.last_name}".strip()
 
         # Si se suministró cuenta de Facebook, registrarla/vincularla
         if req.facebook_account and req.facebook_account.strip():
@@ -2127,12 +2204,12 @@ class MonitoringHubService:
                     sa.verified_at = datetime.now(UTC)
 
         # Buscar si ya existe una interacción previa para esta publicación y funcionario
-        manual_ext_id = f"manual_{pub.id}_{emp_ci_clean}"
+        manual_ext_id = f"manual_{pub.id}_{emp_key}"
         stmt_int = select(Interaction).where(
             Interaction.publication_id == pub.id,
             or_(
                 Interaction.external_interaction_id == manual_ext_id,
-                Interaction.external_author_id == emp_ci_clean,
+                Interaction.external_author_id == emp_key,
             ),
         )
         interaction = (await db.execute(stmt_int)).scalars().first()
@@ -2143,7 +2220,7 @@ class MonitoringHubService:
                 .join(Interaction)
                 .where(
                     Interaction.publication_id == pub.id,
-                    Verification.employee_id == emp_ci_clean,
+                    Verification.employee_id == emp_key,
                 )
             )
             v_exist = (await db.execute(stmt_v)).scalars().first()
@@ -2172,7 +2249,7 @@ class MonitoringHubService:
                 interaction_type=interaction_type,
                 external_interaction_id=manual_ext_id,
                 external_post_id=pub.external_post_id,
-                external_author_id=emp_ci_clean,
+                external_author_id=emp_key,
                 external_author_name=author_display,
                 reaction_type=req.reaction_type,
                 content_text=req.comment_text,
@@ -2200,7 +2277,7 @@ class MonitoringHubService:
         # Crear o actualizar Verificación formal
         stmt_ver = select(Verification).where(
             Verification.interaction_id == interaction.id,
-            Verification.employee_id == emp_ci_clean,
+            Verification.employee_id == emp_key,
         )
         verification = (await db.execute(stmt_ver)).scalars().first()
 
@@ -2224,7 +2301,7 @@ class MonitoringHubService:
         if not verification:
             verification = Verification(
                 interaction_id=interaction.id,
-                employee_id=emp_ci_clean,
+                employee_id=emp_key,
                 verification_status=status_val,
                 verification_method="MANUAL_OPERATOR",
                 verified_at=datetime.now(UTC),
@@ -2249,7 +2326,7 @@ class MonitoringHubService:
             user_id=str(current_user.id),
             user_email=current_user.email,
             new_state={
-                "employee_id": emp_ci_clean,
+                "employee_id": emp_key,
                 "publication_id": str(pub.id),
                 "reaction_type": req.reaction_type,
                 "shared": req.shared,
@@ -2264,7 +2341,7 @@ class MonitoringHubService:
         return EmployeeActivityVerifyResponse(
             success=True,
             message="Interacción fiscalizada y registrada con éxito en la matriz.",
-            employee_id=emp_ci_clean,
+            employee_id=emp_key,
             publication_id=pub.id,
             reaction_type=req.reaction_type,
             shared=req.shared,

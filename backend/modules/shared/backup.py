@@ -22,7 +22,9 @@ class DatabaseBackupService:
     @staticmethod
     def execute_pg_dump(backup_dir: Path | None = None) -> tuple[Path, str, int]:
         """
-        Ejecuta dump de la base de datos PostgreSQL, calcula hash SHA-256 y tamaño.
+        Ejecuta dump real de PostgreSQL con pg_dump, calcula hash SHA-256 y tamaño.
+        Si pg_dump no está disponible NO se fabrica un snapshot falso: se lanza una
+        excepción para que el estado del backup refleje la realidad (Principio V).
         Retorna: (ruta_archivo, sha256_hash, tamaño_bytes)
         """
         if backup_dir is None:
@@ -30,32 +32,30 @@ class DatabaseBackupService:
         backup_dir.mkdir(parents=True, exist_ok=True)
 
         now_str = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        backup_file = backup_dir / f"gamea_backup_{now_str}.sql.gz"
+        backup_file = backup_dir / f"gamea_backup_{now_str}.dump"
 
-        # Fallback o ejecución estándar
+        env = os.environ.copy()
+        if settings.POSTGRES_PASSWORD:
+            env["PGPASSWORD"] = settings.POSTGRES_PASSWORD
+
+        cmd = [
+            "pg_dump",
+            "-h", settings.POSTGRES_SERVER or "localhost",
+            "-p", str(settings.POSTGRES_PORT or 5432),
+            "-U", settings.POSTGRES_USER or "gamea_admin",
+            "-d", settings.POSTGRES_DB or "gamea_social_monitor",
+            "-F", "c",  # Formato custom comprimido
+            "-f", str(backup_file),
+        ]
         try:
-            # Comando dump comprimido
-            env = os.environ.copy()
-            if settings.POSTGRES_PASSWORD:
-                env["PGPASSWORD"] = settings.POSTGRES_PASSWORD
-
-            cmd = [
-                "pg_dump",
-                "-h", settings.POSTGRES_HOST or "localhost",
-                "-p", str(settings.POSTGRES_PORT or 5432),
-                "-U", settings.POSTGRES_USER or "gamea_admin",
-                "-d", settings.POSTGRES_DB or "gamea_social_monitor",
-                "-F", "c",  # Formato custom comprimido
-                "-f", str(backup_file),
-            ]
             result = subprocess.run(cmd, capture_output=True, env=env, text=True, timeout=300)
-            if result.returncode != 0:
-                # Si pg_dump no está en el PATH local de Windows o falla, generar dump simulado/snapshot
-                with open(backup_file, "wb") as f:
-                    f.write(f"-- GAMEA Social Monitor In-Engine Snapshot {now_str}\n".encode())
-        except Exception:
-            with open(backup_file, "wb") as f:
-                f.write(f"-- GAMEA Social Monitor In-Engine Snapshot {now_str}\n".encode())
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "pg_dump no está disponible en el PATH del servidor: no es posible generar "
+                "una copia de seguridad real de PostgreSQL."
+            ) from exc
+        if result.returncode != 0:
+            raise RuntimeError(f"pg_dump falló con código {result.returncode}: {result.stderr.strip()}")
 
         # Calcular SHA-256
         sha256 = hashlib.sha256()

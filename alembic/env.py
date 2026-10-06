@@ -12,6 +12,24 @@ sys.path.insert(0, str(BASE_DIR / "backend"))
 from config import settings
 from database import Base
 
+# Importar TODOS los modelos para que su metadata quede registrada en Base
+# (sin esto, `alembic check`/`--autogenerate` vería una base vacía y propondría
+# borrar todas las tablas).
+import importlib
+
+for _name in (
+    "core.audit.models",
+    "modules.employees.models",
+    "modules.iam.models",
+    "modules.interactions.models",
+    "modules.monitoring.models",
+    "modules.publications.models",
+    "modules.reporting.models",
+    "modules.social_accounts.models",
+    "modules.verification.models",
+):
+    importlib.import_module(_name)
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -52,8 +70,23 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Alembic crea "version_num" como VARCHAR(32), pero los identificadores de
+        # revisión de este proyecto (ej. 0005_interactions_and_verifications) lo superan.
+        connection.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS alembic_version "
+            "(version_num VARCHAR(64) NOT NULL PRIMARY KEY)"
+        )
+        if connection.dialect.name == "postgresql":
+            connection.exec_driver_sql(
+                "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)"
+            )
+        # El DDL previo inicia una transacción; hay que cerrarla para que Alembic
+        # pueda tomar el control y confirmar la migración (si no, se hace rollback).
+        connection.commit()
+
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata
         )
 
         with context.begin_transaction():

@@ -124,9 +124,9 @@ class Interaction(Base, TimestampMixin, UUIDPrimaryKeyMixin):
         comment="Cuenta institucional receptora",
     )
     raw_payload_ref: Mapped[str | None] = mapped_column(
-        String(255),
+        Text,
         nullable=True,
-        comment="Hash SHA-256 o referencia de almacenamiento del payload crudo",
+        comment="Hash SHA-256 o referencia JSON de almacenamiento del payload crudo",
     )
     correlation_id: Mapped[str | None] = mapped_column(
         String(100),

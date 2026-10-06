@@ -8,6 +8,7 @@ Principio XX: Protección de Datos Personales
 import re
 import uuid
 
+from config import settings
 from core.audit.service import record_audit_event
 from core.logging_config import get_correlation_id
 from core.security.encryption import encrypt_field, hash_blind_index
@@ -240,7 +241,7 @@ class EmployeeService:
                 name=p_name,
                 display_name=p_name.title(),
                 is_active=True,
-                api_version="v20.0" if p_name == "FACEBOOK" else "v2.0",
+                api_version=settings.FACEBOOK_GRAPH_VERSION if p_name == "FACEBOOK" else "v2.0",
             )
             db.add(platform)
             await db.flush()
@@ -254,7 +255,7 @@ class EmployeeService:
         clean_val = (account_val or "").strip()
         if not clean_val:
             if existing_acc:
-                existing_acc.binding_status = BindingStatus.UNBOUND.value
+                existing_acc.binding_status = BindingStatus.INACTIVE.value
             return
 
         username = clean_val
