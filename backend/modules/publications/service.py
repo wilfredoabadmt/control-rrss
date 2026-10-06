@@ -219,26 +219,41 @@ class PublicationService:
         elif "facebook.com" in raw_url.lower() or "fb.watch" in raw_url.lower():
             platform_name = "FACEBOOK"
 
-        # Extraer ID mediante regex
+        # Extraer ID mediante regex avanzado
         extracted_id = ""
-        # 1. Facebook: posts/123456789
-        m_fb_posts = re.search(r"/(?:posts|videos|reel|photos)/([0-9]+)", raw_url)
-        if m_fb_posts:
-            extracted_id = m_fb_posts.group(1)
-        # 2. Facebook: fbid=123456789
+        # 1. Facebook share shortlinks: /share/p/1TnXUstXs3/ o /share/v/xyz/ o /share/r/xyz/ o /share/xyz/
+        m_fb_share = re.search(r"/share/(?:[pvr]/)?([a-zA-Z0-9_-]+)", raw_url)
+        if m_fb_share:
+            extracted_id = f"fb_share_{m_fb_share.group(1)}"
+
+        # 2. Facebook: posts/pfbid... o posts/123456789 o videos/123 o reel/123
+        if not extracted_id:
+            m_fb_posts = re.search(r"/(?:posts|videos|reel|photos)/(pfbid[a-zA-Z0-9]+|[0-9]+)", raw_url)
+            if m_fb_posts:
+                extracted_id = m_fb_posts.group(1)
+
+        # 3. Facebook: fbid=123456789 o story_fbid=123456789
         if not extracted_id:
             m_fbid = re.search(r"[?&](?:story_fbid|fbid)=([0-9]+)", raw_url)
             if m_fbid:
                 extracted_id = m_fbid.group(1)
-        # 3. TikTok: video/123456789
+
+        # 4. TikTok: video/123456789
         if not extracted_id:
             m_tt = re.search(r"/video/([0-9]+)", raw_url)
             if m_tt:
                 extracted_id = m_tt.group(1)
 
-        # Si no se extrajo numérico, generar ID determinístico a partir de la URL
+        # Si no se extrajo por patrones estándar, extraer el último segmento no vacío del path
         if not extracted_id:
-            extracted_id = f"post_{abs(hash(raw_url))}"
+            from urllib.parse import urlparse
+            path_parts = [p for p in urlparse(raw_url).path.split("/") if p]
+            if path_parts:
+                last_seg = path_parts[-1]
+                if len(last_seg) >= 4 and len(last_seg) <= 60:
+                    extracted_id = f"post_{last_seg}"
+            if not extracted_id:
+                extracted_id = f"post_{abs(hash(raw_url))}"
 
         pub_create = PublicationCreate(
             platform_id=platform_name,

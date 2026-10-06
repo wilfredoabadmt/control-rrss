@@ -45,6 +45,9 @@ from modules.monitoring.schemas import (
     ConnectorVariableDetail,
     EmployeeActivityVerifyRequest,
     EmployeeActivityVerifyResponse,
+    ImportReactionsBatchRequest,
+    ImportReactionsBatchResponse,
+    MatchedEmployeeItem,
     MissingDataNotice,
     MonitoredPersonBulkImportRequest,
     MonitoredPersonBulkImportResponse,
@@ -2348,4 +2351,273 @@ class MonitoringHubService:
             comment_text=req.comment_text,
             verification_status=status_val,
         )
+
+    @staticmethod
+    async def import_reactions_batch(
+        db: AsyncSession,
+        req: ImportReactionsBatchRequest,
+        current_user: User,
+    ) -> ImportReactionsBatchResponse:
+        """
+        Importa de forma masiva y asistida las reacciones reales de una publicación.
+        Permite que el auditor pegue la lista de nombres copiada directamente del modal
+        de reacciones de Facebook (o lista separada por comas/líneas).
+        Cruza automáticamente cada nombre contra el padrón de funcionarios de PostgreSQL,
+        registra las Interacciones y Verificaciones formales en PostgreSQL y emite auditoría.
+        """
+        stmt_pub = (
+            select(Publication)
+            .options(selectinload(Publication.platform))
+            .where(Publication.id == req.publication_id)
+        )
+        pub = (await db.execute(stmt_pub)).scalar_one_or_none()
+        if not pub:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Publicación institucional no encontrada.",
+            )
+
+        noise_phrases = {
+            "todos", "me gusta", "me encanta", "me importa", "me divierte", "me asombra", "me entristece", "me enoja",
+            "agregar", "agregar a amigos", "enviar mensaje", "seguir", "siguiendo", "amigos", "amigo", "amiga",
+            "cancelar", "cerrar", "ver mas", "ver más", "responder", "compartir", "mutual friends", "amigos en común",
+            "foto del perfil de", "reacciono", "reaccionó", "like", "love", "care", "haha", "wow", "sad", "angry",
+        }
+
+        reaction_map = {
+            "me gusta": "LIKE",
+            "me encanta": "LOVE",
+            "me importa": "CARE",
+            "me divierte": "HAHA",
+            "me asombra": "WOW",
+            "me entristece": "SAD",
+            "me enoja": "ANGRY",
+            "like": "LIKE",
+            "love": "LOVE",
+        }
+
+        raw_lines = req.raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        candidate_lines = []
+        for line in raw_lines:
+            line_str = line.strip()
+            if not line_str:
+                continue
+            if "," in line_str and len(raw_lines) < 5:
+                for sub in line_str.split(","):
+                    if sub.strip():
+                        candidate_lines.append(sub.strip())
+            else:
+                candidate_lines.append(line_str)
+
+        cleaned_candidates: list[tuple[str, str]] = []
+        current_detected_type = req.default_reaction_type or "LIKE"
+
+        for line in candidate_lines:
+            l_clean = line.strip()
+            l_lower = l_clean.lower()
+            if not l_clean or l_clean.isdigit():
+                continue
+            if re.match(r"^(todos|me gusta|me encanta|me divierte|me importa|me asombra|me entristece|me enoja)\s+\d+$", l_lower):
+                for k, v in reaction_map.items():
+                    if k in l_lower:
+                        current_detected_type = v
+                        break
+                continue
+            if l_lower in noise_phrases:
+                continue
+            if re.search(r"\d+\s+amigos?\s+en\s+com", l_lower):
+                continue
+            if l_lower.startswith("foto del perfil de "):
+                l_clean = l_clean[19:].strip()
+            if len(l_clean) < 3:
+                continue
+            cleaned_candidates.append((l_clean, current_detected_type))
+
+        stmt_emps = (
+            select(Employee)
+            .where(Employee.status == EmployeeStatus.ACTIVE.value)
+            .options(selectinload(Employee.organizational_unit))
+        )
+        employees = list((await db.execute(stmt_emps)).scalars().all())
+
+        # Cargar cuentas sociales activas
+        stmt_sa = select(SocialAccount).where(SocialAccount.binding_status == BindingStatus.ACTIVE.value)
+        social_accounts = list((await db.execute(stmt_sa)).scalars().all())
+
+        import unicodedata
+
+        def _clean_n(t: str | None) -> str:
+            if not t:
+                return ""
+            norm = unicodedata.normalize("NFKD", t).encode("ASCII", "ignore").decode("utf-8")
+            return re.sub(r"[^a-z0-9]", "", norm.lower().strip())
+
+        emp_by_full_name: dict[str, Employee] = {}
+        emp_by_first_last: dict[str, Employee] = {}
+        emp_by_id: dict[str, Employee] = {emp.employee_id: emp for emp in employees}
+        emp_by_fb: dict[str, Employee] = {}
+
+        for emp in employees:
+            norm_full = _clean_n(f"{emp.first_name} {emp.last_name}")
+            first_name = emp.first_name.strip() if emp.first_name else ""
+            first_surname = emp.last_name.strip().split()[0] if emp.last_name else ""
+            norm_first_last = _clean_n(f"{first_name} {first_surname}")
+
+            if norm_full:
+                emp_by_full_name[norm_full] = emp
+            if norm_first_last:
+                emp_by_first_last[norm_first_last] = emp
+
+        for sa in social_accounts:
+            if sa.current_username and sa.employee_id in emp_by_id:
+                fb_clean = _clean_n(sa.current_username.lstrip("@"))
+                if fb_clean:
+                    emp_by_fb[fb_clean] = emp_by_id[sa.employee_id]
+
+
+        matched_results: list[MatchedEmployeeItem] = []
+        unmatched_names: list[str] = []
+        seen_matched_emp_ids: set[str] = set()
+
+        cid = get_correlation_id()
+        now_dt = datetime.now(UTC)
+
+        for cand_name, cand_reaction in cleaned_candidates:
+            c_norm = _clean_n(cand_name)
+            if not c_norm:
+                continue
+
+            matched_emp: Employee | None = None
+            if c_norm in emp_by_full_name:
+                matched_emp = emp_by_full_name[c_norm]
+            elif c_norm in emp_by_first_last:
+                matched_emp = emp_by_first_last[c_norm]
+            elif c_norm in emp_by_fb:
+                matched_emp = emp_by_fb[c_norm]
+            else:
+                candidates_sub = [
+                    e for n, e in emp_by_full_name.items()
+                    if len(c_norm) >= 8 and (c_norm in n or n in c_norm)
+                ]
+                if len(candidates_sub) == 1:
+                    matched_emp = candidates_sub[0]
+
+            if not matched_emp:
+                if cand_name not in unmatched_names:
+                    unmatched_names.append(cand_name)
+                continue
+
+            if matched_emp.employee_id in seen_matched_emp_ids:
+                continue
+            seen_matched_emp_ids.add(matched_emp.employee_id)
+
+            emp_ci = matched_emp.employee_id
+            emp_full = f"{matched_emp.first_name} {matched_emp.last_name}".strip()
+            dept_name = matched_emp.organizational_unit.name if matched_emp.organizational_unit else "Sin Dirección"
+            react_val = cand_reaction or req.default_reaction_type or "LIKE"
+
+            ext_int_id = f"batch_{pub.id}_{emp_ci}"
+            stmt_int = select(Interaction).where(
+                Interaction.publication_id == pub.id,
+                or_(
+                    Interaction.external_interaction_id == ext_int_id,
+                    Interaction.external_author_id == emp_ci,
+                ),
+            )
+            interaction = (await db.execute(stmt_int)).scalars().first()
+
+            payload_dict = {
+                "source": "BATCH_REACTION_PASTE",
+                "candidate_name": cand_name,
+                "reaction_type": react_val,
+                "audited_by": current_user.email,
+                "timestamp": now_dt.isoformat(),
+            }
+
+            if not interaction:
+                interaction = Interaction(
+                    publication_id=pub.id,
+                    platform_id=pub.platform_id,
+                    interaction_type="LIKE",
+                    external_interaction_id=ext_int_id,
+                    external_post_id=pub.external_post_id,
+                    external_author_id=emp_ci,
+                    external_author_name=cand_name,
+                    reaction_type=react_val,
+                    captured_at=now_dt,
+                    capture_method=CaptureMethod.MANUAL_IMPORT.value,
+                    data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
+                    source_platform=pub.platform.name if pub.platform else "FACEBOOK",
+                    raw_payload_ref=json.dumps(payload_dict),
+                )
+                db.add(interaction)
+                await db.flush()
+            else:
+                interaction.reaction_type = react_val
+                interaction.interaction_type = "LIKE"
+                interaction.raw_payload_ref = json.dumps(payload_dict)
+
+            stmt_ver = select(Verification).where(
+                Verification.interaction_id == interaction.id,
+                Verification.employee_id == emp_ci,
+            )
+            verification = (await db.execute(stmt_ver)).scalars().first()
+            if not verification:
+                verification = Verification(
+                    interaction_id=interaction.id,
+                    employee_id=emp_ci,
+                    verification_status=VerificationStatus.CONFIRMED.value,
+                    verification_method="BATCH_REACTION_MATCHER",
+                    verified_at=now_dt,
+                    verified_by_user_id=str(current_user.id),
+                    explanation=f"Reacción {react_val} importada y verificada contra padrón de funcionarios por {current_user.email}.",
+                )
+                db.add(verification)
+                await db.flush()
+            else:
+                verification.verification_status = VerificationStatus.CONFIRMED.value
+                verification.verified_at = now_dt
+                verification.verified_by_user_id = str(current_user.id)
+                verification.explanation = f"Reacción {react_val} actualizada por {current_user.email}."
+
+            matched_results.append(
+                MatchedEmployeeItem(
+                    employee_id=emp_ci,
+                    full_name=emp_full,
+                    department=dept_name,
+                    reaction_type=react_val,
+                    interaction_id=str(interaction.id),
+                    verification_id=str(verification.id),
+                )
+            )
+
+        await record_audit_event(
+            db=db,
+            action=AuditAction.CREATE,
+            entity_name="BatchReactionImport",
+            entity_id=str(pub.id),
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            new_state={
+                "publication_id": str(pub.id),
+                "total_names_parsed": len(cleaned_candidates),
+                "matched_count": len(matched_results),
+                "unmatched_count": len(unmatched_names),
+            },
+            correlation_id=cid,
+        )
+
+        await db.commit()
+
+        return ImportReactionsBatchResponse(
+            success=True,
+            message=f"Se identificaron y registraron exitosamente {len(matched_results)} funcionarios con reacción en PostgreSQL ({len(unmatched_names)} ciudadanos no pertenecientes a la nómina).",
+            publication_id=pub.id,
+            total_names_parsed=len(cleaned_candidates),
+            matched_count=len(matched_results),
+            unmatched_citizens_count=len(unmatched_names),
+            matched_employees=matched_results,
+            unmatched_names=unmatched_names[:50],
+        )
+
 

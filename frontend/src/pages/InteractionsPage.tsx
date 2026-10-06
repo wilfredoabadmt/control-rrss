@@ -82,6 +82,20 @@ export const InteractionsPage: React.FC = () => {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualSuccess, setManualSuccess] = useState(false);
 
+  // Modal Pegar Reacciones de Facebook
+  const [showPasteReactionsModal, setShowPasteReactionsModal] = useState(false);
+  const [pasteRawText, setPasteRawText] = useState('');
+  const [pasteReactionType, setPasteReactionType] = useState('LIKE');
+  const [pasteLoading, setPasteLoading] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasteSuccess, setPasteSuccess] = useState<string | null>(null);
+  const [pasteResultDetails, setPasteResultDetails] = useState<{
+    matched_count: number;
+    unmatched_citizens_count: number;
+    matched_employees: any[];
+  } | null>(null);
+
+
   // Cargar publicaciones registradas desde backend
   const loadPublications = async () => {
     setLoadingPublications(true);
@@ -265,23 +279,76 @@ export const InteractionsPage: React.FC = () => {
     setSyncing(true);
     setSyncSuccessMsg(null);
     try {
+      const activePubId = (selectedPublicationId && selectedPublicationId !== 'ALL') ? selectedPublicationId : undefined;
       const res = await monitoringApi.runSocialSync({
         platform: 'ALL',
-        fetch_new_posts: true,
+        publication_ids: activePubId ? [activePubId] : undefined,
+        fetch_new_posts: !activePubId,
         max_posts: 10,
       });
       setSyncSuccessMsg(
         `¡Sincronización completada! Se procesaron ${res.posts_processed} publicaciones y se verificaron ${res.matched_interactions} interacciones de funcionarios.`
       );
-      await fetchActivityMatrix();
-    } catch {
-      setSyncSuccessMsg('Se ha ejecutado la verificación y cotejo en tiempo real de interacciones con Meta Graph API.');
+      await fetchActivityMatrix(activePubId);
+    } catch (err: any) {
+      const detailMsg = err.response?.data?.detail;
+      setSyncSuccessMsg(detailMsg || 'Se ha ejecutado la verificación y cotejo en tiempo real de interacciones con Meta Graph API.');
       await fetchActivityMatrix();
     } finally {
       setSyncing(false);
-      setTimeout(() => setSyncSuccessMsg(null), 7000);
+      setTimeout(() => setSyncSuccessMsg(null), 8000);
     }
   };
+
+  // Abrir modal de importar/pegar reacciones
+  const handleOpenPasteReactionsModal = () => {
+    setShowPasteReactionsModal(true);
+    setPasteRawText('');
+    setPasteReactionType('LIKE');
+    setPasteError(null);
+    setPasteSuccess(null);
+    setPasteResultDetails(null);
+  };
+
+  // Enviar reacciones copiadas para cruce automático y persistencia en PostgreSQL
+  const handleImportReactions = async () => {
+    if (!pasteRawText.trim()) {
+      setPasteError('Por favor pega la lista de nombres copiada de las reacciones de Facebook.');
+      return;
+    }
+    const pubId = currentPost ? currentPost.id : (selectedPublicationId !== 'ALL' ? selectedPublicationId : null);
+    if (!pubId) {
+      setPasteError('Debes seleccionar una publicación institucional específica para registrar las reacciones.');
+      return;
+    }
+
+    setPasteLoading(true);
+    setPasteError(null);
+    setPasteSuccess(null);
+    setPasteResultDetails(null);
+
+    try {
+      const res = await monitoringApi.importReactionsBatch({
+        publication_id: pubId,
+        raw_text: pasteRawText,
+        default_reaction_type: pasteReactionType,
+        platform: 'FACEBOOK',
+      });
+
+      setPasteSuccess(res.message);
+      setPasteResultDetails({
+        matched_count: res.matched_count,
+        unmatched_citizens_count: res.unmatched_citizens_count,
+        matched_employees: res.matched_employees,
+      });
+      await fetchActivityMatrix(pubId);
+    } catch (err: any) {
+      setPasteError(err.response?.data?.detail || 'Error al procesar y guardar las reacciones en PostgreSQL.');
+    } finally {
+      setPasteLoading(false);
+    }
+  };
+
 
   // Exportar a Excel
   const handleExportExcel = async () => {
@@ -879,6 +946,52 @@ export const InteractionsPage: React.FC = () => {
             >
               <Plus size={16} />
               <span>+ Vincular Post de Facebook</span>
+            </button>
+
+            {/* Botón Pegar Reacciones de Facebook */}
+            <button
+              onClick={handleOpenPasteReactionsModal}
+              title="Pegar los nombres copiados del popup de reacciones de Facebook para cruzar automáticamente"
+              style={{
+                background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 16px',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(236, 72, 153, 0.25)',
+              }}
+            >
+              <ThumbsUp size={16} />
+              <span>📥 Pegar Reacciones de Facebook</span>
+            </button>
+
+            {/* Botón Sincronizar con Redes */}
+            <button
+              onClick={handleSyncWithSocial}
+              disabled={syncing}
+              title="Sincronizar comentarios y posts oficiales con Meta Graph API"
+              style={{
+                background: 'rgba(6, 182, 212, 0.15)',
+                border: '1px solid rgba(6, 182, 212, 0.4)',
+                color: '#38bdf8',
+                padding: '10px 15px',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: syncing ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+              <span>{syncing ? 'Sincronizando...' : '⚡ Sincronizar Post'}</span>
             </button>
 
             <button
@@ -2138,6 +2251,269 @@ export const InteractionsPage: React.FC = () => {
                   <span>{manualSaving ? 'Guardando...' : 'Guardar y Actualizar Matriz'}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Pegar Reacciones de Facebook y Cruce Masivo */}
+      {showPasteReactionsModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: '680px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              background: '#0f172a',
+              border: '1px solid rgba(236, 72, 153, 0.4)',
+              borderRadius: '14px',
+              padding: '24px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 25px rgba(236, 72, 153, 0.2)',
+            }}
+          >
+            {/* Header del Modal */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(236, 72, 153, 0.15)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ec4899',
+                    }}
+                  >
+                    <ThumbsUp size={18} />
+                  </div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', margin: 0 }}>
+                    📥 Ingesta y Cruce Masivo de Reacciones de Facebook
+                  </h3>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: 0, lineHeight: 1.4 }}>
+                  Meta Graph API v3.0+ restringe la entrega de nombres de usuarios en Likes públicos por políticas de privacidad.
+                  Copia la lista de personas desde el diálogo de reacciones de Facebook y pégala aquí para cruzarlas en segundos contra el padrón municipal en PostgreSQL.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowPasteReactionsModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Publicación Objetivo */}
+            <div
+              style={{
+                background: 'rgba(30, 41, 59, 0.6)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                marginBottom: '16px',
+                fontSize: '0.82rem',
+                color: '#cbd5e1',
+              }}
+            >
+              <strong style={{ color: '#38bdf8' }}>Publicación evaluada:</strong>{' '}
+              {currentPost ? currentPost.title : 'Publicación seleccionada'}
+            </div>
+
+            {/* Selector de Reacción Predeterminada */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
+                Tipo de Reacción a Asignar:
+              </label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {[
+                  { id: 'LIKE', label: '👍 Me Gusta', color: '#3b82f6' },
+                  { id: 'LOVE', label: '❤️ Me Encanta', color: '#ec4899' },
+                  { id: 'CARE', label: '🤗 Me Importa', color: '#f59e0b' },
+                  { id: 'HAHA', label: '😆 Me Divierte', color: '#eab308' },
+                  { id: 'WOW', label: '😮 Me Asombra', color: '#10b981' },
+                ].map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setPasteReactionType(r.id)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      border: pasteReactionType === r.id ? `2px solid ${r.color}` : '1px solid var(--border-subtle)',
+                      background: pasteReactionType === r.id ? `${r.color}25` : 'rgba(30, 41, 59, 0.5)',
+                      color: pasteReactionType === r.id ? '#fff' : 'var(--text-muted)',
+                    }}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cuadro de Texto para Pegar */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
+                Pegar Texto / Nombres Copiados de Facebook:
+              </label>
+              <textarea
+                rows={7}
+                placeholder={`Pega aquí los nombres copiados... Por ejemplo:
+Juan Carlos Mamani Quispe
+Rosa Apaza Mamani
+Pedro Huanca Ticona
+(El motor limpia automáticamente botones como 'Agregar a amigos', 'Seguir', números y filtra ciudadanos externos)`}
+                value={pasteRawText}
+                onChange={(e) => setPasteRawText(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(30, 41, 59, 0.8)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  padding: '12px',
+                  fontSize: '0.82rem',
+                  fontFamily: 'monospace',
+                  outline: 'none',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Mensajes de Alerta */}
+            {pasteError && (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  color: '#f87171',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '14px',
+                }}
+              >
+                <AlertCircle size={16} />
+                <span>{pasteError}</span>
+              </div>
+            )}
+
+            {pasteSuccess && (
+              <div
+                style={{
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  color: '#34d399',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  marginBottom: '14px',
+                }}
+              >
+                <CheckCircle2 size={16} style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 700 }}>{pasteSuccess}</div>
+                  {pasteResultDetails && (
+                    <div style={{ fontSize: '0.75rem', marginTop: '4px', color: '#cbd5e1' }}>
+                      Persistido en PostgreSQL: {pasteResultDetails.matched_count} funcionarios actualizados.
+                      {pasteResultDetails.matched_employees.length > 0 && (
+                        <div style={{ marginTop: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                          {pasteResultDetails.matched_employees.map((me, i) => (
+                            <span
+                              key={i}
+                              style={{
+                                display: 'inline-block',
+                                background: 'rgba(16, 185, 129, 0.2)',
+                                border: '1px solid rgba(16, 185, 129, 0.4)',
+                                borderRadius: '4px',
+                                padding: '2px 8px',
+                                margin: '2px 4px 2px 0',
+                                fontSize: '0.72rem',
+                              }}
+                            >
+                              ✓ {me.full_name} ({me.department})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Botones del Modal */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setShowPasteReactionsModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border-subtle)',
+                  color: '#94a3b8',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={handleImportReactions}
+                disabled={pasteLoading || !pasteRawText.trim()}
+                style={{
+                  background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '9px 20px',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: (pasteLoading || !pasteRawText.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (pasteLoading || !pasteRawText.trim()) ? 0.6 : 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 14px rgba(236, 72, 153, 0.35)',
+                }}
+              >
+                {pasteLoading && <RefreshCw size={14} className="animate-spin" />}
+                <span>{pasteLoading ? 'Cruzando con Funcionarios...' : '⚡ Procesar y Guardar en PostgreSQL'}</span>
+              </button>
             </div>
           </div>
         </div>
