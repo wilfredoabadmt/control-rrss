@@ -57,6 +57,10 @@
 * **Endpoint:** `GET /{post-id}/reactions?summary=true`
 * **Datos disponibles:** Conteo total y desglose por tipo de reacción (Like, Love, Haha, Wow, Sad, Angry).
 * **Restricción:** Solo conteos numéricos. **No se proveen identidades individuales.**
+* **Confirmación empírica (2026-10-07, token de página real del GAMEA):**
+  * `GET /{post-id}/reactions?summary=total_count&limit=0` retorna `{"data":[],"summary":{"total_count":N}}` con N > 0: la lista de identidades viene **vacía** incluso con `pages_read_user_content` en el scope.
+  * El desglose por tipo NO está en `/reactions`; proviene de `GET /{post-id}/insights?metric=post_reactions_by_type_total` (funciona con `read_insights`).
+  * Conclusión para GAMEA: las identidades de reacciones SOLO pueden obtenerse por importación asistida (pegado de nombres) o verificación manual; los conteos oficiales se persisten en `publications.meta_reactions_*` (REQ-FBI-004).
 
 #### 1.3.4 Conteo Agregado de Shares — `VERIFIED` (solo conteo)
 * **Endpoint:** Campo `shares.count` en el objeto del Post.
@@ -208,6 +212,8 @@ El documento `spec.md` MUST comunicar con absoluta claridad que:
 | TikTok — Content Posting API | https://developers.tiktok.com/doc/content-posting-api/ | 2026-09-17 |
 | TikTok — Display API | https://developers.tiktok.com/doc/display-api/ | 2026-09-17 |
 | TikTok — Research API | https://developers.tiktok.com/products/research-api/ | 2026-09-17 |
+| Prueba empírica Graph API con token de página GAMEA (`/reactions`, `/insights`, `/comments`) | scripts `fb_probe.ps1` y `fb_probe2.ps1` (temp) | 2026-10-07 |
+| Diagnóstico de datos en producción (`matched_count`, interacciones, duplicados, matriz) | scripts `prod_diag.ps1` y `prod_diag2.ps1` (temp) | 2026-10-07 |
 
 ---
 

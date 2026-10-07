@@ -196,6 +196,11 @@ class MatchedEmployeeItem(BaseModel):
     reaction_type: str
     interaction_id: str
     verification_id: str
+    match_reason: str | None = Field(
+        default=None,
+        description="EXACT, TOKENS, FUZZY o HANDLE: cómo se cruzó el nombre pegado contra el padrón",
+    )
+    match_score: float = Field(default=0.0, description="Puntaje 0..1 del cotejo de nombres")
 
 
 class ImportReactionsBatchRequest(BaseModel):
@@ -214,6 +219,10 @@ class ImportReactionsBatchResponse(BaseModel):
     unmatched_citizens_count: int
     matched_employees: list[MatchedEmployeeItem]
     unmatched_names: list[str]
+    ambiguous_names: list[str] = Field(
+        default_factory=list,
+        description="Nombres que empatan con más de un funcionario y requieren revisión manual",
+    )
 
 
 

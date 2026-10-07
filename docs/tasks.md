@@ -386,6 +386,57 @@
 
 ---
 
+## Fase 10 — Remediación del Panel de Reacciones [COMPLETADA]
+
+> **Objetivo:** Restaurar la visualización de reacciones del panel "Control de Reacciones" respetando la evidencia empírica de la Graph API (Meta no expone identidades de reacciones) y el método Specification-Driven Development.
+
+### [x] T-1000: Diagnóstico de causa raíz
+- **Reqs:** REQ-MON-006, Principios IV y V
+- **Entregable:** Evidencia con token real de producción (`.env`) + scripts `fb_probe.ps1`, `fb_probe2.ps1`, `prod_diag.ps1` en temp: `/reactions` → `data: []`, `/insights post_reactions_by_type_total` → OK, import de 2026-10-06 con `matched_count=0`, 69 interacciones con solo ~5 con autor identificado, 37 publicaciones con matriz limitada a 15.
+- **Estado:** ✅ Completado. Multi-factor: ausencia de identidades en Meta + cotejo de nombres demasiado estricto + import sin coincidencias + publicaciones duplicadas canónicas + ventana de la matriz ocultando publicaciones verificadas + `anonimo` mostrado como usuario.
+
+### [x] T-1001: Cotejo difuso de nombres
+- **Reqs:** REQ-INT-003 (BR-INT-010)
+- **Entregable:** `backend/modules/shared/name_matching.py` con `best_employee_match` (variantes de nombre, subset, fuzzy `SequenceMatcher` ≥0.88, umbral 0.75, detección de ambigüedad ≤0.05, `EXACT|TOKENS|FUZZY|NONE|AMBIGUOUS|HANDLE`).
+- **Estado:** ✅ Completado. Tests en `backend/tests/test_name_matching.py` (13 casos).
+
+### [x] T-1002: Importación asistida trazable
+- **Reqs:** REQ-MON-004 (BR-MON-010)
+- **Entregable:** `import_reactions_batch` con `match_reason`/`match_score` por fila y respuesta `ambiguous_names` (+ `unmatched_names`); auditoría con `ambiguous_count`.
+- **Estado:** ✅ Completado. Antes del cambio el import de 38 nombres había dado `matched_count=0`.
+
+### [x] T-1003: Métricas agregadas oficiales de Meta
+- **Reqs:** REQ-FBI-004 (BR-FBI-020)
+- **Entregable:** `fetch_reaction_summary` en `FacebookGraphClient` + fake homólogo; columnas `meta_reactions_total/meta_reactions_by_type/meta_metrics_synced_at` con migración `0007_publication_meta_reactions`; ingesta en `run_social_sync`; expuesto en `GET /api/v1/publications/`.
+- **Estado:** ✅ Completado. Sin desglose inventado: si Meta no lo reporta, `by_type` queda vacío.
+
+### [x] T-1004: Idempotencia canónica de publicaciones
+- **Reqs:** REQ-PUB-002 (BR-PUB-009)
+- **Entregable:** `PublicationService.canonical_post_key()` / `find_existing_publication()`; `create_publication` idempotente; `get_facebook_recent_posts` con `_resolve_existing()`.
+- **Estado:** ✅ Completado. Elimina los duplicados `1417185383929434` vs `1612864202296619_1417185383929434` en capturas futuras.
+
+### [x] T-1005: Ventana configurable y fusión de duplicados en la matriz
+- **Reqs:** REQ-MON-006 (BR-MON-008, BR-MON-009)
+- **Entregable:** `get_activity_matrix(max_posts=15)` (query param 1..100), inclusión de publicaciones con `Verification` fuera de la ventana, fusión de duplicados canónicos con `canonical_id_map`.
+- **Estado:** ✅ Completado. Verificado en `backend/tests/test_reactions_and_matrix.py`.
+
+### [x] T-1006: Exclusión de identificadores anónimos
+- **Reqs:** REQ-INT-003 (BR-INT-011)
+- **Entregable:** `matcher.py` → `anonimo|anonymous|desconocido|-|Usuario Facebook` → `NOT_OBSERVABLE`; `GET /api/v1/interactions/users/list` filtrado.
+- **Estado:** ✅ Completado. Los nombres "Usuario Facebook" ya no aparecen como audiencia real.
+
+### [x] T-1007: Experiencia en el panel de fiscalización
+- **Reqs:** REQ-DSH-001, REQ-MON-006
+- **Entregable:** `frontend/src/pages/InteractionsPage.tsx` con KPI 4 "Reacciones Meta (Oficiales)", ficha con desglose por tipo, chips de `unmatched_names`/`ambiguous_names` en el modal de importación; `frontend/src/pages/PublicationsPage.tsx` con contador "Meta (oficial)".
+- **Estado:** ✅ Completado. `tsc --noEmit` sin errores (191 archivos verificados).
+
+### [x] T-1008: Actualización de documentación SDD
+- **Reqs:** Principio I y XXXVIII
+- **Entregable:** Delta en `docs/spec.md` (BR-FBI-020, BR-INT-010/011, BR-PUB-009, BR-MON-008/009/010, atributos Meta en `Publication`, implementación de REQ-FBI-004) y esta fase en `docs/tasks.md`.
+- **Estado:** ✅ Completado.
+
+---
+
 ## Resumen de Fases
 
 | Fase | Descripción | Tareas | Reqs Cubiertos |
@@ -400,5 +451,6 @@
 | **7** | Frontend Completo | T-700 a T-707 | UI para todos los módulos |
 | **8** | Notificaciones y Seguridad | T-800 a T-804 | REQ-NOT-*, Seguridad OWASP |
 | **9** | Despliegue y Documentación | T-900 a T-905 | ADRs, backups, quickstart, OpenAPI |
+| **10** | Remediación del Panel de Reacciones | T-1000 a T-1008 | REQ-FBI-004, REQ-INT-003, REQ-MON-004, REQ-MON-006, REQ-PUB-002 |
 
-**Total: 10 fases, 53 tareas, cubriendo los 42 requerimientos y 79 reglas de negocio del spec.md.**
+**Total: 11 fases, 74 tareas, cubriendo los 52 requerimientos y 126 reglas de negocio del spec.md.**

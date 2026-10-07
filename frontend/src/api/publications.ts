@@ -26,6 +26,9 @@ export interface PublicationItem {
   total_reactions?: number;
   total_comments?: number;
   total_shares?: number;
+  meta_reactions_total?: number;
+  meta_reactions_by_type?: Record<string, number>;
+  meta_metrics_synced_at?: string | null;
 }
 
 export interface FacebookRecentPostItem {

@@ -164,6 +164,58 @@ class FacebookGraphClient:
 
         return normalized_reactions, next_cursor
 
+    async def fetch_reaction_summary(
+        self,
+        post_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        """
+        Obtiene el resumen AGREGADO de reacciones de una publicación (REQ-FBI-003).
+
+        La Graph API de Meta no devuelve las identidades de quienes reaccionan
+        (`/reactions` entrega `data: []` con token de página) ni el autor de casi todos
+        los comentarios, por lo que la única lectura institucional posible es el conteo
+        agregado: `summary.total_count` y el desglose por tipo de `/insights`.
+        Si Meta no autoriza el desglose, se devuelve el total sin inventar desglose.
+        """
+        client = await self._get_client()
+        total_count = 0
+        by_type: dict[str, int] = {}
+
+        resp = await client.get(
+            f"{self.base_url}/{post_id}/reactions",
+            params={"summary": "total_count", "limit": 0, "access_token": access_token},
+        )
+        if resp.status_code == 429:
+            raise RateLimitExceededException(retry_after_seconds=60)
+        if resp.status_code in (401, 403):
+            raise AuthenticationException(f"Token de Meta inválido: {resp.text}")
+        if resp.status_code == 200:
+            summary = resp.json().get("summary") or {}
+            total_count = int(summary.get("total_count") or 0)
+
+        resp_insights = await client.get(
+            f"{self.base_url}/{post_id}/insights",
+            params={"metric": "post_reactions_by_type_total", "access_token": access_token},
+        )
+        if resp_insights.status_code == 429:
+            raise RateLimitExceededException(retry_after_seconds=60)
+        if resp_insights.status_code in (401, 403):
+            raise AuthenticationException(f"Token de Meta inválido: {resp_insights.text}")
+        if resp_insights.status_code == 200:
+            for item in resp_insights.json().get("data") or []:
+                if item.get("name") != "post_reactions_by_type_total":
+                    continue
+                values = item.get("values") or []
+                if values:
+                    latest = values[-1].get("value") or {}
+                    by_type = {str(k).lower(): int(v) for k, v in latest.items()}
+
+        if not total_count and by_type:
+            total_count = sum(by_type.values())
+
+        return {"post_id": post_id, "total_count": total_count, "by_type": by_type}
+
     async def fetch_page_posts(
         self,
         page_id: str,

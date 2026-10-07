@@ -162,12 +162,12 @@ paths:
         required: false
         schema:
           type: integer
-          maximum: 100
+          maximum: 1000
           minimum: 1
-          description: Registros por página (máximo 100)
+          description: Registros por página (máximo 1000)
           default: 20
           title: Page Size
-        description: Registros por página (máximo 100)
+        description: Registros por página (máximo 1000)
       responses:
         '200':
           description: Successful Response
@@ -187,7 +187,7 @@ paths:
       summary: Create User
       description: 'Crea un nuevo usuario institucional.
 
-        Exclusivo para rol SUPER_ADMIN.'
+        Permitido para SUPER_ADMIN, DIRECTOR y COMMUNICATIONS_LEAD.'
       operationId: create_user_api_v1_users__post
       security:
       - HTTPBearer: []
@@ -244,7 +244,7 @@ paths:
       tags:
       - Users
       summary: Update User
-      description: Actualiza datos de un usuario. Exclusivo para SUPER_ADMIN.
+      description: Actualiza datos de un usuario.
       operationId: update_user_api_v1_users__user_id__patch
       security:
       - HTTPBearer: []
@@ -308,8 +308,7 @@ paths:
       tags:
       - Users
       summary: Assign User Roles
-      description: Asigna roles a un usuario institucional. Exclusivo para SUPER_ADMIN
-        (BR-IAM-008).
+      description: Asigna roles a un usuario institucional.
       operationId: assign_user_roles_api_v1_users__user_id__roles_patch
       security:
       - HTTPBearer: []
@@ -457,12 +456,12 @@ paths:
         required: false
         schema:
           type: integer
-          maximum: 100
+          maximum: 1000
           minimum: 1
-          description: Registros por página (máximo 100)
+          description: Registros por página (máximo 1000)
           default: 20
           title: Page Size
-        description: Registros por página (máximo 100)
+        description: Registros por página (máximo 1000)
       responses:
         '200':
           description: Successful Response
@@ -537,7 +536,8 @@ paths:
       tags:
       - Employees
       summary: List Employees
-      description: Consulta paginada del directorio de funcionarios.
+      description: Consulta paginada del directorio de funcionarios con aislamiento
+        individual.
       operationId: list_employees_api_v1_employees__get
       security:
       - HTTPBearer: []
@@ -553,6 +553,16 @@ paths:
           description: Filtrar por unidad organizacional
           title: Unit Id
         description: Filtrar por unidad organizacional
+      - name: direction
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filtrar por dirección superior
+          title: Direction
+        description: Filtrar por dirección superior
       - name: status
         in: query
         required: false
@@ -588,12 +598,12 @@ paths:
         required: false
         schema:
           type: integer
-          maximum: 100
+          maximum: 1000
           minimum: 1
-          description: Registros por página (máximo 100)
+          description: Registros por página (máximo 1000)
           default: 20
           title: Page Size
-        description: Registros por página (máximo 100)
+        description: Registros por página (máximo 1000)
       responses:
         '200':
           description: Successful Response
@@ -827,6 +837,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/employees/bulk-delete:
+    post:
+      tags:
+      - Employees
+      summary: Bulk Delete Employees
+      description: 'Eliminación masiva / en lote de funcionarios (física o baja lógica).
+
+        Permite procesar múltiples funcionarios simultáneamente de forma atómica y
+        segura.'
+      operationId: bulk_delete_employees_api_v1_employees_bulk_delete_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeBulkDeleteRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeBulkDeleteResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /api/v1/org-units/tree:
     get:
       tags:
@@ -1271,12 +1312,12 @@ paths:
         required: false
         schema:
           type: integer
-          maximum: 100
+          maximum: 1000
           minimum: 1
-          description: Registros por página (máximo 100)
+          description: Registros por página (máximo 1000)
           default: 20
           title: Page Size
-        description: Registros por página (máximo 100)
+        description: Registros por página (máximo 1000)
       responses:
         '200':
           description: Successful Response
@@ -1643,12 +1684,12 @@ paths:
         required: false
         schema:
           type: integer
-          maximum: 100
+          maximum: 1000
           minimum: 1
-          description: Registros por página (máximo 100)
+          description: Registros por página (máximo 1000)
           default: 20
           title: Page Size
-        description: Registros por página (máximo 100)
+        description: Registros por página (máximo 1000)
       responses:
         '200':
           description: Successful Response
@@ -2314,6 +2355,19 @@ paths:
           default: ALL
           title: Participation Status
         description: ALL, PARTICIPATED, NO_ACTIVITY
+      - name: max_posts
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: Ventana de publicaciones recientes a evaluar (las verificadas
+            siempre se incluyen)
+          default: 15
+          title: Max Posts
+        description: Ventana de publicaciones recientes a evaluar (las verificadas
+          siempre se incluyen)
       responses:
         '200':
           description: Successful Response
@@ -2327,6 +2381,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/monitoring/hub/verify-employee-activity:
+    post:
+      tags:
+      - Monitoring & Social Scraper Hub
+      summary: Registrar o auditar manualmente la interacción de un funcionario
+      operationId: verify_employee_activity_api_v1_monitoring_hub_verify_employee_activity_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeActivityVerifyRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeActivityVerifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/monitoring/hub/import-reactions:
+    post:
+      tags:
+      - Monitoring & Social Scraper Hub
+      summary: Importación y cruce masivo de reacciones de Facebook contra el padrón
+        municipal
+      operationId: import_reactions_batch_api_v1_monitoring_hub_import_reactions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportReactionsBatchRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportReactionsBatchResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /api/v1/monitoring/hub/export-matrix:
     get:
       tags:
@@ -2361,6 +2470,23 @@ paths:
           - type: string
           - type: 'null'
           title: Department
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Search
+      - name: participation_status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: ALL
+          title: Participation Status
       responses:
         '200':
           description: Successful Response
@@ -2975,6 +3101,152 @@ components:
       - status
       - explanation
       title: ConsolidatedStatusResponse
+    EmployeeActivityVerifyRequest:
+      properties:
+        employee_id:
+          type: string
+          title: Employee Id
+          description: C.I. o ID del funcionario municipal
+        publication_id:
+          type: string
+          format: uuid
+          title: Publication Id
+          description: UUID de la publicación auditada
+        reaction_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reaction Type
+          description: LIKE, LOVE, CARE, HAHA, WOW, SAD, ANGRY o None
+        shared:
+          type: boolean
+          title: Shared
+          description: Indica si el funcionario compartió la publicación
+          default: false
+        comment_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Comment Text
+          description: Texto del comentario si lo realizó
+        facebook_account:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Facebook Account
+          description: Cuenta o link de Facebook para enlazarla de forma permanente
+        verification_status:
+          type: string
+          title: Verification Status
+          description: DECLARED_CONFIRMED, VERIFIED_MANUAL, CONFIRMED
+          default: DECLARED_CONFIRMED
+        justification:
+          type: string
+          title: Justification
+          default: Verificación asistida por analista institucional conforme a evidencia
+            observada.
+      type: object
+      required:
+      - employee_id
+      - publication_id
+      title: EmployeeActivityVerifyRequest
+    EmployeeActivityVerifyResponse:
+      properties:
+        success:
+          type: boolean
+          title: Success
+        message:
+          type: string
+          title: Message
+        employee_id:
+          type: string
+          title: Employee Id
+        publication_id:
+          type: string
+          format: uuid
+          title: Publication Id
+        reaction_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reaction Type
+        shared:
+          type: boolean
+          title: Shared
+          default: false
+        comment_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Comment Text
+        verification_status:
+          type: string
+          title: Verification Status
+          default: DECLARED_CONFIRMED
+      type: object
+      required:
+      - success
+      - message
+      - employee_id
+      - publication_id
+      title: EmployeeActivityVerifyResponse
+    EmployeeBulkDeleteRequest:
+      properties:
+        employee_ids:
+          items:
+            type: string
+          type: array
+          minItems: 1
+          title: Employee Ids
+          description: Lista de IDs o identificadores de funcionarios a procesar
+        permanent:
+          type: boolean
+          title: Permanent
+          description: Si es True, purga física definitiva; si es False, baja lógica
+            institucional
+          default: false
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+          description: Motivo de la acción
+          default: Eliminación administrativa en lote
+      type: object
+      required:
+      - employee_ids
+      title: EmployeeBulkDeleteRequest
+    EmployeeBulkDeleteResponse:
+      properties:
+        total_requested:
+          type: integer
+          title: Total Requested
+        deleted_count:
+          type: integer
+          title: Deleted Count
+        failed_count:
+          type: integer
+          title: Failed Count
+          default: 0
+        permanent:
+          type: boolean
+          title: Permanent
+          default: false
+        errors:
+          items:
+            type: string
+          type: array
+          title: Errors
+          default: []
+        detail:
+          type: string
+          title: Detail
+      type: object
+      required:
+      - total_requested
+      - deleted_count
+      - detail
+      title: EmployeeBulkDeleteResponse
     EmployeeCreate:
       properties:
         employee_id:
@@ -3296,6 +3568,22 @@ components:
         correlation_id:
           type: string
           title: Correlation Id
+        total_processed:
+          type: integer
+          title: Total Processed
+          readOnly: true
+        created:
+          type: integer
+          title: Created
+          readOnly: true
+        updated:
+          type: integer
+          title: Updated
+          readOnly: true
+        unchanged:
+          type: integer
+          title: Unchanged
+          readOnly: true
       type: object
       required:
       - total_records
@@ -3304,6 +3592,10 @@ components:
       - unchanged_count
       - deactivated_count
       - correlation_id
+      - total_processed
+      - created
+      - updated
+      - unchanged
       title: EmployeeImportReport
     EmployeeResponse:
       properties:
@@ -3619,6 +3911,81 @@ components:
       required:
       - url
       title: ImportPostFromUrlRequest
+    ImportReactionsBatchRequest:
+      properties:
+        publication_id:
+          type: string
+          format: uuid
+          title: Publication Id
+          description: UUID de la publicación evaluada
+        raw_text:
+          type: string
+          title: Raw Text
+          description: Texto copiado del diálogo de reacciones de Facebook con los
+            nombres
+        default_reaction_type:
+          type: string
+          title: Default Reaction Type
+          description: LIKE, LOVE, CARE, HAHA, WOW, SAD, ANGRY
+          default: LIKE
+        platform:
+          type: string
+          title: Platform
+          default: FACEBOOK
+      type: object
+      required:
+      - publication_id
+      - raw_text
+      title: ImportReactionsBatchRequest
+    ImportReactionsBatchResponse:
+      properties:
+        success:
+          type: boolean
+          title: Success
+        message:
+          type: string
+          title: Message
+        publication_id:
+          type: string
+          format: uuid
+          title: Publication Id
+        total_names_parsed:
+          type: integer
+          title: Total Names Parsed
+        matched_count:
+          type: integer
+          title: Matched Count
+        unmatched_citizens_count:
+          type: integer
+          title: Unmatched Citizens Count
+        matched_employees:
+          items:
+            $ref: '#/components/schemas/MatchedEmployeeItem'
+          type: array
+          title: Matched Employees
+        unmatched_names:
+          items:
+            type: string
+          type: array
+          title: Unmatched Names
+        ambiguous_names:
+          items:
+            type: string
+          type: array
+          title: Ambiguous Names
+          description: Nombres que empatan con más de un funcionario y requieren revisión
+            manual
+      type: object
+      required:
+      - success
+      - message
+      - publication_id
+      - total_names_parsed
+      - matched_count
+      - unmatched_citizens_count
+      - matched_employees
+      - unmatched_names
+      title: ImportReactionsBatchResponse
     InstitutionalAccountCreate:
       properties:
         platform_id:
@@ -4006,6 +4373,47 @@ components:
       title: ManualVerificationRequest
       description: Solicitud de verificación manual asistida efectuada por un operador
         o analista (REQ-VER-002).
+    MatchedEmployeeItem:
+      properties:
+        employee_id:
+          type: string
+          title: Employee Id
+        full_name:
+          type: string
+          title: Full Name
+        department:
+          type: string
+          title: Department
+        reaction_type:
+          type: string
+          title: Reaction Type
+        interaction_id:
+          type: string
+          title: Interaction Id
+        verification_id:
+          type: string
+          title: Verification Id
+        match_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Match Reason
+          description: 'EXACT, TOKENS, FUZZY o HANDLE: cómo se cruzó el nombre pegado
+            contra el padrón'
+        match_score:
+          type: number
+          title: Match Score
+          description: Puntaje 0..1 del cotejo de nombres
+          default: 0.0
+      type: object
+      required:
+      - employee_id
+      - full_name
+      - department
+      - reaction_type
+      - interaction_id
+      - verification_id
+      title: MatchedEmployeeItem
     MissingDataNotice:
       properties:
         variable_name:
@@ -5048,6 +5456,26 @@ components:
           type: integer
           title: Total Shares
           default: 0
+        meta_reactions_total:
+          type: integer
+          title: Meta Reactions Total
+          description: Total de reacciones reportado por Meta Graph API (conteo agregado,
+            sin identidades)
+          default: 0
+        meta_reactions_by_type:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Meta Reactions By Type
+          description: Desglose por tipo (like, love, wow, haha, sad, angry) reportado
+            por Meta
+        meta_metrics_synced_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Meta Metrics Synced At
+          description: UTC de la última lectura de métricas agregadas de Meta
       type: object
       required:
       - platform_id
@@ -5161,11 +5589,10 @@ components:
           anyOf:
           - items:
               type: string
-              format: uuid
             type: array
           - type: 'null'
           title: Publication Ids
-          description: Publicaciones específicas a evaluar
+          description: Publicaciones específicas a evaluar (UUID o ID externo de Facebook)
         fetch_new_posts:
           type: boolean
           title: Fetch New Posts
@@ -5423,6 +5850,12 @@ components:
           title: Is Active
           description: Estado de la cuenta
           default: true
+        assigned_direction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assigned Direction
+          description: Dirección o dependencia asignada para panel individual
         password:
           type: string
           minLength: 12
@@ -5460,6 +5893,12 @@ components:
           title: Is Active
           description: Estado de la cuenta
           default: true
+        assigned_direction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assigned Direction
+          description: Dirección o dependencia asignada para panel individual
         id:
           type: string
           format: uuid
@@ -5530,6 +5969,11 @@ components:
           - type: boolean
           - type: 'null'
           title: Is Active
+        assigned_direction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assigned Direction
         password:
           anyOf:
           - type: string

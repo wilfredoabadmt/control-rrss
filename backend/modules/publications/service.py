@@ -38,6 +38,41 @@ class PublicationService:
     # -------------------------------------------------------------------------
 
     @staticmethod
+    def canonical_post_key(external_post_id: str | None) -> str:
+        """
+        Clave canónica de un post para detectar duplicados equivalentes.
+
+        Meta devuelve el mismo post como `1417185383929434` (extraído de la URL) o como
+        `1612864202296619_1417185383929434` (id completo de página). Ambas formas
+        deben resolver a la misma publicación.
+        """
+        ext = (external_post_id or "").strip()
+        if not ext:
+            return ""
+        if "_" in ext:
+            return ext.rsplit("_", 1)[-1]
+        return ext if ext.isdigit() else f"#{ext}"
+
+    @staticmethod
+    async def find_existing_publication(
+        db: AsyncSession,
+        platform_id: uuid.UUID,
+        external_post_id: str,
+    ) -> Publication | None:
+        """Busca una publicación por id exacto o por su forma canónica equivalente."""
+        stmt = select(Publication).where(Publication.platform_id == platform_id).options(
+            selectinload(Publication.platform)
+        )
+        wanted = (external_post_id or "").strip()
+        wanted_key = PublicationService.canonical_post_key(wanted)
+        for candidate in (await db.execute(stmt)).scalars().all():
+            if candidate.external_post_id == wanted or (
+                wanted_key and PublicationService.canonical_post_key(candidate.external_post_id) == wanted_key
+            ):
+                return candidate
+        return None
+
+    @staticmethod
     async def create_publication(
         db: AsyncSession,
         pub_in: PublicationCreate,
@@ -45,7 +80,8 @@ class PublicationService:
     ) -> Publication:
         """
         Registra una publicación institucional de forma estrictamente idempotente.
-        Si la publicación ya existe en la misma plataforma, no la duplica.
+        Si la publicación ya existe en la misma plataforma (incluidas sus formas
+        equivalentes de id de Meta), no la duplica.
         """
         cid = get_correlation_id()
 
@@ -81,12 +117,10 @@ class PublicationService:
 
         resolved_platform_id = plat.id
 
-        # 2. Idempotencia: Verificar si el post_id ya existe en la plataforma (Principio XI)
-        stmt_existing = select(Publication).where(
-            Publication.platform_id == resolved_platform_id,
-            Publication.external_post_id == pub_in.external_post_id.strip(),
-        ).options(selectinload(Publication.platform))
-        existing = (await db.execute(stmt_existing)).scalar_one_or_none()
+        # 2. Idempotencia: Verificar si el post_id (o su forma canónica) ya existe (Principio XI)
+        existing = await PublicationService.find_existing_publication(
+            db, resolved_platform_id, pub_in.external_post_id.strip()
+        )
         if existing:
             return existing
 
@@ -286,9 +320,18 @@ class PublicationService:
 
         page_id = (fb_cfg.target_account_id if fb_cfg and fb_cfg.target_account_id else "") or os.environ.get("FACEBOOK_PAGE_ID", "1612864202296619")
 
-        # Cargar IDs existentes en BD para marcar is_monitored
+        # Cargar IDs existentes en BD para marcar is_monitored (forma canónica:
+        # evita duplicar un mismo post registrado como id numérico o id completo)
         stmt_existing = select(Publication.id, Publication.external_post_id)
-        existing_map = {row[1]: row[0] for row in (await db.execute(stmt_existing)).all()}
+        existing_map: dict[str, uuid.UUID] = {row[1]: row[0] for row in (await db.execute(stmt_existing)).all()}
+        canonical_map: dict[str, uuid.UUID] = {
+            PublicationService.canonical_post_key(ext): p_id for ext, p_id in existing_map.items()
+        }
+
+        def _resolve_existing(post_id: str) -> uuid.UUID | None:
+            if post_id in existing_map:
+                return existing_map[post_id]
+            return canonical_map.get(PublicationService.canonical_post_key(post_id))
 
         items: list[FacebookRecentPostItem] = []
 
@@ -330,7 +373,7 @@ class PublicationService:
         for p in posts_data:
             p_id = p.get("id", "")
             shares_info = p.get("shares", {}) or {}
-            is_mon = (p_id in existing_map)
+            resolved_id = _resolve_existing(p_id)
             items.append(
                 FacebookRecentPostItem(
                     id=p_id,
@@ -338,8 +381,8 @@ class PublicationService:
                     created_time=p.get("created_time"),
                     permalink_url=p.get("permalink_url") or f"https://facebook.com/{p_id}",
                     shares_count=shares_info.get("count", 0),
-                    is_monitored=is_mon,
-                    existing_id=existing_map.get(p_id),
+                    is_monitored=resolved_id is not None,
+                    existing_id=resolved_id,
                 )
             )
 
@@ -374,7 +417,7 @@ class PublicationService:
                 ("1612864202296619_1416229634025009", "Gran Campaña de Vacunación y Atención Médica Gratuita en la Plaza del Tinku - Ciudad Satélite. #SaludElAlto", 18),
             ]
             for fid, fmsg, fshares in sample_fb:
-                is_mon = (fid in existing_map)
+                resolved_id = _resolve_existing(fid)
                 items.append(
                     FacebookRecentPostItem(
                         id=fid,
@@ -382,8 +425,8 @@ class PublicationService:
                         created_time=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                         permalink_url=f"https://facebook.com/{fid}",
                         shares_count=fshares,
-                        is_monitored=is_mon,
-                        existing_id=existing_map.get(fid),
+                        is_monitored=resolved_id is not None,
+                        existing_id=resolved_id,
                     )
                 )
 

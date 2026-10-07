@@ -54,6 +54,13 @@ class InteractionMatcher:
         clean_author = author_id.lstrip("@").lower()
         author_name = (interaction.external_author_name or "").strip().lower()
 
+        # BR-INT-009 (continuación): identidad anónima marcada por el conector
+        if clean_author in {"anonimo", "anonymous", "desconocido", "-"} or clean_author.startswith("anonimo"):
+            return MatchResult(
+                status=MatchStatus.NOT_OBSERVABLE,
+                message="Autoría anónima declarada por la fuente (Meta Graph API no expone identidades de reacciones ni de casi todos los comentarios).",
+            )
+
         # BR-INT-006: 1. Comparar external_author_id con external_user_id de SocialAccount activa
         stmt = (
             select(SocialAccount)
@@ -93,16 +100,8 @@ class InteractionMatcher:
 
         # 3. Si aún no coincide por cuenta social, probar cruce por nombre de funcionario
         if author_name and len(author_name) >= 3:
-            import re
-            import unicodedata
+            from modules.shared.name_matching import best_employee_match
 
-            def _clean_n(t: str | None) -> str:
-                if not t:
-                    return ""
-                norm = unicodedata.normalize("NFKD", t).encode("ASCII", "ignore").decode("utf-8")
-                return re.sub(r"[^a-z0-9]", "", norm.lower().strip())
-
-            norm_author = _clean_n(author_name)
             stmt_emps = (
                 select(Employee)
                 .where(Employee.status == EmployeeStatus.ACTIVE.value)
@@ -110,44 +109,39 @@ class InteractionMatcher:
             )
             all_active_emps = list((await db.execute(stmt_emps)).scalars().all())
 
-            for emp in all_active_emps:
-                emp_full = _clean_n(f"{emp.first_name} {emp.last_name}")
-                first_last = _clean_n(f"{emp.first_name} {emp.last_name.split()[0] if emp.last_name else ''}")
-                
-                # Coincidencia exacta o primer nombre + primer apellido
-                matched_name = False
-                if norm_author == emp_full or (first_last and norm_author == first_last):
-                    matched_name = True
-                elif len(norm_author) >= 7 and (norm_author in emp_full or emp_full in norm_author):
-                    matched_name = True
-
-                if matched_name:
-                    # Enlazar o asociar la cuenta social de forma automática
-                    stmt_exist = select(SocialAccount).where(
-                        SocialAccount.employee_id == emp.employee_id,
-                        SocialAccount.platform_id == interaction.platform_id,
+            name_match = best_employee_match(interaction.external_author_name or "", all_active_emps)
+            if name_match.matched:
+                emp = name_match.employee
+                # Enlazar o asociar la cuenta social de forma automática
+                stmt_exist = select(SocialAccount).where(
+                    SocialAccount.employee_id == emp.employee_id,
+                    SocialAccount.platform_id == interaction.platform_id,
+                )
+                emp_acc = (await db.execute(stmt_exist)).scalar_one_or_none()
+                if emp_acc:
+                    if not emp_acc.external_user_id and author_id and not author_id.startswith("anonimo"):
+                        emp_acc.external_user_id = author_id
+                else:
+                    emp_acc = SocialAccount(
+                        employee_id=emp.employee_id,
+                        platform_id=interaction.platform_id,
+                        external_user_id=author_id if not author_id.startswith("anonimo") else None,
+                        current_username=interaction.external_author_name,
+                        binding_status=BindingStatus.ACTIVE.value,
                     )
-                    emp_acc = (await db.execute(stmt_exist)).scalar_one_or_none()
-                    if emp_acc:
-                        if not emp_acc.external_user_id and author_id and not author_id.startswith("anonimo"):
-                            emp_acc.external_user_id = author_id
-                    else:
-                        emp_acc = SocialAccount(
-                            employee_id=emp.employee_id,
-                            platform_id=interaction.platform_id,
-                            external_user_id=author_id if not author_id.startswith("anonimo") else None,
-                            current_username=interaction.external_author_name,
-                            binding_status=BindingStatus.ACTIVE.value,
-                        )
-                        db.add(emp_acc)
-                        await db.flush()
+                    db.add(emp_acc)
+                    await db.flush()
 
-                    return MatchResult(
-                        status=MatchStatus.MATCHED,
-                        employee=emp,
-                        social_account=emp_acc,
-                        message=f"Interacción cruzada por nombre con el funcionario {emp.employee_id} ({emp.first_name} {emp.last_name}).",
-                    )
+                return MatchResult(
+                    status=MatchStatus.MATCHED,
+                    employee=emp,
+                    social_account=emp_acc,
+                    message=(
+                        f"Interacción cruzada por nombre ({name_match.reason}, "
+                        f"puntaje {name_match.score:.2f}) con el funcionario {emp.employee_id} "
+                        f"({emp.first_name} {emp.last_name})."
+                    ),
+                )
 
         # BR-INT-008: No se encontró coincidencia en el directorio municipal
         return MatchResult(

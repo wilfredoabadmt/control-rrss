@@ -6,6 +6,7 @@ import {
   Download,
   ExternalLink,
   Facebook,
+  Heart,
   Link2,
   MessageSquare,
   Plus,
@@ -763,6 +764,15 @@ export const PublicationsPage: React.FC<PublicationsPageProps> = ({ onNavigate }
                         <Repeat size={15} />
                         <strong style={{ color: '#fff' }}>{pub.total_shares || 0}</strong>
                         <span style={{ color: 'var(--text-muted)' }}>Compartidos</span>
+                      </div>
+
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: '#f472b6' }}
+                        title="Conteo agregado oficial leído de Meta Graph API. Meta no expone la identidad de quienes reaccionan."
+                      >
+                        <Heart size={15} />
+                        <strong style={{ color: '#fff' }}>{pub.meta_reactions_total || 0}</strong>
+                        <span style={{ color: 'var(--text-muted)' }}>Meta (oficial)</span>
                       </div>
                     </div>
 

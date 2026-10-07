@@ -43,6 +43,18 @@ class PublicationResponse(PublicationBase):
     total_reactions: int = 0
     total_comments: int = 0
     total_shares: int = 0
+    meta_reactions_total: int = Field(
+        default=0,
+        description="Total de reacciones reportado por Meta Graph API (conteo agregado, sin identidades)",
+    )
+    meta_reactions_by_type: dict[str, int] = Field(
+        default_factory=dict,
+        description="Desglose por tipo (like, love, wow, haha, sad, angry) reportado por Meta",
+    )
+    meta_metrics_synced_at: datetime | None = Field(
+        default=None,
+        description="UTC de la última lectura de métricas agregadas de Meta",
+    )
 
     model_config = {"from_attributes": True}
 

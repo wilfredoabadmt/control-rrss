@@ -19,7 +19,7 @@ from modules.interactions.processor import InteractionProcessor
 from modules.interactions.schemas import InteractionCreate, InteractionResponse, InteractionUserItem
 from modules.shared.enums import UserRole
 from modules.shared.exceptions import EntityNotFoundException
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/interactions", tags=["Interactions & Evidence"])
@@ -139,7 +139,15 @@ async def list_interaction_users(
             func.min(Interaction.external_created_at).label("first_interaction_at"),
             func.max(Interaction.external_created_at).label("last_interaction_at"),
         )
-        .where(Interaction.external_author_id.isnot(None))
+        .where(
+            Interaction.external_author_id.isnot(None),
+            # Excluir registros anónimos: no son personas reales (Principio V)
+            func.lower(Interaction.external_author_id) != "anonimo",
+            or_(
+                Interaction.external_author_name.is_(None),
+                func.lower(Interaction.external_author_name) != "usuario facebook",
+            ),
+        )
         .group_by(Interaction.external_author_id, Interaction.external_author_name)
     )
 

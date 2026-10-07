@@ -33,6 +33,17 @@ import {
 import { LISTA_DIRECCIONES } from '../data/organigrama';
 import { ActivityMatrixResponse, ActivityMatrixRow } from '../types';
 
+type PublicationOption = {
+  id: string;
+  title: string;
+  platform: string;
+  url?: string;
+  date?: string;
+  metaReactions?: number;
+  metaReactionsByType?: Record<string, number>;
+  metaSyncedAt?: string | null;
+};
+
 export const InteractionsPage: React.FC = () => {
   // Estado principal de la matriz de actividad
   const [matrixData, setMatrixData] = useState<ActivityMatrixResponse | null>(null);
@@ -93,6 +104,8 @@ export const InteractionsPage: React.FC = () => {
     matched_count: number;
     unmatched_citizens_count: number;
     matched_employees: any[];
+    unmatched_names: string[];
+    ambiguous_names: string[];
   } | null>(null);
 
 
@@ -235,7 +248,7 @@ export const InteractionsPage: React.FC = () => {
 
   // Extraer lista única de publicaciones disponibles (de la BD y de la matriz)
   const availablePublications = useMemo(() => {
-    const pubMap = new Map<string, { id: string; title: string; platform: string; url?: string; date?: string }>();
+    const pubMap = new Map<string, PublicationOption>();
 
     for (const pub of dbPublications) {
       pubMap.set(pub.id, {
@@ -244,6 +257,9 @@ export const InteractionsPage: React.FC = () => {
         platform: pub.platform_name || 'FACEBOOK',
         url: pub.post_url,
         date: pub.published_at,
+        metaReactions: pub.meta_reactions_total || 0,
+        metaReactionsByType: pub.meta_reactions_by_type || {},
+        metaSyncedAt: pub.meta_metrics_synced_at,
       });
     }
 
@@ -340,6 +356,8 @@ export const InteractionsPage: React.FC = () => {
         matched_count: res.matched_count,
         unmatched_citizens_count: res.unmatched_citizens_count,
         matched_employees: res.matched_employees,
+        unmatched_names: res.unmatched_names || [],
+        ambiguous_names: res.ambiguous_names || [],
       });
       await fetchActivityMatrix(pubId);
     } catch (err: any) {
@@ -459,6 +477,46 @@ export const InteractionsPage: React.FC = () => {
       sharesCount: shares,
     };
   }, [matrixData, currentPost]);
+
+  // Conteos agregados oficiales de Meta Graph API (Meta no expone identidades de reacciones)
+  const metaMetrics = useMemo(() => {
+    const entries: Array<{ total: number; byType?: Record<string, number>; syncedAt?: string | null }> = currentPost
+      ? [
+          {
+            total: currentPost.metaReactions || 0,
+            byType: currentPost.metaReactionsByType,
+            syncedAt: currentPost.metaSyncedAt,
+          },
+        ]
+      : dbPublications.map((p) => ({
+          total: p.meta_reactions_total || 0,
+          byType: p.meta_reactions_by_type,
+          syncedAt: p.meta_metrics_synced_at,
+        }));
+
+    const byType: Record<string, number> = {};
+    let total = 0;
+    let syncedAt: string | null = null;
+    for (const entry of entries) {
+      total += entry.total;
+      for (const [key, value] of Object.entries(entry.byType || {})) {
+        byType[key] = (byType[key] || 0) + value;
+      }
+      if (entry.syncedAt && (!syncedAt || entry.syncedAt > syncedAt)) {
+        syncedAt = entry.syncedAt;
+      }
+    }
+    return { total, byType, syncedAt };
+  }, [currentPost, dbPublications]);
+
+  const metaBreakdownLabel = useMemo(
+    () =>
+      Object.entries(metaMetrics.byType)
+        .sort((a, b) => b[1] - a[1])
+        .map(([key, value]) => `${key.toUpperCase()} ${value}`)
+        .join(' · '),
+    [metaMetrics.byType]
+  );
 
   // Manejar apertura de modal de detalle y fiscalización manual
   const handleOpenDetail = (row: ActivityMatrixRow) => {
@@ -1050,6 +1108,26 @@ export const InteractionsPage: React.FC = () => {
                 <strong style={{ color: '#fff' }}>Contenido: </strong>
                 <span>"{currentPost.title}"</span>
               </div>
+
+              <div
+                style={{
+                  fontSize: '0.76rem',
+                  color: '#94a3b8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                }}
+                title="Meta Graph API no expone la identidad de quienes reaccionan: los conteos son oficiales y las identidades se registran con 'Pegar Reacciones de Facebook'."
+              >
+                <ThumbsUp size={13} color="#f472b6" />
+                <span>
+                  Reacciones oficiales Meta:{' '}
+                  <strong style={{ color: '#f472b6' }}>{currentPost.metaReactions ?? 0}</strong>
+                </span>
+                {metaBreakdownLabel && <span style={{ color: '#cbd5e1' }}>({metaBreakdownLabel})</span>}
+                <span>· identidades no expuestas por la API</span>
+              </div>
             </div>
           )}
         </div>
@@ -1109,6 +1187,25 @@ export const InteractionsPage: React.FC = () => {
           </div>
           <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
             Me Gusta / Me Encanta
+          </div>
+        </div>
+
+        {/* KPI 4: Reacciones oficiales reportadas por Meta */}
+        <div
+          className="glass-panel"
+          style={{ padding: '16px 18px', borderLeft: '4px solid #ec4899' }}
+          title="Conteo agregado leído de Meta Graph API. Meta no entrega la identidad de quienes reaccionan."
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Reacciones Meta (Oficiales)
+            </span>
+            <Heart size={16} color="#f472b6" />
+          </div>
+          <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#f472b6' }}>{metaMetrics.total}</div>
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
+            {metaBreakdownLabel || 'Sin lectura de Meta Graph API todavía'}
+            {metaMetrics.syncedAt ? ` · al ${new Date(metaMetrics.syncedAt).toLocaleString('es-BO')}` : ''}
           </div>
         </div>
 
@@ -2463,6 +2560,59 @@ Pedro Huanca Ticona
                               ✓ {me.full_name} ({me.department})
                             </span>
                           ))}
+                        </div>
+                      )}
+                      {pasteResultDetails.unmatched_names.length > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <div style={{ fontWeight: 700, color: '#fbbf24' }}>
+                            Sin coincidencia en la nómina ({pasteResultDetails.unmatched_names.length}): ciudadanos
+                          </div>
+                          <div style={{ maxHeight: '90px', overflowY: 'auto', marginTop: '3px' }}>
+                            {pasteResultDetails.unmatched_names.map((name, idx) => (
+                              <span
+                                key={`unmatched-${idx}`}
+                                style={{
+                                  display: 'inline-block',
+                                  background: 'rgba(245, 158, 11, 0.15)',
+                                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                                  borderRadius: '4px',
+                                  padding: '2px 8px',
+                                  margin: '2px 4px 2px 0',
+                                  fontSize: '0.72rem',
+                                  color: '#fbbf24',
+                                }}
+                              >
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {pasteResultDetails.ambiguous_names.length > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <div style={{ fontWeight: 700, color: '#f87171' }}>
+                            Ambiguos, requieren revisión manual ({pasteResultDetails.ambiguous_names.length}): coinciden
+                            con más de un funcionario
+                          </div>
+                          <div style={{ maxHeight: '90px', overflowY: 'auto', marginTop: '3px' }}>
+                            {pasteResultDetails.ambiguous_names.map((name, idx) => (
+                              <span
+                                key={`ambiguous-${idx}`}
+                                style={{
+                                  display: 'inline-block',
+                                  background: 'rgba(239, 68, 68, 0.15)',
+                                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                                  borderRadius: '4px',
+                                  padding: '2px 8px',
+                                  margin: '2px 4px 2px 0',
+                                  fontSize: '0.72rem',
+                                  color: '#f87171',
+                                }}
+                              >
+                                {name}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

@@ -338,9 +338,11 @@ El sistema implementará **tres niveles de verificación** derivados de las rest
   * `capture_method`: `WEBHOOK`, `API_POLLING`, `MANUAL`.
   * `monitoring_status`: `ACTIVE`, `PAUSED`, `COMPLETED`, `ARCHIVED`.
   * `api_version`: Versión de la API utilizada en la captura.
+  * `meta_reactions_total`, `meta_reactions_by_type`, `meta_metrics_synced_at`: métricas agregadas oficiales de Meta (REQ-FBI-004).
 * **Reglas de Negocio:**
   * BR-PUB-003: Una publicación MUST tener un `external_post_id` único por plataforma para garantizar idempotencia en la captura.
   * BR-PUB-004: Las publicaciones MUST NOT eliminarse físicamente; se archivan manteniendo historial.
+  * BR-PUB-009: El alta y la importación por URL MUST resolver la identidad canónica del post (`PublicationService.canonical_post_key`), de modo que las formas equivalentes de Meta (`1417185383929434` y `1612864202296619_1417185383929434`) devuelvan la misma fila y no generen duplicados.
 * **Criterios de Aceptación:**
   * **Given** un webhook de Facebook que notifica una nueva publicación en la página del GAMEA, **When** el sistema procesa el webhook, **Then** se crea un registro `Publication` con todos los metadatos de proveniencia, `capture_method=WEBHOOK`, estado `ACTIVE`, y no se duplica si el mismo webhook se recibe múltiples veces.
 
@@ -416,9 +418,11 @@ El sistema implementará **tres niveles de verificación** derivados de las rest
   * Conteo total de reacciones (desglosado por tipo: Like, Love, Haha, Wow, Sad, Angry).
   * Conteo total de shares.
   * Conteo total de comentarios.
+* **Implementación:** `FacebookGraphClient.fetch_reaction_summary()` combina `GET /{post-id}/reactions?summary=total_count&limit=0` con `GET /{post-id}/insights?metric=post_reactions_by_type_total`; la sincronización (`MonitoringHubService.run_social_sync`) persiste el resultado en `publications.meta_reactions_total`, `publications.meta_reactions_by_type` y `publications.meta_metrics_synced_at` (migración `0007_publication_meta_reactions`) y lo expone en `GET /api/v1/publications/` para su visualización en el panel de fiscalización.
 * **Reglas de Negocio:**
   * BR-FBI-010: Estos conteos representan `DATO_OBSERVADO` (agregado) y MUST NO utilizarse para inferir verificación individual de funcionarios.
   * BR-FBI-011: Los conteos MUST almacenarse con `captured_at` para permitir seguimiento temporal de la evolución del engagement.
+  * BR-FBI-020: La Graph API de Meta no entrega identidades de reacciones (el endpoint `/reactions` retorna `data: []` con token de página); los conteos agregados son la única evidencia oficial de reacciones disponible y las identidades individuales MUST provenir únicamente de la importación asistida (REQ-MON-004 / pegado de nombres) o de la verificación manual.
 
 ### REQ-FBI-005 — Recepción de Webhooks de Página
 * **Descripción:** El sistema MUST implementar un endpoint HTTPS para recibir y procesar webhooks de la Página de Facebook.
@@ -592,6 +596,8 @@ PENDING → PROCESSING → SUCCESS
   * BR-INT-007: Si se encuentra una coincidencia, la interacción avanza a estado `PENDING_VERIFICATION`.
   * BR-INT-008: Si no se encuentra coincidencia, la interacción se marca como `UNMATCHED` (puede ser un usuario no funcionario).
   * BR-INT-009: Si `external_author_id` es NULL (API no retornó identidad), la interacción se marca como `NOT_OBSERVABLE`.
+  * BR-INT-010: Cuando no hay coincidencia por cuenta social, el nombre del autor MUST cotejarse con el padrón mediante `modules.shared.name_matching` (normalización sin acentos, variantes nombre completo / nombre + 1er apellido / nombre + último apellido, umbral de aceptación 0.75); si dos o más funcionarios empatan con diferencia ≤ 0.05, el sistema MUST reportar `AMBIGUOUS` para revisión manual en lugar de atribuir la actividad a una persona arbitraria.
+  * BR-INT-011: Los identificadores anónimos literales (`anonimo`, `anonymous`, nombre `Usuario Facebook`) MUST clasificarse como `NOT_OBSERVABLE` y MUST EXCLUIRSE del directorio de usuarios (`GET /api/v1/interactions/users/list`), pues no representan personas reales.
 
 ---
 
@@ -913,6 +919,9 @@ Interacción capturada
   * Indicador de Participación (`SÍ` / `NO`).
 * **Reglas de Negocio:**
   * BR-MON-006: En TikTok, ante la restricción de privacidad externa sobre identidades individuales en likes, el sistema MUST clasificar la condición con el estado epistémico `API_RESTRICTED` (Principio V), sin imputar falsos negativos.
+  * BR-MON-008: La matriz evalúa las `max_posts` publicaciones más recientes (parámetro consultable, por defecto 15) y MUST incluir adicionalmente toda publicación que posea interacciones verificadas (`Verification`), aunque quede fuera de esa ventana, para que una reacción auditada nunca desaparezca de la vista.
+  * BR-MON-009: Las publicaciones duplicadas canónicas de una misma plataforma (`external_post_id` numérico vs `{page_id}_{post_id}`) MUST fusionarse en una sola columna de la matriz, reasignando sus interacciones al id canónico, de modo que la actividad no se divida en dos registros.
+  * BR-MON-010: El resultado de la importación masiva de reacciones MUST reportar `unmatched_names` (ciudadanos fuera de la nómina) y `ambiguous_names` (nombres que empatan con más de un funcionario), y el panel MUST mostrarlos al operador para que ninguna quede sin revisión.
 
 ### REQ-MON-007 — Generación y Custodia de Informes de Fiscalización en Excel (.xlsx)
 * **Descripción:** El sistema MUST generar bajo demanda el informe oficial de fiscalización digital en formato Microsoft Excel (.xlsx), formateado con encabezados oficiales del GAMEA, métricas de cumplimiento porcentual, resumen ejecutivo y detalle celda por celda para presentación inmediata ante autoridades del municipio.

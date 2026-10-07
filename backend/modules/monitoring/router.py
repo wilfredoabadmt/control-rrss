@@ -168,6 +168,12 @@ async def get_activity_matrix(
     department: str | None = Query(None, description="Filtrar por unidad organizacional"),
     search: str | None = Query(None, description="Búsqueda por nombre, CI o usuario"),
     participation_status: str | None = Query("ALL", description="ALL, PARTICIPATED, NO_ACTIVITY"),
+    max_posts: int = Query(
+        15,
+        ge=1,
+        le=100,
+        description="Ventana de publicaciones recientes a evaluar (las verificadas siempre se incluyen)",
+    ),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -179,6 +185,7 @@ async def get_activity_matrix(
         search=search,
         participation_status=participation_status,
         current_user=current_user,
+        max_posts=max_posts,
     )
 
 

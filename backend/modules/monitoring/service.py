@@ -71,6 +71,7 @@ from modules.shared.enums import (
     UserRole,
     VerificationStatus,
 )
+from modules.shared.name_matching import best_employee_match, normalize_name
 from modules.social_accounts.models import SocialAccount, SocialPlatform
 from modules.verification.models import Verification
 from openpyxl import Workbook
@@ -1466,6 +1467,18 @@ class MonitoringHubService:
                         except Exception as e:
                             logger.info(f"Reacciones Meta restringidas por privacidad para {target_post_id}: {str(e)}")
 
+                        # Conteos agregados reales de reacciones (Meta no expone identidades)
+                        try:
+                            summary = await fb_client.fetch_reaction_summary(target_post_id, fb_token)
+                            if not summary["total_count"] and target_post_id != pub.external_post_id:
+                                summary = await fb_client.fetch_reaction_summary(pub.external_post_id, fb_token)
+                            if summary["total_count"] or summary["by_type"]:
+                                pub.meta_reactions_total = int(summary["total_count"])
+                                pub.meta_reactions_by_type = dict(summary["by_type"])
+                                pub.meta_metrics_synced_at = datetime.now(UTC)
+                        except Exception as e:
+                            logger.info(f"Resumen de reacciones Meta no disponible para {target_post_id}: {str(e)}")
+
                 # B) Procesar e ingerir cada interacción
                 for item_dict in extracted_items:
                     interactions_extracted += 1
@@ -1597,6 +1610,7 @@ class MonitoringHubService:
         search: str | None = None,
         participation_status: str | None = "ALL",
         current_user: User | None = None,
+        max_posts: int = 15,
     ) -> ActivityMatrixResponse:
         """
         Genera la matriz de auditoría cruzada:
@@ -1624,8 +1638,63 @@ class MonitoringHubService:
                 SocialPlatform.name == platform_name.upper().strip()
             )
 
-        stmt_pubs = stmt_pubs.order_by(Publication.published_at.desc()).limit(15)
+        stmt_pubs = stmt_pubs.order_by(Publication.published_at.desc()).limit(max_posts)
         publications = list((await db.execute(stmt_pubs)).scalars().all())
+
+        def _pub_sort_key(p: Publication) -> str:
+            dt = p.published_at
+            if dt is None:
+                return ""
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            return str(dt.isoformat())
+
+        # 2b. Toda publicación con actividad verificada queda en la matriz aunque
+        #     quede fuera de la ventana reciente (evita ocultar reacciones auditadas).
+        if not publication_id:
+            stmt_verified = (
+                select(Interaction.publication_id)
+                .join(Verification, Verification.interaction_id == Interaction.id)
+                .where(Interaction.publication_id.isnot(None))
+                .distinct()
+            )
+            verified_ids = [row[0] for row in (await db.execute(stmt_verified)).all()]
+            known_ids = {p.id for p in publications}
+            extra_ids = [pid for pid in verified_ids if pid is not None and pid not in known_ids]
+            if extra_ids:
+                stmt_extra = (
+                    select(Publication)
+                    .where(Publication.id.in_(extra_ids))
+                    .options(selectinload(Publication.platform))
+                )
+                publications.extend((await db.execute(stmt_extra)).scalars().all())
+                publications.sort(key=_pub_sort_key, reverse=True)
+
+        # 2c. Fusionar duplicados canónicos (id numérico vs {page_id}_{post_id}) para que
+        #     la actividad de una misma publicación no se divida en dos columnas.
+        canonical_id_map: dict[uuid.UUID, uuid.UUID] = {}
+        grouped: dict[tuple[str, str], list[Publication]] = {}
+        for p in publications:
+            ext = p.external_post_id or ""
+            suffix = ext.rsplit("_", 1)[-1] if "_" in ext else (ext if ext.isdigit() else f"#{ext}")
+            platform_key = p.platform.name if p.platform else ""
+            grouped.setdefault((platform_key, suffix), []).append(p)
+        deduped: list[Publication] = []
+        for members in grouped.values():
+            if len(members) == 1:
+                deduped.append(members[0])
+                continue
+            # Se conserva como canónico el id completo con prefijo de página
+            members.sort(
+                key=lambda p: (1 if "_" in (p.external_post_id or "") else 0, _pub_sort_key(p)),
+                reverse=True,
+            )
+            keeper = members[0]
+            for duplicate in members[1:]:
+                canonical_id_map[duplicate.id] = keeper.id
+            deduped.append(keeper)
+        deduped.sort(key=_pub_sort_key, reverse=True)
+        publications = deduped
 
         pub_ids = [p.id for p in publications]
 
@@ -1655,26 +1724,27 @@ class MonitoringHubService:
             return re.sub(r"[^a-z0-9]", "", norm.lower().strip())
 
         for it in interactions:
-            ints_by_pub.setdefault(it.publication_id, []).append(it)
+            pub_key = canonical_id_map.get(it.publication_id, it.publication_id)
+            ints_by_pub.setdefault(pub_key, []).append(it)
 
             # 1. Por verification employee_id
             for v in it.verifications:
                 if v.employee_id:
-                    k_emp = (it.publication_id, v.employee_id.strip().lower())
+                    k_emp = (pub_key, v.employee_id.strip().lower())
                     ints_by_pub_and_emp_id.setdefault(k_emp, []).append(it)
 
             # 2. Por external_author_id (CI, handle o ID de usuario)
             if it.external_author_id:
                 raw_auth = it.external_author_id.strip().lower()
                 clean_auth = raw_auth.lstrip("@")
-                ints_by_pub_and_author_id.setdefault((it.publication_id, raw_auth), []).append(it)
-                ints_by_pub_and_author_id.setdefault((it.publication_id, clean_auth), []).append(it)
+                ints_by_pub_and_author_id.setdefault((pub_key, raw_auth), []).append(it)
+                ints_by_pub_and_author_id.setdefault((pub_key, clean_auth), []).append(it)
 
             # 3. Por external_author_name normalizado
             if it.external_author_name:
                 norm_author = _clean_n(it.external_author_name)
                 if norm_author:
-                    ints_by_pub_and_name.setdefault((it.publication_id, norm_author), []).append(it)
+                    ints_by_pub_and_name.setdefault((pub_key, norm_author), []).append(it)
 
         # 4. Construir filas de la matriz
         rows: list[ActivityMatrixRow] = []
@@ -2367,63 +2437,42 @@ class MonitoringHubService:
         stmt_sa = select(SocialAccount).where(SocialAccount.binding_status == BindingStatus.ACTIVE.value)
         social_accounts = list((await db.execute(stmt_sa)).scalars().all())
 
-        import unicodedata
-
-        def _clean_n(t: str | None) -> str:
-            if not t:
-                return ""
-            norm = unicodedata.normalize("NFKD", t).encode("ASCII", "ignore").decode("utf-8")
-            return re.sub(r"[^a-z0-9]", "", norm.lower().strip())
-
-        emp_by_full_name: dict[str, Employee] = {}
-        emp_by_first_last: dict[str, Employee] = {}
+        # Cuentas sociales activas indexadas por handle normalizado (coincidencia directa)
         emp_by_id: dict[str, Employee] = {emp.employee_id: emp for emp in employees}
         emp_by_fb: dict[str, Employee] = {}
 
-        for emp in employees:
-            norm_full = _clean_n(f"{emp.first_name} {emp.last_name}")
-            first_name = emp.first_name.strip() if emp.first_name else ""
-            first_surname = emp.last_name.strip().split()[0] if emp.last_name else ""
-            norm_first_last = _clean_n(f"{first_name} {first_surname}")
-
-            if norm_full:
-                emp_by_full_name[norm_full] = emp
-            if norm_first_last:
-                emp_by_first_last[norm_first_last] = emp
-
         for sa in social_accounts:
             if sa.current_username and sa.employee_id in emp_by_id:
-                fb_clean = _clean_n(sa.current_username.lstrip("@"))
+                fb_clean = normalize_name(sa.current_username.lstrip("@"))
                 if fb_clean:
                     emp_by_fb[fb_clean] = emp_by_id[sa.employee_id]
 
 
         matched_results: list[MatchedEmployeeItem] = []
         unmatched_names: list[str] = []
+        ambiguous_names: list[str] = []
         seen_matched_emp_ids: set[str] = set()
 
         cid = get_correlation_id()
         now_dt = datetime.now(UTC)
 
         for cand_name, cand_reaction in cleaned_candidates:
-            c_norm = _clean_n(cand_name)
+            c_norm = normalize_name(cand_name)
             if not c_norm:
                 continue
 
-            matched_emp: Employee | None = None
-            if c_norm in emp_by_full_name:
-                matched_emp = emp_by_full_name[c_norm]
-            elif c_norm in emp_by_first_last:
-                matched_emp = emp_by_first_last[c_norm]
-            elif c_norm in emp_by_fb:
-                matched_emp = emp_by_fb[c_norm]
-            else:
-                candidates_sub = [
-                    e for n, e in emp_by_full_name.items()
-                    if len(c_norm) >= 8 and (c_norm in n or n in c_norm)
-                ]
-                if len(candidates_sub) == 1:
-                    matched_emp = candidates_sub[0]
+            matched_emp: Employee | None = emp_by_fb.get(c_norm)
+            match_reason = "HANDLE" if matched_emp else "NONE"
+            match_score = 1.0 if matched_emp else 0.0
+            if not matched_emp:
+                match_result = best_employee_match(cand_name, employees)
+                if match_result.reason == "AMBIGUOUS":
+                    if cand_name not in ambiguous_names:
+                        ambiguous_names.append(cand_name)
+                    continue
+                matched_emp = match_result.employee
+                match_reason = match_result.reason
+                match_score = match_result.score
 
             if not matched_emp:
                 if cand_name not in unmatched_names:
@@ -2511,6 +2560,8 @@ class MonitoringHubService:
                     reaction_type=react_val,
                     interaction_id=str(interaction.id),
                     verification_id=str(verification.id),
+                    match_reason=match_reason,
+                    match_score=round(match_score, 3),
                 )
             )
 
@@ -2526,6 +2577,9 @@ class MonitoringHubService:
                 "total_names_parsed": len(cleaned_candidates),
                 "matched_count": len(matched_results),
                 "unmatched_count": len(unmatched_names),
+                "ambiguous_count": len(ambiguous_names),
+                "unmatched_names": unmatched_names[:50],
+                "ambiguous_names": ambiguous_names[:50],
             },
             correlation_id=cid,
         )
@@ -2534,13 +2588,18 @@ class MonitoringHubService:
 
         return ImportReactionsBatchResponse(
             success=True,
-            message=f"Se identificaron y registraron exitosamente {len(matched_results)} funcionarios con reacción en PostgreSQL ({len(unmatched_names)} ciudadanos no pertenecientes a la nómina).",
+            message=(
+                f"Se identificaron y registraron exitosamente {len(matched_results)} funcionarios con reacción "
+                f"en PostgreSQL ({len(unmatched_names)} ciudadanos no pertenecientes a la nómina y "
+                f"{len(ambiguous_names)} nombres ambiguos para revisión manual)."
+            ),
             publication_id=pub.id,
             total_names_parsed=len(cleaned_candidates),
             matched_count=len(matched_results),
             unmatched_citizens_count=len(unmatched_names),
             matched_employees=matched_results,
             unmatched_names=unmatched_names[:50],
+            ambiguous_names=ambiguous_names[:50],
         )
 
 

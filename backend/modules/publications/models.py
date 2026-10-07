@@ -12,6 +12,7 @@ from database import Base, TimestampMixin, UUIDPrimaryKeyMixin, utc_now
 from modules.employees.models import OrganizationalUnit
 from modules.social_accounts.models import InstitutionalAccount, SocialPlatform
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     DateTime,
@@ -91,6 +92,23 @@ class Publication(Base, TimestampMixin, UUIDPrimaryKeyMixin):
         DateTime(timezone=True),
         nullable=True,
         comment="Timestamp UTC de la última sincronización",
+    )
+    meta_reactions_total: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="Total de reacciones reportado por Meta Graph API (conteo agregado, sin identidades)",
+    )
+    meta_reactions_by_type: Mapped[dict] = mapped_column(
+        JSON,
+        default=dict,
+        nullable=False,
+        comment="Desglose por tipo (like, love, wow, haha, sad, angry) según insights de Meta",
+    )
+    meta_metrics_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp UTC de la última lectura de métricas agregadas de Meta",
     )
 
     # Relaciones

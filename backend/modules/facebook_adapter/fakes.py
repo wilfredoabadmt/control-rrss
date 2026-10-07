@@ -104,3 +104,19 @@ class FakeFacebookGraphClient:
             }
         ]
         return reactions, None
+
+    async def fetch_reaction_summary(
+        self,
+        post_id: str,
+        _access_token: str,
+    ) -> dict[str, Any]:
+        """Resumen agregado de reacciones: Meta no expone identidades, sólo conteos."""
+        if self.simulate_rate_limit:
+            raise RateLimitExceededException(retry_after_seconds=60)
+        if self.simulate_auth_error:
+            raise AuthenticationException("Simulated OAuthException")
+        return {
+            "post_id": post_id,
+            "total_count": 3,
+            "by_type": {"like": 2, "love": 1},
+        }

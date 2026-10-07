@@ -146,8 +146,11 @@ export const monitoringApi = {
       reaction_type: string;
       interaction_id: string;
       verification_id: string;
+      match_reason?: string;
+      match_score?: number;
     }>;
     unmatched_names: string[];
+    ambiguous_names?: string[];
   }> => {
     const res = await apiClient.post('/monitoring/hub/import-reactions', data);
     return res.data;
