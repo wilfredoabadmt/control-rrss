@@ -72,6 +72,7 @@ class IAMService:
                 ip_address=ip_address,
                 user_agent=user_agent,
             )
+            await db.commit()
             raise AuthenticationException("Credenciales inválidas.")
 
         # Verificar bloqueo por intentos fallidos
@@ -87,6 +88,7 @@ class IAMService:
                 ip_address=ip_address,
                 user_agent=user_agent,
             )
+            await db.commit()
             raise AuthenticationException(
                 f"Cuenta bloqueada temporalmente por intentos fallidos. Reintente después de {user.locked_until} UTC."
             )
@@ -123,6 +125,9 @@ class IAMService:
                 ip_address=ip_address,
                 user_agent=user_agent,
             )
+            # Persistir el contador de intentos y la auditoría ANTES de propagar el error:
+            # la dependencia de sesión hace rollback si la excepción escapa sin commit.
+            await db.commit()
             raise AuthenticationException("Credenciales inválidas.")
 
         # Autenticación Exitosa: Resetear contador y registrar timestamp

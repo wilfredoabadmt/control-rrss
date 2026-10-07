@@ -40,7 +40,7 @@ class SocialPlatform(Base, TimestampMixin, UUIDPrimaryKeyMixin):
     )
     api_version: Mapped[str] = mapped_column(
         String(20),
-        default="v20.0",
+        default="v26.0",
         nullable=False,
         comment="Versión de API actualmente utilizada",
     )

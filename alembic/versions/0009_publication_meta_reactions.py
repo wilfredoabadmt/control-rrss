@@ -4,8 +4,8 @@ La Graph API de Meta no expone las identidades de quienes reaccionan; sólo entr
 conteos agregados (/reactions?summary=total_count y /insights). Estas columnas
 almacenan ese conteo institucional verificable sin inventar datos.
 
-Revision ID: 0007_publication_meta_reactions
-Revises: 0006_reports_and_dashboards
+Revision ID: 0009_publication_meta_reactions
+Revises: 0008_column_comments
 Create Date: 2026-10-07 12:00:00.000000
 
 """
@@ -14,8 +14,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision: str = '0007_publication_meta_reactions'
-down_revision: Union[str, None] = '0006_reports_and_dashboards'
+revision: str = '0009_publication_meta_reactions'
+down_revision: Union[str, None] = '0008_column_comments'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -32,6 +32,18 @@ def upgrade() -> None:
     op.add_column(
         'publications',
         sa.Column('meta_metrics_synced_at', sa.DateTime(timezone=True), nullable=True),
+    )
+    op.execute(
+        "COMMENT ON COLUMN publications.meta_reactions_total IS "
+        "'Conteo agregado oficial de reacciones reportado por Meta Graph API (sin identidades)'"
+    )
+    op.execute(
+        "COMMENT ON COLUMN publications.meta_reactions_by_type IS "
+        "'Desglose por tipo de reacción reportado por Meta Insights (puede venir vacío)'"
+    )
+    op.execute(
+        "COMMENT ON COLUMN publications.meta_metrics_synced_at IS "
+        "'Timestamp UTC de la última lectura de métricas oficiales de Meta'"
     )
 
 

@@ -4605,7 +4605,7 @@
           "api_version": {
             "type": "string",
             "title": "Api Version",
-            "default": "v20.0"
+            "default": "v26.0"
           },
           "extraction_mode": {
             "type": "string",
@@ -7091,22 +7091,58 @@
         "properties": {
           "variable_name": {
             "type": "string",
-            "title": "Variable Name"
+            "title": "Variable Name",
+            "description": "Nombre de la variable faltante"
           },
           "impact": {
             "type": "string",
-            "title": "Impact"
+            "title": "Impact",
+            "description": "Impacto operativo de la ausencia",
+            "default": ""
           },
           "instructions": {
             "type": "string",
-            "title": "Instructions"
+            "title": "Instructions",
+            "description": "Pasos para resolverlo",
+            "default": ""
+          },
+          "variable_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variable Key"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "resolution_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Step"
           }
         },
         "type": "object",
         "required": [
-          "variable_name",
-          "impact",
-          "instructions"
+          "variable_name"
         ],
         "title": "MissingDataNotice"
       },
@@ -8021,6 +8057,13 @@
             "minimum": 0.0,
             "title": "Pages",
             "description": "Total de páginas disponibles"
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Pages",
+            "description": "Total de páginas (alias del frontend)",
+            "default": 0
           }
         },
         "type": "object",
@@ -8066,6 +8109,13 @@
             "minimum": 0.0,
             "title": "Pages",
             "description": "Total de páginas disponibles"
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Pages",
+            "description": "Total de páginas (alias del frontend)",
+            "default": 0
           }
         },
         "type": "object",
@@ -8111,6 +8161,13 @@
             "minimum": 0.0,
             "title": "Pages",
             "description": "Total de páginas disponibles"
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Pages",
+            "description": "Total de páginas (alias del frontend)",
+            "default": 0
           }
         },
         "type": "object",
@@ -8156,6 +8213,13 @@
             "minimum": 0.0,
             "title": "Pages",
             "description": "Total de páginas disponibles"
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Pages",
+            "description": "Total de páginas (alias del frontend)",
+            "default": 0
           }
         },
         "type": "object",
@@ -8201,6 +8265,13 @@
             "minimum": 0.0,
             "title": "Pages",
             "description": "Total de páginas disponibles"
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Pages",
+            "description": "Total de páginas (alias del frontend)",
+            "default": 0
           }
         },
         "type": "object",
@@ -8815,6 +8886,14 @@
             "minimum": 1.0,
             "title": "Max Posts",
             "default": 10
+          },
+          "max_comments_per_post": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 0.0,
+            "title": "Max Comments Per Post",
+            "description": "Tope de comentarios a extraer por publicación (conector FACEBOOK)",
+            "default": 100
           }
         },
         "type": "object",

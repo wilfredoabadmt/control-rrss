@@ -67,12 +67,18 @@ async def get_operational_dashboard(
         plat_key = p.name.upper()
         diag_item = diag_map.get(plat_key)
 
+        # El diagnóstico emite: OPERATIONAL / PARTIAL / NOT_CONFIGURED / TOKEN_EXPIRED / AUTH_FAILED
+        # El contrato del tablero (y el frontend) espera: ONLINE / DEGRADED / OFFLINE / NOT_CONFIGURED
         if not p.is_active:
             status = "OFFLINE"
         elif not diag_item:
             status = "NOT_CONFIGURED"
+        elif diag_item.overall_status == "OPERATIONAL":
+            status = "ONLINE"
+        elif diag_item.overall_status == "PARTIAL":
+            status = "DEGRADED"
         else:
-            status = diag_item.overall_status  # "ONLINE", "TOKEN_EXPIRED", "NOT_CONFIGURED", "AUTH_FAILED"
+            status = diag_item.overall_status  # TOKEN_EXPIRED, AUTH_FAILED, NOT_CONFIGURED
 
         if status == "TOKEN_EXPIRED":
             connector_alerts.append({
@@ -114,17 +120,24 @@ async def get_operational_dashboard(
     pending_verifs = (await db.execute(stmt_pending)).scalar_one() or 0
 
     # 5. Trabajos de sincronización recientes
-    stmt_jobs = select(ExternalSyncJob).order_by(ExternalSyncJob.started_at.desc()).limit(5)
-    jobs = list((await db.execute(stmt_jobs)).scalars().all())
+    stmt_jobs = (
+        select(ExternalSyncJob, SocialPlatform.name)
+        .join(SocialPlatform, SocialPlatform.id == ExternalSyncJob.platform_id, isouter=True)
+        .order_by(ExternalSyncJob.started_at.desc())
+        .limit(5)
+    )
+    job_rows = (await db.execute(stmt_jobs)).all()
     recent_jobs = [
         {
             "id": str(j.id),
             "job_type": j.job_type,
             "status": j.status,
+            "platform": plat_name or "N/A",
             "started_at": j.started_at.isoformat(),
+            "created_at": j.started_at.isoformat(),
             "records_processed": j.records_processed,
         }
-        for j in jobs
+        for j, plat_name in job_rows
     ]
 
     # 6. Alertas dinámicas del sistema (exclusivamente veraces y reales)

@@ -411,7 +411,10 @@ export const InteractionsPage: React.FC = () => {
         }
       }
 
-      // 3. Obtener post relevante para evaluar filtros de interacción
+      // 3. Evaluar actividad GLOBAL (todas las publicaciones) para filtros PARTICIPATED/NO_ACTIVITY
+      const hasAnyGlobal = row.posts.some((p) => p.reaction_type || p.comment_text || p.shared);
+
+      // 4. Post actual para filtros específicos (LIKE, COMMENT, SHARE)
       const postEval = currentPost
         ? row.posts.find((p) => p.publication_id === currentPost.id) || row.posts[0]
         : row.posts[0];
@@ -419,14 +422,13 @@ export const InteractionsPage: React.FC = () => {
       const hasLike = Boolean(postEval?.reaction_type);
       const hasComment = Boolean(postEval?.comment_text);
       const hasShare = Boolean(postEval?.shared);
-      const hasAny = hasLike || hasComment || hasShare;
 
-      // 4. Filtro por tipo de interacción
+      // 5. Filtro por tipo de interacción
       if (selectedInteractionFilter === 'LIKE' && !hasLike) return false;
       if (selectedInteractionFilter === 'COMMENT' && !hasComment) return false;
       if (selectedInteractionFilter === 'SHARE' && !hasShare) return false;
-      if (selectedInteractionFilter === 'PARTICIPATED' && !hasAny) return false;
-      if (selectedInteractionFilter === 'NO_ACTIVITY' && hasAny) return false;
+      if (selectedInteractionFilter === 'PARTICIPATED' && !hasAnyGlobal) return false;
+      if (selectedInteractionFilter === 'NO_ACTIVITY' && hasAnyGlobal) return false;
 
       return true;
     });

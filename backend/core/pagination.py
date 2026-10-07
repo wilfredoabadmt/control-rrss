@@ -13,6 +13,8 @@ class PageResponse[T](BaseModel):
     page: int = Field(..., ge=1, description="Número de página actual")
     page_size: int = Field(..., ge=1, description="Tamaño de la página")
     pages: int = Field(..., ge=0, description="Total de páginas disponibles")
+    # Alias consumido por el frontend React (mismo valor que `pages`)
+    total_pages: int = Field(default=0, ge=0, description="Total de páginas (alias del frontend)")
 
     @classmethod
     def create(cls, items: list[T], total: int, page: int, page_size: int) -> "PageResponse[T]":
@@ -23,4 +25,5 @@ class PageResponse[T](BaseModel):
             page=page,
             page_size=page_size,
             pages=pages,
+            total_pages=pages,
         )

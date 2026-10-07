@@ -61,7 +61,7 @@ class SocialConnectorConfig(Base, TimestampMixin, UUIDPrimaryKeyMixin):
     )
     api_version: Mapped[str] = mapped_column(
         String(30),
-        default="v20.0",
+        default="v26.0",
         nullable=False,
     )
     extraction_mode: Mapped[str] = mapped_column(

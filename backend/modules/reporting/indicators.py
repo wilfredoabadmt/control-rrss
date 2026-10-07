@@ -112,8 +112,10 @@ class IndicatorEngine:
         stmt_total = select(func.count(Interaction.id))
         total_interactions = float((await db.execute(stmt_total)).scalar_one() or 0)
 
-        # Interacciones verificadas (con registro en verifications)
-        stmt_verified = select(func.count(func.distinct(Verification.interaction_id)))
+        # Interacciones con dictamen epistémico FINAL (excluye PENDING)
+        stmt_verified = select(func.count(func.distinct(Verification.interaction_id))).where(
+            Verification.verification_status != VerificationStatus.PENDING.value
+        )
         verified_interactions = float((await db.execute(stmt_verified)).scalar_one() or 0)
 
         rate = (verified_interactions / total_interactions * 100.0) if total_interactions > 0 else 0.0
@@ -141,7 +143,8 @@ class IndicatorEngine:
             .group_by(Verification.verification_status)
         )
         rows = (await db.execute(stmt)).fetchall()
-        distribution = {status.value: 0 for status in VerificationStatus}
+        distribution: dict[str, int] = {status.value: 0 for status in VerificationStatus}
         for status_val, count in rows:
-            distribution[status_val] = count
+            key = status_val if isinstance(status_val, str) else str(status_val)
+            distribution[key] = distribution.get(key, 0) + int(count)
         return distribution

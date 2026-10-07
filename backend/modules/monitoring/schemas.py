@@ -20,7 +20,7 @@ class ConnectorConfigItem(BaseModel):
     api_secret: str | None = Field(default=None, description="Secret o clave de sesión (solo para actualización)")
     has_token: bool = Field(default=False, description="Indica si existe un token configurado")
     has_secret: bool = Field(default=False, description="Indica si existe un secret configurado")
-    api_version: str = Field(default="v20.0")
+    api_version: str = Field(default="v26.0")
     extraction_mode: str = Field(default="OFFICIAL_API", description="OFFICIAL_API, HYBRID_SCRAPER, MANUAL_ASSISTED")
     rate_limit_per_minute: int = Field(default=60)
     max_posts_per_sync: int = Field(default=25)
@@ -107,6 +107,9 @@ class RunSyncRequest(BaseModel):
     publication_ids: list[str] | None = Field(default=None, description="Publicaciones específicas a evaluar (UUID o ID externo de Facebook)")
     fetch_new_posts: bool = Field(default=True, description="Buscar publicaciones recientes en las cuentas oficiales")
     max_posts: int = Field(default=10, ge=1, le=50)
+    max_comments_per_post: int = Field(
+        default=100, ge=0, le=500, description="Tope de comentarios a extraer por publicación (conector FACEBOOK)"
+    )
 
 
 class RunSyncResponse(BaseModel):
@@ -240,9 +243,13 @@ class ConnectorVariableDetail(BaseModel):
 
 
 class MissingDataNotice(BaseModel):
-    variable_name: str
-    impact: str
-    instructions: str
+    variable_name: str = Field(..., description="Nombre de la variable faltante")
+    impact: str = Field(default="", description="Impacto operativo de la ausencia")
+    instructions: str = Field(default="", description="Pasos para resolverlo")
+    # Alias tolerados por compatibilidad con clientes existentes
+    variable_key: str | None = None
+    display_name: str | None = None
+    resolution_step: str | None = None
 
 
 class ConnectorDiagnosticDetail(BaseModel):

@@ -22,6 +22,13 @@ celery_app = Celery(
     "gamea_social_monitor",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
+    # Registro explícito de tareas: sin `include` no se carga NINGUNA tarea del dominio.
+    include=[
+        "modules.interactions.tasks",
+        "modules.shared.backup",
+        "modules.facebook_adapter.tasks",
+        "modules.tiktok_adapter.tasks",
+    ],
 )
 
 celery_app.conf.update(
@@ -38,8 +45,26 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     task_routes={
         "workers.celery_app.ping": {"queue": "default"},
-        "workers.sync_tasks.*": {"queue": "sync_jobs"},
-        "workers.report_tasks.*": {"queue": "reports"},
+        "tasks.purge_expired_raw_evidences_task": {"queue": "sync_jobs"},
+        "tasks.backup_database_task": {"queue": "default"},
+        "modules.interactions.tasks.purge_expired_evidences_task": {"queue": "sync_jobs"},
+        "modules.shared.backup.backup_database_task": {"queue": "default"},
+    },
+    # Programación de tareas periódicas (Celery Beat)
+    beat_schedule={
+        "heartbeat-ping-every-minute": {
+            "task": "workers.celery_app.ping",
+            "schedule": 60.0,
+        },
+        "purge-old-raw-evidences-weekly": {
+            "task": "tasks.purge_expired_raw_evidences_task",
+            "schedule": 60.0 * 60.0 * 24.0 * 7.0,  # semanal
+            "kwargs": {"retention_days": 180},
+        },
+        "database-daily-backup": {
+            "task": "tasks.backup_database_task",
+            "schedule": 60.0 * 60.0 * 24.0,  # diario
+        },
     },
 )
 

@@ -3,6 +3,7 @@ Seed de Plataformas de Redes Sociales — GAMEA Social Monitor
 """
 
 
+from config import settings
 from modules.shared.enums import SocialPlatformType
 from modules.social_accounts.models import SocialPlatform
 from sqlalchemy import select
@@ -12,7 +13,7 @@ INITIAL_PLATFORMS = [
     {
         "name": SocialPlatformType.FACEBOOK.value,
         "display_name": "Facebook / Meta",
-        "api_version": "v20.0",
+        "api_version": settings.FACEBOOK_GRAPH_VERSION,
         "is_active": True,
     },
     {
@@ -25,7 +26,7 @@ INITIAL_PLATFORMS = [
 
 
 async def seed_social_platforms(session: AsyncSession) -> list[SocialPlatform]:
-    """Crea las plataformas de redes sociales iniciales si no existen."""
+    """Crea o actualiza las plataformas de redes sociales iniciales (incluye versión de API vigente)."""
     seeded = []
     for p_data in INITIAL_PLATFORMS:
         stmt = select(SocialPlatform).where(SocialPlatform.name == p_data["name"])
@@ -36,6 +37,10 @@ async def seed_social_platforms(session: AsyncSession) -> list[SocialPlatform]:
             await session.flush()
             seeded.append(platform)
         else:
+            # Actualizar la versión de API registrada (v20.0 fue retirada por Meta el 24/09/2026)
+            if p_data.get("api_version") and existing.api_version != p_data["api_version"]:
+                existing.api_version = p_data["api_version"]
+                session.add(existing)
             seeded.append(existing)
 
     await session.commit()
