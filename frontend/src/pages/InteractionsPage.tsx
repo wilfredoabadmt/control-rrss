@@ -326,6 +326,71 @@ export const InteractionsPage: React.FC = () => {
     setPasteResultDetails(null);
   };
 
+  // Funciones helper para el modal de pegar reacciones
+  const getReactionLabel = (type: string): string => {
+    const labels: Record<string, string> = {
+      LIKE: '👍 Me Gusta',
+      LOVE: '❤️ Me Encanta',
+      CARE: '🤗 Me Importa',
+      HAHA: '😆 Me Divierte',
+      WOW: '😮 Me Asombra',
+      SAD: '😢 Me Entristece',
+      ANGRY: '😡 Me Enoja',
+    };
+    return labels[type] || type;
+  };
+
+  const parsePastePreview = (text: string): string[] => {
+    const noisePhrases = new Set([
+      'todos', 'me gusta', 'me encanta', 'me importa', 'me divierte', 'me asombra', 'me entristece', 'me enoja',
+      'agregar', 'agregar a amigos', 'enviar mensaje', 'seguir', 'siguiendo', 'amigos', 'amigo', 'amiga',
+      'cancelar', 'cerrar', 'ver mas', 'ver más', 'responder', 'compartir', 'mutual friends', 'amigos en común',
+      'foto del perfil de', 'reacciono', 'reaccionó', 'like', 'love', 'care', 'haha', 'wow', 'sad', 'angry',
+    ]);
+
+    const rawLines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const candidateLines: string[] = [];
+    for (const line of rawLines) {
+      const lineStr = line.trim();
+      if (!lineStr) continue;
+      if (lineStr.includes(',') && rawLines.length < 5) {
+        for (const sub of lineStr.split(',')) {
+          if (sub.trim()) candidateLines.push(sub.trim());
+        }
+      } else {
+        candidateLines.push(lineStr);
+      }
+    }
+
+    const cleaned: string[] = [];
+    for (const line of candidateLines) {
+      let lClean = line.trim();
+      
+      // Extraer nombre si viene en formato Markdown: [Mariela Mamani](https://...)
+      const matchMd = lClean.match(/^\[([^\]]+)\]\(https?:\/\/[^\)]+\)$/);
+      if (matchMd) {
+        lClean = matchMd[1].trim();
+      }
+      
+      const lLower = lClean.toLowerCase();
+      if (!lClean || /^\d+$/.test(lClean)) continue;
+      
+      // Filtrar líneas de resumen/conteo
+      if (/^(todos|me gusta|me encanta|me divierte|me importa|me asombra|me entristece|me enoja)\s+\d+$/.test(lLower)) continue;
+      
+      // Filtrar ruido
+      if (noisePhrases.has(lLower)) continue;
+      if (/\d+\s+amigos?\s+en\s+com/.test(lLower)) continue;
+      if (lLower.startsWith('foto del perfil de ')) {
+        lClean = lClean.slice(19).trim();
+      }
+      if (lClean.length < 3) continue;
+      
+      cleaned.push(lClean);
+    }
+    return cleaned;
+  };
+
   // Enviar reacciones copiadas para cruce automático y persistencia en PostgreSQL
   const handleImportReactions = async () => {
     if (!pasteRawText.trim()) {
@@ -2371,7 +2436,7 @@ export const InteractionsPage: React.FC = () => {
             className="glass-panel"
             style={{
               width: '100%',
-              maxWidth: '680px',
+              maxWidth: '720px',
               maxHeight: '90vh',
               overflowY: 'auto',
               background: '#0f172a',
@@ -2404,8 +2469,8 @@ export const InteractionsPage: React.FC = () => {
                   </h3>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: 0, lineHeight: 1.4 }}>
-                  Meta Graph API v3.0+ restringe la entrega de nombres de usuarios en Likes públicos por políticas de privacidad.
-                  Copia la lista de personas desde el diálogo de reacciones de Facebook y pégala aquí para cruzarlas en segundos contra el padrón municipal en PostgreSQL.
+                  Meta Graph API v3.0+ restringe la entrega de identidades en Likes/Reacciones por políticas de privacidad.
+                  Esta herramienta permite cruzar manualmente la lista de personas que reaccionaron contra el padrón municipal en PostgreSQL.
                 </p>
               </div>
               <button
@@ -2438,10 +2503,72 @@ export const InteractionsPage: React.FC = () => {
               {currentPost ? currentPost.title : 'Publicación seleccionada'}
             </div>
 
+            {/* Instrucciones de Cómo Obtener los Nombres */}
+            <details
+              style={{
+                background: 'rgba(6, 182, 212, 0.08)',
+                border: '1px solid rgba(6, 182, 212, 0.25)',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                marginBottom: '16px',
+                color: '#cbd5e1',
+                fontSize: '0.78rem',
+                lineHeight: 1.6,
+              }}
+            >
+              <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Info size={14} />
+                <span>📋 ¿Cómo obtener la lista de nombres desde Facebook?</span>
+              </summary>
+              <div style={{ marginTop: '10px', paddingLeft: '4px' }}>
+                <div style={{ marginBottom: '8px', color: '#e2e8f0', fontWeight: 600 }}>
+                  ⚠️ IMPORTANTE: El diálogo de reacciones de Facebook NO permite seleccionar/copiar texto directamente.
+                </div>
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: '6px' }}>
+                      Opción A: Herramientas de Desarrollador (Recomendada)
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.75rem' }}>
+                      <li>Abre la publicación en Facebook</li>
+                      <li>Haz clic en el número de reacciones para abrir el modal</li>
+                      <li>Presiona <kbd style={{ background: '#1e293b', padding: '1px 4px', borderRadius: '3px', fontFamily: 'monospace' }}>F12</kbd> → pestaña <strong>Console</strong></li>
+                      <li>Ejecuta este código y copia el resultado:</li>
+                      <pre style={{ background: '#0b1220', borderRadius: '4px', padding: '8px', margin: '6px 0', overflow: 'auto', fontSize: '0.7rem', color: '#a7f3d0' }}>
+{`// Copia y pega en la Consola del navegador:
+const names = [...document.querySelectorAll('[role="dialog"] a[href*="/user/"]')].map(a => a.textContent.trim()).filter(Boolean);
+copy(names.join('\\n'));
+console.log('Nombres copiados:', names);`}
+                      </pre>
+                    </ol>
+                  </div>
+                  <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: '6px' }}>
+                      Opción B: Extensión "Copy Text from Image" / OCR
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.75rem' }}>
+                      <li>Haz captura de pantalla del modal de reacciones</li>
+                      <li>Usa una extensión OCR (ej. "CopyFish", "Text Extractor")</li>
+                      <li>Copia el texto y pégalo aquí</li>
+                    </ol>
+                  </div>
+                  <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: '6px' }}>
+                      Opción C: Copia manual (solo nombres visibles)
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.75rem' }}>
+                      <li>Escribe los nombres uno por línea</li>
+                      <li>El sistema filtra automáticamente botones de UI y ruido</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </details>
+
             {/* Selector de Reacción Predeterminada */}
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
-                Tipo de Reacción a Asignar:
+                Tipo de Reacción a Asignar (se aplicará a todos los nombres detectados):
               </label>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {[
@@ -2450,6 +2577,8 @@ export const InteractionsPage: React.FC = () => {
                   { id: 'CARE', label: '🤗 Me Importa', color: '#f59e0b' },
                   { id: 'HAHA', label: '😆 Me Divierte', color: '#eab308' },
                   { id: 'WOW', label: '😮 Me Asombra', color: '#10b981' },
+                  { id: 'SAD', label: '😢 Me Entristece', color: '#94a3b8' },
+                  { id: 'ANGRY', label: '😡 Me Enoja', color: '#ef4444' },
                 ].map((r) => (
                   <button
                     key={r.id}
@@ -2479,11 +2608,17 @@ export const InteractionsPage: React.FC = () => {
               </label>
               <textarea
                 rows={7}
-                placeholder={`Pega aquí los nombres copiados... Por ejemplo:
+                placeholder={`Pega aquí los nombres (uno por línea o separados por comas). Ejemplos:
+
 Juan Carlos Mamani Quispe
 Rosa Apaza Mamani
 Pedro Huanca Ticona
-(El motor limpia automáticamente botones como 'Agregar a amigos', 'Seguir', números y filtra ciudadanos externos)`}
+
+O formato Markdown de comentarios:
+[María Lopez](https://facebook.com/maria.lopez)
+[Carlos Perez](https://facebook.com/carlos.perez)
+
+El motor limpia automáticamente: botones UI ('Agregar a amigos', 'Seguir'), líneas de resumen ('Me encanta 5'), números, y filtra ciudadanos externos.`}
                 value={pasteRawText}
                 onChange={(e) => setPasteRawText(e.target.value)}
                 style={{
@@ -2501,6 +2636,42 @@ Pedro Huanca Ticona
                 }}
               />
             </div>
+
+            {/* Vista Previa de Nombres Detectados */}
+            {pasteRawText.trim() && (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
+                    Vista Previa: Nombres detectados ({parsePastePreview(pasteRawText).length})
+                  </label>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', background: 'rgba(30, 41, 59, 0.5)', padding: '2px 8px', borderRadius: '4px' }}>
+                    Se asignará: {getReactionLabel(pasteReactionType)}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    maxHeight: '120px',
+                    overflowY: 'auto',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    padding: '10px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'monospace',
+                    color: '#cbd5e1',
+                  }}
+                >
+                  {parsePastePreview(pasteRawText).map((name, idx) => (
+                    <div key={idx} style={{ padding: '2px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                      {idx + 1}. {name}
+                    </div>
+                  ))}
+                  {parsePastePreview(pasteRawText).length === 0 && (
+                    <span style={{ color: '#64748b' }}>No se detectaron nombres válidos. Revisa el formato.</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Mensajes de Alerta */}
             {pasteError && (

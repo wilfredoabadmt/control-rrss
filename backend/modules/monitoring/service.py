@@ -2454,18 +2454,6 @@ class MonitoringHubService:
             "foto del perfil de", "reacciono", "reaccionó", "like", "love", "care", "haha", "wow", "sad", "angry",
         }
 
-        reaction_map = {
-            "me gusta": "LIKE",
-            "me encanta": "LOVE",
-            "me importa": "CARE",
-            "me divierte": "HAHA",
-            "me asombra": "WOW",
-            "me entristece": "SAD",
-            "me enoja": "ANGRY",
-            "like": "LIKE",
-            "love": "LOVE",
-        }
-
         raw_lines = req.raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
         candidate_lines = []
         for line in raw_lines:
@@ -2480,7 +2468,7 @@ class MonitoringHubService:
                 candidate_lines.append(line_str)
 
         cleaned_candidates: list[tuple[str, str]] = []
-        current_detected_type = req.default_reaction_type or "LIKE"
+        default_reaction = req.default_reaction_type or "LIKE"
 
         for line in candidate_lines:
             l_clean = line.strip()
@@ -2493,12 +2481,13 @@ class MonitoringHubService:
             l_lower = l_clean.lower()
             if not l_clean or l_clean.isdigit():
                 continue
+            
+            # Filtrar líneas de resumen/conteo de reacciones (ej: "Me encanta 5", "Me gusta 10")
+            # Estas son solo estadísticas, no nombres de personas
             if re.match(r"^(todos|me gusta|me encanta|me divierte|me importa|me asombra|me entristece|me enoja)\s+\d+$", l_lower):
-                for k, v in reaction_map.items():
-                    if k in l_lower:
-                        current_detected_type = v
-                        break
                 continue
+            
+            # Filtrar frases de ruido y UI de Facebook
             if l_lower in noise_phrases:
                 continue
             if re.search(r"\d+\s+amigos?\s+en\s+com", l_lower):
@@ -2507,7 +2496,10 @@ class MonitoringHubService:
                 l_clean = l_clean[19:].strip()
             if len(l_clean) < 3:
                 continue
-            cleaned_candidates.append((l_clean, current_detected_type))
+            
+            # Usar siempre el tipo de reacción por defecto seleccionado por el usuario
+            # No se deja "sangrar" el tipo de reacción de líneas de resumen a los nombres
+            cleaned_candidates.append((l_clean, default_reaction))
 
         stmt_emps = (
             select(Employee)
