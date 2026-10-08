@@ -2484,6 +2484,12 @@ class MonitoringHubService:
 
         for line in candidate_lines:
             l_clean = line.strip()
+            
+            # Extraer nombre si viene en formato Markdown desde comentarios: [Mariela Mamani](https://...)
+            match_md = re.match(r"^\[([^\]]+)\]\(https?://[^\)]+\)$", l_clean)
+            if match_md:
+                l_clean = match_md.group(1).strip()
+                
             l_lower = l_clean.lower()
             if not l_clean or l_clean.isdigit():
                 continue
