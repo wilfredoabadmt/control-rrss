@@ -6,7 +6,7 @@ Gobierno Autónomo Municipal de El Alto
 
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any, cast
 
@@ -96,6 +96,18 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("UPDATE employees SET direction_name = 'Despacho Alcalde' WHERE lower(first_name) LIKE '%wilfredo%' OR employee_id LIKE '%8736490%';"))
                     await conn.execute(text("UPDATE employees SET created_by_user_id = (SELECT id FROM users WHERE lower(email) LIKE '%wilfredo%' OR lower(full_name) LIKE '%wilfredo%' LIMIT 1) WHERE created_by_user_id IS NULL AND (SELECT count(*) FROM users WHERE lower(email) LIKE '%wilfredo%' OR lower(full_name) LIKE '%wilfredo%') > 0;"))
                     await conn.execute(text("INSERT INTO user_roles (user_id, role_id) SELECT u.id, r.id FROM users u, roles r WHERE (lower(u.email) LIKE '%wilfredo%' OR lower(u.full_name) LIKE '%wilfredo%') AND r.name = 'SUPER_ADMIN' ON CONFLICT DO NOTHING;"))
+                    # Métricas agregadas de Meta en publications (create_all no agrega columnas a tablas existentes)
+                    await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_total INTEGER NOT NULL DEFAULT 0;"))
+                    await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_by_type JSON NOT NULL DEFAULT '{}';"))
+                    await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_metrics_synced_at TIMESTAMPTZ;"))
+                else:
+                    for _sql_col in (
+                        "ALTER TABLE publications ADD COLUMN meta_reactions_total INTEGER NOT NULL DEFAULT 0",
+                        "ALTER TABLE publications ADD COLUMN meta_reactions_by_type JSON NOT NULL DEFAULT '{}'",
+                        "ALTER TABLE publications ADD COLUMN meta_metrics_synced_at TIMESTAMP",
+                    ):
+                        with suppress(Exception):
+                            await conn.execute(text(_sql_col))
         except Exception as e_mig:
             logger.warning("schema_migration_step_warning", error=str(e_mig))
 
