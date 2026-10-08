@@ -202,3 +202,6 @@ class InteractionEvidence(Base, TimestampMixin, UUIDPrimaryKeyMixin):
         Interaction,
         back_populates="evidences",
     )
+
+from modules.verification.models import Verification  # noqa: F401
+
