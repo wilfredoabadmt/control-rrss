@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   Users,
   Zap,
+  TableProperties,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
@@ -21,6 +22,7 @@ export type ActivePage =
   | 'publications'
   | 'interactions'
   | 'reports'
+  | 'matrix'
   | 'audit'
   | 'admin';
 
@@ -68,6 +70,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) =>
       id: 'interactions',
       label: 'Control de Reacciones',
       icon: MessageSquare,
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
+    },
+    {
+      id: 'matrix',
+      label: 'Matriz de Control',
+      icon: TableProperties,
       roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
     },
     {
