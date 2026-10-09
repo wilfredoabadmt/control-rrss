@@ -236,7 +236,7 @@ async def verify_employee_activity_bulk(
 ):
     return await MonitoringHubService.verify_employee_activity_bulk(db, req, current_user)
 
-@router.delete("/audits/clean-manual")
+@monitoring_router.delete("/audits/clean-manual")
 async def clean_manual_audits(db: AsyncSession = Depends(get_db)):
     from modules.monitoring.models import Interaction, Verification
     from sqlalchemy import delete
