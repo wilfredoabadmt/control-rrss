@@ -45,6 +45,8 @@ from modules.monitoring.schemas import (
     ConnectorVariableDetail,
     EmployeeActivityVerifyRequest,
     EmployeeActivityVerifyResponse,
+    BulkEmployeeActivityVerifyRequest,
+    BulkEmployeeActivityVerifyResponse,
     ImportReactionsBatchRequest,
     ImportReactionsBatchResponse,
     MatchedEmployeeItem,
@@ -2337,14 +2339,19 @@ class MonitoringHubService:
         else:
             if req.reaction_type:
                 interaction.reaction_type = req.reaction_type
+            elif getattr(req, "clear_reaction", False):
+                interaction.reaction_type = None
+                
             if req.comment_text:
                 interaction.content_text = req.comment_text
-            if req.reaction_type and not req.comment_text:
+            
+            if interaction.reaction_type and not interaction.content_text:
                 interaction.interaction_type = "LIKE"
-            elif req.comment_text:
+            elif interaction.content_text:
                 interaction.interaction_type = "COMMENT"
             elif req.shared:
                 interaction.interaction_type = "SHARE"
+            
             interaction.raw_payload_ref = json.dumps(payload_data)
 
         # Crear o actualizar Verificación formal
@@ -2420,6 +2427,41 @@ class MonitoringHubService:
             shared=req.shared,
             comment_text=req.comment_text,
             verification_status=status_val,
+        )
+
+    @staticmethod
+    async def verify_employee_activity_bulk(
+        db: AsyncSession,
+        req: BulkEmployeeActivityVerifyRequest,
+        current_user: User,
+    ) -> BulkEmployeeActivityVerifyResponse:
+        """
+        Registra, actualiza y audita de forma asistida o manual la interacción de un grupo de funcionarios.
+        """
+        updated_count = 0
+        for emp_id in req.employee_ids:
+            try:
+                single_req = EmployeeActivityVerifyRequest(
+                    employee_id=emp_id,
+                    publication_id=req.publication_id,
+                    reaction_type=req.reaction_type,
+                    shared=req.shared if req.shared is not None else False,
+                    comment_text=req.comment_text,
+                    verification_status=req.verification_status,
+                    justification=req.justification
+                )
+                single_req.clear_reaction = req.clear_reaction
+                await MonitoringHubService.verify_employee_activity(db, single_req, current_user)
+                updated_count += 1
+            except Exception as e:
+                logger.warning(f"Error bulk verify emp {emp_id}: {e}")
+                
+        return BulkEmployeeActivityVerifyResponse(
+            success=True,
+            message=f"Se procesaron exitosamente {updated_count} de {len(req.employee_ids)} funcionarios.",
+            updated_count=updated_count,
+            publication_id=req.publication_id,
+            employee_ids=req.employee_ids
         )
 
     @staticmethod

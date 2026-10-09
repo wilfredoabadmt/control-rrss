@@ -192,6 +192,25 @@ class EmployeeActivityVerifyResponse(BaseModel):
     verification_status: str = "DECLARED_CONFIRMED"
 
 
+class BulkEmployeeActivityVerifyRequest(BaseModel):
+    employee_ids: list[str] = Field(..., description="Lista de CIs o IDs de funcionarios")
+    publication_id: uuid.UUID = Field(..., description="UUID de la publicación auditada")
+    reaction_type: str | None = Field(default=None, description="LIKE, LOVE, CARE, HAHA, WOW, SAD, ANGRY o None")
+    shared: bool | None = Field(default=None, description="True/False para modificar compartido, o None para no alterar")
+    comment_text: str | None = Field(default=None, description="Texto de comentario o None")
+    verification_status: str = Field(default="DECLARED_CONFIRMED")
+    justification: str = Field(default="Marcado / fiscalización rápida en lote por analista institucional.")
+    clear_reaction: bool = Field(default=False, description="Si es True, remueve la reacción actual")
+
+
+class BulkEmployeeActivityVerifyResponse(BaseModel):
+    success: bool
+    message: str
+    updated_count: int
+    publication_id: uuid.UUID
+    employee_ids: list[str]
+
+
 class MatchedEmployeeItem(BaseModel):
     employee_id: str
     full_name: str

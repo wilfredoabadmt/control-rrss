@@ -1,5 +1,9 @@
 import sqlite3
-conn = sqlite3.connect('gamea_local.db')
+import tempfile
+import os
+
+db_path = os.path.join(tempfile.gettempdir(), "gamea_local.db")
+conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
 # Get all tables
@@ -39,6 +43,12 @@ print('\n=== VERIFICATIONS SCHEMA ===')
 for col in cursor.fetchall():
     print(f'  {col}')
 
+# Check users schema
+cursor.execute('PRAGMA table_info(users)')
+print('\n=== USERS SCHEMA ===')
+for col in cursor.fetchall():
+    print(f'  {col}')
+
 # Check employees data
 cursor.execute('SELECT employee_id, first_name, last_name, status FROM employees')
 employees = cursor.fetchall()
@@ -73,5 +83,12 @@ verifications = cursor.fetchall()
 print('\n=== VERIFICATIONS DATA ===')
 for v in verifications:
     print(f'  {v[0]}: interaction={v[1]}, emp={v[2]}, status={v[3]}')
+
+# Check users data
+cursor.execute('SELECT id, email, full_name, assigned_direction FROM users')
+users = cursor.fetchall()
+print('\n=== USERS DATA ===')
+for u in users:
+    print(f'  {u[0]}: {u[1]} ({u[2]}) dir={u[3]}')
 
 conn.close()

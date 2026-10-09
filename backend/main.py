@@ -48,6 +48,15 @@ async def lifespan(app: FastAPI):
     try:
         from core.security.password import hash_password
         from database import AsyncSessionLocal, Base, activate_sqlite_fallback, async_engine
+        import core.audit.models  # noqa: F401
+        import modules.iam.models  # noqa: F401
+        import modules.employees.models  # noqa: F401
+        import modules.social_accounts.models  # noqa: F401
+        import modules.publications.models  # noqa: F401
+        import modules.interactions.models  # noqa: F401
+        import modules.verification.models  # noqa: F401
+        import modules.reporting.models  # noqa: F401
+        import modules.monitoring.models  # noqa: F401
         from modules.iam.models import Role, User
         from modules.iam.seed import seed_roles_and_permissions
         from modules.shared.enums import UserRole
@@ -102,6 +111,9 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_metrics_synced_at TIMESTAMPTZ;"))
                 else:
                     for _sql_col in (
+                        "ALTER TABLE users ADD COLUMN assigned_direction VARCHAR(200)",
+                        "ALTER TABLE employees ADD COLUMN created_by_user_id UUID",
+                        "ALTER TABLE employees ADD COLUMN direction_name VARCHAR(200)",
                         "ALTER TABLE publications ADD COLUMN meta_reactions_total INTEGER NOT NULL DEFAULT 0",
                         "ALTER TABLE publications ADD COLUMN meta_reactions_by_type JSON NOT NULL DEFAULT '{}'",
                         "ALTER TABLE publications ADD COLUMN meta_metrics_synced_at TIMESTAMP",

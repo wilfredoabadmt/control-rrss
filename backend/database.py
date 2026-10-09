@@ -86,14 +86,19 @@ def activate_sqlite_fallback(db_path: str | None = None):
     Activa un motor SQLite local seguro en caso de que PostgreSQL no esté disponible.
     Garantiza que la aplicación funcione al 100% sin depender de un servicio externo.
     """
-    global async_engine
+    global async_engine, sync_engine
     if not db_path:
-        db_path = os.getenv("SQLITE_FALLBACK_PATH", os.path.join(tempfile.gettempdir(), "gamea_local.db"))
+        workspace_db = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "gamea_local.db"))
+        default_db = workspace_db if os.path.exists(workspace_db) else os.path.join(tempfile.gettempdir(), "gamea_local.db")
+        db_path = os.getenv("SQLITE_FALLBACK_PATH", default_db)
     # Asegurar que el directorio contenedor exista
     os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
     fallback_url = f"sqlite+aiosqlite:///{db_path}"
     async_engine = create_configured_async_engine(fallback_url)
     AsyncSessionLocal.configure(bind=async_engine)
+    sync_fallback_url = f"sqlite:///{db_path}"
+    sync_engine = create_engine(sync_fallback_url, echo=False)
+    SyncSessionLocal.configure(bind=sync_engine)
     return async_engine
 
 # Engine Síncrono (Alembic, Workers, Scripts)
