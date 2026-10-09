@@ -2337,20 +2337,17 @@ class MonitoringHubService:
             db.add(interaction)
             await db.flush()
         else:
-            if req.reaction_type:
-                interaction.reaction_type = req.reaction_type
-            elif getattr(req, "clear_reaction", False):
-                interaction.reaction_type = None
-                
-            if req.comment_text:
-                interaction.content_text = req.comment_text
+            interaction.reaction_type = req.reaction_type
+            interaction.content_text = req.comment_text
             
-            if interaction.reaction_type and not interaction.content_text:
-                interaction.interaction_type = "LIKE"
-            elif interaction.content_text:
+            if req.comment_text:
                 interaction.interaction_type = "COMMENT"
+            elif req.reaction_type:
+                interaction.interaction_type = "LIKE"
             elif req.shared:
                 interaction.interaction_type = "SHARE"
+            else:
+                interaction.interaction_type = "LIKE"
             
             interaction.raw_payload_ref = json.dumps(payload_data)
 
