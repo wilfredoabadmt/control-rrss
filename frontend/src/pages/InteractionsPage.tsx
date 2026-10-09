@@ -95,12 +95,20 @@ export const InteractionsPage: React.FC = () => {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualSuccess, setManualSuccess] = useState(false);
 
-  // Modal Filtrar por Lista
-  const [showFilterModal, setShowFilterModal] = useState(false);
-  const [filterRawText, setFilterRawText] = useState('');
-  const [customFilterList, setCustomFilterList] = useState<string[]>([]);
-  const [filterError, setFilterError] = useState<string | null>(null);
-  const [filterSuccess, setFilterSuccess] = useState<string | null>(null);
+  // Modal Pegar Reacciones de Facebook
+  const [showPasteReactionsModal, setShowPasteReactionsModal] = useState(false);
+  const [pasteRawText, setPasteRawText] = useState('');
+  const [pasteReactionType, setPasteReactionType] = useState('LIKE');
+  const [pasteLoading, setPasteLoading] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasteSuccess, setPasteSuccess] = useState<string | null>(null);
+  const [pasteResultDetails, setPasteResultDetails] = useState<{
+    matched_count: number;
+    unmatched_citizens_count: number;
+    matched_employees: any[];
+    unmatched_names: string[];
+    ambiguous_names: string[];
+  } | null>(null);
 
 
   // Cargar publicaciones registradas desde backend
@@ -310,12 +318,14 @@ export const InteractionsPage: React.FC = () => {
     }
   };
 
-  // Abrir modal de filtrar lista
-  const handleOpenFilterModal = () => {
-    setShowFilterModal(true);
-    setFilterRawText('');
-    setFilterError(null);
-    setFilterSuccess(null);
+  // Abrir modal de importar/pegar reacciones
+  const handleOpenPasteReactionsModal = () => {
+    setShowPasteReactionsModal(true);
+    setPasteRawText('');
+    setPasteReactionType('LIKE');
+    setPasteError(null);
+    setPasteSuccess(null);
+    setPasteResultDetails(null);
   };
 
   // Funciones helper para el modal de pegar reacciones
@@ -340,24 +350,24 @@ export const InteractionsPage: React.FC = () => {
             .filter((name) => typeof name === 'string' && name.trim().length > 0)
             .join('\n');
           
-          setFilterRawText((prev) => prev ? prev + '\n' + names : names);
-          setFilterSuccess(`Archivo ${file.name} cargado correctamente.`);
+          setPasteRawText((prev) => prev ? prev + '\n' + names : names);
+          setPasteSuccess(`Archivo ${file.name} cargado correctamente.`);
         } catch (err) {
-          setFilterError('Error al procesar el archivo Excel. Asegúrate de que los nombres estén en la primera columna.');
+          setPasteError('Error al procesar el archivo Excel. Asegúrate de que los nombres estén en la primera columna.');
         }
       } else {
         // Assume text/CSV
         if (typeof data === 'string') {
           const names = data.split(/\r?\n/).filter(line => line.trim().length > 0).join('\n');
-          setFilterRawText((prev) => prev ? prev + '\n' + names : names);
-          setFilterSuccess(`Archivo ${file.name} cargado correctamente.`);
+          setPasteRawText((prev) => prev ? prev + '\n' + names : names);
+          setPasteSuccess(`Archivo ${file.name} cargado correctamente.`);
         } else {
           // If it's ArrayBuffer but CSV, decode
           const decoder = new TextDecoder('utf-8');
           const text = decoder.decode(data);
           const names = text.split(/\r?\n/).filter(line => line.trim().length > 0).join('\n');
-          setFilterRawText((prev) => prev ? prev + '\n' + names : names);
-          setFilterSuccess(`Archivo ${file.name} cargado correctamente.`);
+          setPasteRawText((prev) => prev ? prev + '\n' + names : names);
+          setPasteSuccess(`Archivo ${file.name} cargado correctamente.`);
         }
       }
     };
@@ -369,21 +379,109 @@ export const InteractionsPage: React.FC = () => {
     }
   };
 
+  const getReactionLabel = (type: string): string => {
+    const labels: Record<string, string> = {
+      LIKE: '👍 Me Gusta',
+      LOVE: '❤️ Me Encanta',
+      CARE: '🤗 Me Importa',
+      HAHA: '😆 Me Divierte',
+      WOW: '😮 Me Asombra',
+      SAD: '😢 Me Entristece',
+      ANGRY: '😡 Me Enoja',
+    };
+    return labels[type] || type;
+  };
 
-  // Función para aplicar el filtro personalizado
-  const handleApplyCustomFilter = () => {
-    if (!filterRawText.trim()) {
-      setFilterError('Pega o sube una lista de nombres o C.I. primero.');
+  const parsePastePreview = (text: string): string[] => {
+    const noisePhrases = new Set([
+      'todos', 'me gusta', 'me encanta', 'me importa', 'me divierte', 'me asombra', 'me entristece', 'me enoja',
+      'agregar', 'agregar a amigos', 'enviar mensaje', 'seguir', 'siguiendo', 'amigos', 'amigo', 'amiga',
+      'cancelar', 'cerrar', 'ver mas', 'ver más', 'responder', 'compartir', 'mutual friends', 'amigos en común',
+      'foto del perfil de', 'reacciono', 'reaccionó', 'like', 'love', 'care', 'haha', 'wow', 'sad', 'angry',
+    ]);
+
+    const rawLines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const candidateLines: string[] = [];
+    for (const line of rawLines) {
+      const lineStr = line.trim();
+      if (!lineStr) continue;
+      if (lineStr.includes(',') && rawLines.length < 5) {
+        for (const sub of lineStr.split(',')) {
+          if (sub.trim()) candidateLines.push(sub.trim());
+        }
+      } else {
+        candidateLines.push(lineStr);
+      }
+    }
+
+    const cleaned: string[] = [];
+    for (const line of candidateLines) {
+      let lClean = line.trim();
+      
+      // Extraer nombre si viene en formato Markdown: [Mariela Mamani](https://...)
+      const matchMd = lClean.match(/^\[([^\]]+)\]\(https?:\/\/[^\)]+\)$/);
+      if (matchMd) {
+        lClean = matchMd[1].trim();
+      }
+      
+      const lLower = lClean.toLowerCase();
+      if (!lClean || /^\d+$/.test(lClean)) continue;
+      
+      // Filtrar líneas de resumen/conteo
+      if (/^(todos|me gusta|me encanta|me divierte|me importa|me asombra|me entristece|me enoja)\s+\d+$/.test(lLower)) continue;
+      
+      // Filtrar ruido
+      if (noisePhrases.has(lLower)) continue;
+      if (/\d+\s+amigos?\s+en\s+com/.test(lLower)) continue;
+      if (lLower.startsWith('foto del perfil de ')) {
+        lClean = lClean.slice(19).trim();
+      }
+      if (lClean.length < 3) continue;
+      
+      cleaned.push(lClean);
+    }
+    return cleaned;
+  };
+
+  // Enviar reacciones copiadas para cruce automático y persistencia en PostgreSQL
+  const handleImportReactions = async () => {
+    if (!pasteRawText.trim()) {
+      setPasteError('Por favor pega la lista de nombres copiada de las reacciones de Facebook.');
       return;
     }
-    const lines = filterRawText.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 2);
-    setCustomFilterList(lines);
-    setShowFilterModal(false);
-  };
-  
-  const handleClearCustomFilter = () => {
-    setCustomFilterList([]);
-    setFilterRawText('');
+    const pubId = currentPost ? currentPost.id : (selectedPublicationId !== 'ALL' ? selectedPublicationId : null);
+    if (!pubId) {
+      setPasteError('Debes seleccionar una publicación institucional específica para registrar las reacciones.');
+      return;
+    }
+
+    setPasteLoading(true);
+    setPasteError(null);
+    setPasteSuccess(null);
+    setPasteResultDetails(null);
+
+    try {
+      const res = await monitoringApi.importReactionsBatch({
+        publication_id: pubId,
+        raw_text: pasteRawText,
+        default_reaction_type: pasteReactionType,
+        platform: 'FACEBOOK',
+      });
+
+      setPasteSuccess(res.message);
+      setPasteResultDetails({
+        matched_count: res.matched_count,
+        unmatched_citizens_count: res.unmatched_citizens_count,
+        matched_employees: res.matched_employees,
+        unmatched_names: res.unmatched_names || [],
+        ambiguous_names: res.ambiguous_names || [],
+      });
+      await fetchActivityMatrix(pubId);
+    } catch (err: any) {
+      setPasteError(err.response?.data?.detail || 'Error al procesar y guardar las reacciones en PostgreSQL.');
+    } finally {
+      setPasteLoading(false);
+    }
   };
 
 
@@ -418,16 +516,7 @@ export const InteractionsPage: React.FC = () => {
         }
       }
 
-      // 2. Filtro por Lista Personalizada (C.I. o Nombre)
-      if (customFilterList.length > 0) {
-        const isMatched = customFilterList.some(filterItem => {
-          const f = filterItem.toLowerCase();
-          return row.full_name.toLowerCase().includes(f) || row.employee_id.toLowerCase().includes(f);
-        });
-        if (!isMatched) return false;
-      }
-
-      // 3. Filtro por Búsqueda de Texto (Nombre, CI o Cuenta)
+      // 2. Filtro por Búsqueda de Texto (Nombre, CI o Cuenta)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesName = row.full_name.toLowerCase().includes(q);
@@ -460,7 +549,7 @@ export const InteractionsPage: React.FC = () => {
 
       return true;
     });
-  }, [matrixData, selectedDirection, searchQuery, currentPost, selectedInteractionFilter, customFilterList]);
+  }, [matrixData, selectedDirection, searchQuery, currentPost, selectedInteractionFilter]);
 
   // Cálculos de métricas para la publicación seleccionada
   const metrics = useMemo(() => {
@@ -1033,12 +1122,12 @@ export const InteractionsPage: React.FC = () => {
               <span>+ Vincular Post de Facebook</span>
             </button>
 
-            {/* Botón Filtrar por Lista Externa */}
+            {/* Botón Pegar Reacciones de Facebook */}
             <button
-              onClick={handleOpenFilterModal}
-              title="Sube una lista en Excel/TXT para filtrar la nómina y enfocar la auditoría"
+              onClick={handleOpenPasteReactionsModal}
+              title="Pegar los nombres copiados del popup de reacciones de Facebook para cruzar automáticamente"
               style={{
-                background: customFilterList.length > 0 ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #ec4899, #8b5cf6)',
+                background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
                 color: '#fff',
                 border: 'none',
                 padding: '10px 16px',
@@ -1049,39 +1138,12 @@ export const InteractionsPage: React.FC = () => {
                 alignItems: 'center',
                 gap: '7px',
                 cursor: 'pointer',
-                boxShadow: customFilterList.length > 0 ? '0 4px 12px rgba(16, 185, 129, 0.25)' : '0 4px 12px rgba(236, 72, 153, 0.25)',
+                boxShadow: '0 4px 12px rgba(236, 72, 153, 0.25)',
               }}
             >
-              <Users size={16} />
-              <span>
-                {customFilterList.length > 0
-                  ? `Filtro Activo (${customFilterList.length} registros)`
-                  : 'Filtrar por Lista Externa'}
-              </span>
+              <ThumbsUp size={16} />
+              <span>📥 Pegar Reacciones de Facebook</span>
             </button>
-            
-            {customFilterList.length > 0 && (
-              <button
-                onClick={handleClearCustomFilter}
-                title="Limpiar filtro de lista"
-                style={{
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                  color: '#f87171',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  cursor: 'pointer',
-                }}
-              >
-                <X size={14} />
-                <span>Limpiar Filtro</span>
-              </button>
-            )}
 
             {/* Botón Sincronizar con Redes */}
             <button
@@ -2407,8 +2469,8 @@ export const InteractionsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal para Filtrar por Lista */}
-      {showFilterModal && (
+      {/* Modal para Pegar Reacciones de Facebook y Cruce Masivo */}
+      {showPasteReactionsModal && (
         <div
           style={{
             position: 'fixed',
@@ -2426,14 +2488,14 @@ export const InteractionsPage: React.FC = () => {
             className="glass-panel"
             style={{
               width: '100%',
-              maxWidth: '600px',
+              maxWidth: '720px',
               maxHeight: '90vh',
               overflowY: 'auto',
               background: '#0f172a',
-              border: '1px solid rgba(16, 185, 129, 0.4)',
+              border: '1px solid rgba(236, 72, 153, 0.4)',
               borderRadius: '14px',
               padding: '24px',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 25px rgba(16, 185, 129, 0.2)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 25px rgba(236, 72, 153, 0.2)',
             }}
           >
             {/* Header del Modal */}
@@ -2445,25 +2507,26 @@ export const InteractionsPage: React.FC = () => {
                       width: '32px',
                       height: '32px',
                       borderRadius: '8px',
-                      background: 'rgba(16, 185, 129, 0.15)',
+                      background: 'rgba(236, 72, 153, 0.15)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: '#10b981',
+                      color: '#ec4899',
                     }}
                   >
-                    <Users size={18} />
+                    <ThumbsUp size={18} />
                   </div>
                   <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', margin: 0 }}>
-                    Filtrar Matriz por Lista Externa
+                    📥 Ingesta y Cruce Masivo de Reacciones de Facebook
                   </h3>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: 0, lineHeight: 1.4 }}>
-                  Sube un archivo Excel (.xlsx) o pega una lista de Nombres Completos o Carnets de Identidad (C.I.) para enfocarte únicamente en esos funcionarios y auditar sus reacciones de forma ágil.
+                  Meta Graph API v3.0+ restringe la entrega de identidades en Likes/Reacciones por políticas de privacidad.
+                  Esta herramienta permite cruzar manualmente la lista de personas que reaccionaron contra el padrón municipal en PostgreSQL.
                 </p>
               </div>
               <button
-                onClick={() => setShowFilterModal(false)}
+                onClick={() => setShowPasteReactionsModal(false)}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -2476,11 +2539,125 @@ export const InteractionsPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Cuadro de Texto / Carga de Archivos */}
+            {/* Publicación Objetivo */}
+            <div
+              style={{
+                background: 'rgba(30, 41, 59, 0.6)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                marginBottom: '16px',
+                fontSize: '0.82rem',
+                color: '#cbd5e1',
+              }}
+            >
+              <strong style={{ color: '#38bdf8' }}>Publicación evaluada:</strong>{' '}
+              {currentPost ? currentPost.title : 'Publicación seleccionada'}
+            </div>
+
+            {/* Instrucciones de Cómo Obtener los Nombres */}
+            <details
+              style={{
+                background: 'rgba(6, 182, 212, 0.08)',
+                border: '1px solid rgba(6, 182, 212, 0.25)',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                marginBottom: '16px',
+                color: '#cbd5e1',
+                fontSize: '0.78rem',
+                lineHeight: 1.6,
+              }}
+            >
+              <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Info size={14} />
+                <span>📋 ¿Cómo obtener la lista de nombres desde Facebook?</span>
+              </summary>
+              <div style={{ marginTop: '10px', paddingLeft: '4px' }}>
+                <div style={{ marginBottom: '8px', color: '#e2e8f0', fontWeight: 600 }}>
+                  ⚠️ IMPORTANTE: El diálogo de reacciones de Facebook NO permite seleccionar/copiar texto directamente.
+                </div>
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: '6px' }}>
+                      Opción A: Herramientas de Desarrollador (Recomendada)
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.75rem' }}>
+                      <li>Abre la publicación en Facebook</li>
+                      <li>Haz clic en el número de reacciones para abrir el modal</li>
+                      <li>Presiona <kbd style={{ background: '#1e293b', padding: '1px 4px', borderRadius: '3px', fontFamily: 'monospace' }}>F12</kbd> → pestaña <strong>Console</strong></li>
+                      <li>Ejecuta este código y copia el resultado:</li>
+                      <pre style={{ background: '#0b1220', borderRadius: '4px', padding: '8px', margin: '6px 0', overflow: 'auto', fontSize: '0.7rem', color: '#a7f3d0' }}>
+{`// Copia y pega en la Consola del navegador:
+const names = [...document.querySelectorAll('[role="dialog"] a[href*="/user/"]')].map(a => a.textContent.trim()).filter(Boolean);
+copy(names.join('\\n'));
+console.log('Nombres copiados:', names);`}
+                      </pre>
+                    </ol>
+                  </div>
+                  <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: '6px' }}>
+                      Opción B: Extensión "Copy Text from Image" / OCR
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.75rem' }}>
+                      <li>Haz captura de pantalla del modal de reacciones</li>
+                      <li>Usa una extensión OCR (ej. "CopyFish", "Text Extractor")</li>
+                      <li>Copia el texto y pégalo aquí</li>
+                    </ol>
+                  </div>
+                  <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: '6px' }}>
+                      Opción C: Copia manual (solo nombres visibles)
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.75rem' }}>
+                      <li>Escribe los nombres uno por línea</li>
+                      <li>El sistema filtra automáticamente botones de UI y ruido</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            {/* Selector de Reacción Predeterminada */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
+                Tipo de Reacción a Asignar (se aplicará a todos los nombres detectados):
+              </label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {[
+                  { id: 'LIKE', label: '👍 Me Gusta', color: '#3b82f6' },
+                  { id: 'LOVE', label: '❤️ Me Encanta', color: '#ec4899' },
+                  { id: 'CARE', label: '🤗 Me Importa', color: '#f59e0b' },
+                  { id: 'HAHA', label: '😆 Me Divierte', color: '#eab308' },
+                  { id: 'WOW', label: '😮 Me Asombra', color: '#10b981' },
+                  { id: 'SAD', label: '😢 Me Entristece', color: '#94a3b8' },
+                  { id: 'ANGRY', label: '😡 Me Enoja', color: '#ef4444' },
+                ].map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setPasteReactionType(r.id)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      border: pasteReactionType === r.id ? `2px solid ${r.color}` : '1px solid var(--border-subtle)',
+                      background: pasteReactionType === r.id ? `${r.color}25` : 'rgba(30, 41, 59, 0.5)',
+                      color: pasteReactionType === r.id ? '#fff' : 'var(--text-muted)',
+                    }}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cuadro de Texto para Pegar */}
             <div style={{ marginBottom: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '6px' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0' }}>
-                  Pega Nombres / C.I. o sube un archivo:
+                  Pegar Texto / Nombres Copiados de Facebook:
                 </label>
                 
                 {/* File Upload Button */}
@@ -2488,16 +2665,16 @@ export const InteractionsPage: React.FC = () => {
                   <input
                     type="file"
                     accept=".txt,.csv,.xlsx,.xls"
-                    id="filter-upload-input"
+                    id="file-upload-input"
                     style={{ display: 'none' }}
                     onChange={handleFileUpload}
                   />
                   <label
-                    htmlFor="filter-upload-input"
+                    htmlFor="file-upload-input"
                     style={{
-                      background: 'rgba(16, 185, 129, 0.15)',
-                      border: '1px solid rgba(16, 185, 129, 0.4)',
-                      color: '#34d399',
+                      background: 'rgba(6, 182, 212, 0.15)',
+                      border: '1px solid rgba(6, 182, 212, 0.4)',
+                      color: '#38bdf8',
                       padding: '6px 12px',
                       borderRadius: '6px',
                       fontSize: '0.78rem',
@@ -2508,7 +2685,7 @@ export const InteractionsPage: React.FC = () => {
                       gap: '6px',
                       transition: 'all 0.2s ease',
                     }}
-                    title="Sube una lista desde un archivo CSV o Excel"
+                    title="Sube una lista de nombres desde un archivo CSV o Excel"
                   >
                     <Upload size={14} />
                     <span>Subir Excel / CSV</span>
@@ -2517,14 +2694,19 @@ export const InteractionsPage: React.FC = () => {
               </div>
               <textarea
                 rows={7}
-                placeholder={`Pega aquí los nombres o C.I. (uno por línea). Ejemplos:
+                placeholder={`Pega aquí los nombres (uno por línea o separados por comas). Ejemplos:
 
-6112233
-8799542
 Juan Carlos Mamani Quispe
-Rosa Apaza Mamani`}
-                value={filterRawText}
-                onChange={(e) => setFilterRawText(e.target.value)}
+Rosa Apaza Mamani
+Pedro Huanca Ticona
+
+O formato Markdown de comentarios:
+[María Lopez](https://facebook.com/maria.lopez)
+[Carlos Perez](https://facebook.com/carlos.perez)
+
+El motor limpia automáticamente: botones UI ('Agregar a amigos', 'Seguir'), líneas de resumen ('Me encanta 5'), números, y filtra ciudadanos externos.`}
+                value={pasteRawText}
+                onChange={(e) => setPasteRawText(e.target.value)}
                 style={{
                   width: '100%',
                   background: 'rgba(30, 41, 59, 0.8)',
@@ -2541,8 +2723,44 @@ Rosa Apaza Mamani`}
               />
             </div>
 
+            {/* Vista Previa de Nombres Detectados */}
+            {pasteRawText.trim() && (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
+                    Vista Previa: Nombres detectados ({parsePastePreview(pasteRawText).length})
+                  </label>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', background: 'rgba(30, 41, 59, 0.5)', padding: '2px 8px', borderRadius: '4px' }}>
+                    Se asignará: {getReactionLabel(pasteReactionType)}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    maxHeight: '120px',
+                    overflowY: 'auto',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    padding: '10px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'monospace',
+                    color: '#cbd5e1',
+                  }}
+                >
+                  {parsePastePreview(pasteRawText).map((name, idx) => (
+                    <div key={idx} style={{ padding: '2px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                      {idx + 1}. {name}
+                    </div>
+                  ))}
+                  {parsePastePreview(pasteRawText).length === 0 && (
+                    <span style={{ color: '#64748b' }}>No se detectaron nombres válidos. Revisa el formato.</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Mensajes de Alerta */}
-            {filterError && (
+            {pasteError && (
               <div
                 style={{
                   background: 'rgba(239, 68, 68, 0.15)',
@@ -2558,11 +2776,11 @@ Rosa Apaza Mamani`}
                 }}
               >
                 <AlertCircle size={16} />
-                <span>{filterError}</span>
+                <span>{pasteError}</span>
               </div>
             )}
 
-            {filterSuccess && (
+            {pasteSuccess && (
               <div
                 style={{
                   background: 'rgba(16, 185, 129, 0.15)',
@@ -2572,13 +2790,93 @@ Rosa Apaza Mamani`}
                   borderRadius: '8px',
                   fontSize: '0.82rem',
                   display: 'flex',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   gap: '8px',
                   marginBottom: '14px',
                 }}
               >
-                <CheckCircle2 size={16} />
-                <span>{filterSuccess}</span>
+                <CheckCircle2 size={16} style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 700 }}>{pasteSuccess}</div>
+                  {pasteResultDetails && (
+                    <div style={{ fontSize: '0.75rem', marginTop: '4px', color: '#cbd5e1' }}>
+                      Persistido en PostgreSQL: {pasteResultDetails.matched_count} funcionarios actualizados.
+                      {pasteResultDetails.matched_employees.length > 0 && (
+                        <div style={{ marginTop: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                          {pasteResultDetails.matched_employees.map((me, i) => (
+                            <span
+                              key={i}
+                              style={{
+                                display: 'inline-block',
+                                background: 'rgba(16, 185, 129, 0.2)',
+                                border: '1px solid rgba(16, 185, 129, 0.4)',
+                                borderRadius: '4px',
+                                padding: '2px 8px',
+                                margin: '2px 4px 2px 0',
+                                fontSize: '0.72rem',
+                              }}
+                            >
+                              ✓ {me.full_name} ({me.department})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {pasteResultDetails.unmatched_names.length > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <div style={{ fontWeight: 700, color: '#fbbf24' }}>
+                            Sin coincidencia en la nómina ({pasteResultDetails.unmatched_names.length}): ciudadanos
+                          </div>
+                          <div style={{ maxHeight: '90px', overflowY: 'auto', marginTop: '3px' }}>
+                            {pasteResultDetails.unmatched_names.map((name, idx) => (
+                              <span
+                                key={`unmatched-${idx}`}
+                                style={{
+                                  display: 'inline-block',
+                                  background: 'rgba(245, 158, 11, 0.15)',
+                                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                                  borderRadius: '4px',
+                                  padding: '2px 8px',
+                                  margin: '2px 4px 2px 0',
+                                  fontSize: '0.72rem',
+                                  color: '#fbbf24',
+                                }}
+                              >
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {pasteResultDetails.ambiguous_names.length > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <div style={{ fontWeight: 700, color: '#f87171' }}>
+                            Ambiguos, requieren revisión manual ({pasteResultDetails.ambiguous_names.length}): coinciden
+                            con más de un funcionario
+                          </div>
+                          <div style={{ maxHeight: '90px', overflowY: 'auto', marginTop: '3px' }}>
+                            {pasteResultDetails.ambiguous_names.map((name, idx) => (
+                              <span
+                                key={`ambiguous-${idx}`}
+                                style={{
+                                  display: 'inline-block',
+                                  background: 'rgba(239, 68, 68, 0.15)',
+                                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                                  borderRadius: '4px',
+                                  padding: '2px 8px',
+                                  margin: '2px 4px 2px 0',
+                                  fontSize: '0.72rem',
+                                  color: '#f87171',
+                                }}
+                              >
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -2586,7 +2884,7 @@ Rosa Apaza Mamani`}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => setShowFilterModal(false)}
+                onClick={() => setShowPasteReactionsModal(false)}
                 style={{
                   background: 'transparent',
                   border: '1px solid var(--border-subtle)',
@@ -2601,26 +2899,26 @@ Rosa Apaza Mamani`}
               </button>
               <button
                 type="button"
-                onClick={handleApplyCustomFilter}
-                disabled={!filterRawText.trim()}
+                onClick={handleImportReactions}
+                disabled={pasteLoading || !pasteRawText.trim()}
                 style={{
-                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
                   border: 'none',
                   color: '#fff',
                   padding: '9px 20px',
                   borderRadius: '6px',
                   fontSize: '0.85rem',
                   fontWeight: 600,
-                  cursor: !filterRawText.trim() ? 'not-allowed' : 'pointer',
-                  opacity: !filterRawText.trim() ? 0.6 : 1,
+                  cursor: (pasteLoading || !pasteRawText.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (pasteLoading || !pasteRawText.trim()) ? 0.6 : 1,
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '8px',
-                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+                  boxShadow: '0 4px 14px rgba(236, 72, 153, 0.35)',
                 }}
               >
-                <Users size={14} />
-                <span>Aplicar Filtro en la Matriz</span>
+                {pasteLoading && <RefreshCw size={14} className="animate-spin" />}
+                <span>{pasteLoading ? 'Cruzando con Funcionarios...' : '⚡ Procesar y Guardar en PostgreSQL'}</span>
               </button>
             </div>
           </div>
