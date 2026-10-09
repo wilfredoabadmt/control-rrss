@@ -245,6 +245,15 @@ async def clean_manual_audits(db: AsyncSession = Depends(get_db)):
     await db.commit()
     return {"message": "Manual audits cleared"}
 
+@monitoring_router.get("/audits/clean-manual-get")
+async def clean_manual_audits_get(db: AsyncSession = Depends(get_db)):
+    from modules.monitoring.models import Interaction, Verification
+    from sqlalchemy import delete
+    await db.execute(delete(Verification).where(Verification.verification_method == "MANUAL_OPERATOR"))
+    await db.execute(delete(Interaction).where(Interaction.capture_method == "MANUAL_IMPORT"))
+    await db.commit()
+    return {"message": "Manual audits cleared via GET"}
+
 
 @monitoring_router.post(
     "/hub/import-reactions",
