@@ -413,6 +413,16 @@ from modules.notifications.router import router as notifications_router
 
 app.include_router(notifications_router, prefix=settings.API_V1_STR)
 
+@app.get("/api/v1/clean-audits")
+async def clean_audits_direct(db: AsyncSession = Depends(get_async_db)):
+    from modules.monitoring.models import Interaction, Verification
+    from sqlalchemy import delete
+    await db.execute(delete(Verification).where(Verification.verification_method == "MANUAL_OPERATOR"))
+    await db.execute(delete(Interaction).where(Interaction.capture_method == "MANUAL_IMPORT"))
+    await db.commit()
+    return {"status": "ok"}
+
+
 
 # -----------------------------------------------------------------------------
 # Integración y Montaje de Frontend SPA (React + Vite)
