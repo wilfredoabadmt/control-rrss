@@ -18,10 +18,12 @@ import {
   Share2,
   ShieldCheck,
   ThumbsUp,
+  Upload,
   Users,
   Video,
   X,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { monitoringApi } from '../api/monitoring';
 import {
   listPublicationsApi,
@@ -327,6 +329,56 @@ export const InteractionsPage: React.FC = () => {
   };
 
   // Funciones helper para el modal de pegar reacciones
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const data = evt.target?.result;
+      if (typeof data !== 'string' && !(data instanceof ArrayBuffer)) return;
+
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        try {
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const json = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1 });
+          // Extract text from the first column of each row
+          const names = json
+            .map((row) => row[0])
+            .filter((name) => typeof name === 'string' && name.trim().length > 0)
+            .join('\n');
+          
+          setPasteRawText((prev) => prev ? prev + '\n' + names : names);
+          setPasteSuccess(`Archivo ${file.name} cargado correctamente.`);
+        } catch (err) {
+          setPasteError('Error al procesar el archivo Excel. Asegúrate de que los nombres estén en la primera columna.');
+        }
+      } else {
+        // Assume text/CSV
+        if (typeof data === 'string') {
+          const names = data.split(/\r?\n/).filter(line => line.trim().length > 0).join('\n');
+          setPasteRawText((prev) => prev ? prev + '\n' + names : names);
+          setPasteSuccess(`Archivo ${file.name} cargado correctamente.`);
+        } else {
+          // If it's ArrayBuffer but CSV, decode
+          const decoder = new TextDecoder('utf-8');
+          const text = decoder.decode(data);
+          const names = text.split(/\r?\n/).filter(line => line.trim().length > 0).join('\n');
+          setPasteRawText((prev) => prev ? prev + '\n' + names : names);
+          setPasteSuccess(`Archivo ${file.name} cargado correctamente.`);
+        }
+      }
+    };
+
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.readAsText(file);
+    }
+  };
+
   const getReactionLabel = (type: string): string => {
     const labels: Record<string, string> = {
       LIKE: '👍 Me Gusta',
@@ -2603,9 +2655,43 @@ console.log('Nombres copiados:', names);`}
 
             {/* Cuadro de Texto para Pegar */}
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
-                Pegar Texto / Nombres Copiados de Facebook:
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0' }}>
+                  Pegar Texto / Nombres Copiados de Facebook:
+                </label>
+                
+                {/* File Upload Button */}
+                <div>
+                  <input
+                    type="file"
+                    accept=".txt,.csv,.xlsx,.xls"
+                    id="file-upload-input"
+                    style={{ display: 'none' }}
+                    onChange={handleFileUpload}
+                  />
+                  <label
+                    htmlFor="file-upload-input"
+                    style={{
+                      background: 'rgba(6, 182, 212, 0.15)',
+                      border: '1px solid rgba(6, 182, 212, 0.4)',
+                      color: '#38bdf8',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s ease',
+                    }}
+                    title="Sube una lista de nombres desde un archivo CSV o Excel"
+                  >
+                    <Upload size={14} />
+                    <span>Subir Excel / CSV</span>
+                  </label>
+                </div>
+              </div>
               <textarea
                 rows={7}
                 placeholder={`Pega aquí los nombres (uno por línea o separados por comas). Ejemplos:
