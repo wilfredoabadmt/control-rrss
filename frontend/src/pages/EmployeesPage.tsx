@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
-  Download,
   Edit3,
   Facebook,
   FileSpreadsheet,
@@ -346,6 +345,8 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         text: `Error al alternar estado: ${errorMsg}`,
       });
     }
+  };
+
   // Descarga de Plantilla
   const handleDownloadTemplate = async (format: 'csv' | 'xlsx' = 'xlsx') => {
     try {

@@ -418,6 +418,11 @@ from modules.monitoring.router import monitoring_router
 
 app.include_router(monitoring_router, prefix=settings.API_V1_STR)
 
+# Módulo 16: Analítica Interactiva y Métricas de Reacciones (SDD)
+from modules.analytics.router import analytics_router
+
+app.include_router(analytics_router, prefix=settings.API_V1_STR)
+
 # Fase 8: Notificaciones y Alertas
 from modules.notifications.router import router as notifications_router
 

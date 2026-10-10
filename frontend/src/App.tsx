@@ -12,6 +12,7 @@ import { AuditPage } from './pages/AuditPage';
 import { AdminPage } from './pages/AdminPage';
 import { MonitoringHubPage } from './pages/MonitoringHubPage';
 import { MatrixPage } from './pages/MatrixPage';
+import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
 import { Activity } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -58,6 +59,8 @@ const AppContent: React.FC = () => {
             return <InteractionsPage />;
           case 'matrix':
             return <MatrixPage />;
+          case 'analytics':
+            return <AnalyticsDashboardPage />;
           case 'reports':
             return <ReportsPage />;
           case 'audit':

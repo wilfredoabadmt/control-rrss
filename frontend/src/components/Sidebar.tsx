@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Activity,
+  BarChart3,
   FileSpreadsheet,
   Layers,
   LucideIcon,
@@ -21,8 +22,9 @@ export type ActivePage =
   | 'employees'
   | 'publications'
   | 'interactions'
-  | 'reports'
   | 'matrix'
+  | 'analytics'
+  | 'reports'
   | 'audit'
   | 'admin';
 
@@ -77,6 +79,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) =>
       label: 'Matriz de Control',
       icon: TableProperties,
       roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
+    },
+    {
+      id: 'analytics',
+      label: 'Analítica de Reacciones',
+      icon: BarChart3,
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR, UserRole.AUDITOR],
     },
     {
       id: 'reports',

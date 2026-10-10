@@ -435,6 +435,11 @@
 - **Entregable:** Delta en `docs/spec.md` (BR-FBI-020, BR-INT-010/011, BR-PUB-009, BR-MON-008/009/010, atributos Meta en `Publication`, implementación de REQ-FBI-004) y esta fase en `docs/tasks.md`.
 - **Estado:** ✅ Completado.
 
+### [x] T-1009: Módulo 16 — Tablero Analítico Interactivo de Reacciones (SDD)
+- **Reqs:** RF-ANL-001 a RF-ANL-007, ADR-008
+- **Entregable:** Backend `modules/analytics` (router, service, schemas, exportador Excel con estilo corporativo), tests automatizados en `test_analytics_dashboard.py` (5/5 pasando, 94/94 globales), frontend `AnalyticsDashboardPage.tsx` con filtros multidimensionales, suite de 4 gráficos interactivos SVG (barras por dirección con click-to-filter, donut de reacciones, tendencia cronológica diaria con hover guide, comparativa bilateral Facebook vs TikTok) y navegación lateral en `Sidebar.tsx`.
+- **Estado:** ✅ Completado. Compilación Vite exitosa, suite pytest 100% aprobada y bundles sincronizados con `backend/static/`.
+
 ---
 
 ## Resumen de Fases
@@ -452,5 +457,6 @@
 | **8** | Notificaciones y Seguridad | T-800 a T-804 | REQ-NOT-*, Seguridad OWASP |
 | **9** | Despliegue y Documentación | T-900 a T-905 | ADRs, backups, quickstart, OpenAPI |
 | **10** | Remediación del Panel de Reacciones | T-1000 a T-1008 | REQ-FBI-004, REQ-INT-003, REQ-MON-004, REQ-MON-006, REQ-PUB-002 |
+| **11** | Analítica Interactiva de Reacciones | T-1009 | RF-ANL-001 a RF-ANL-007, ADR-008 |
 
-**Total: 11 fases, 74 tareas, cubriendo los 52 requerimientos y 126 reglas de negocio del spec.md.**
+**Total: 12 fases, 75 tareas, cubriendo los requerimientos y reglas del spec.md.**
