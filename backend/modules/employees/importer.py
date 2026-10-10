@@ -138,25 +138,34 @@ class EmployeePayrollImporter:
         """
         correlation_id = get_correlation_id()
 
-        # 1. Cargar archivo con pandas de forma tolerante a codificaciones y delimitadores
+        # 1. Cargar archivo con pandas de forma tolerante a formatos, codificaciones y delimitadores
+        df = None
         try:
-            # Check for Excel magic bytes (PK\\x03\\x04) in case an xlsx was renamed to .csv
-            is_actually_excel = file_content.startswith(b'PK\\x03\\x04')
-            
-            if filename.lower().endswith(".csv") and not is_actually_excel:
+            # Detección de binario Excel (.xlsx / OpenXML empieza con PK\x03\x04 o PK\x05\x06; .xls empieza con \xd0\xcf\x11\xe0)
+            is_excel_binary = (
+                file_content.startswith(b"PK\x03\x04")
+                or file_content.startswith(b"PK\x05\x06")
+                or file_content.startswith(b"\xd0\xcf\x11\xe0")
+            )
+            is_excel_ext = filename.lower().endswith((".xlsx", ".xls", ".xlsm"))
+
+            if is_excel_binary or is_excel_ext:
+                try:
+                    df = pd.read_excel(io.BytesIO(file_content), dtype=str, keep_default_na=False)
+                except Exception:
+                    df = None
+
+            if df is None:
+                # Intentar leer como texto / CSV
                 import csv
-                decoded_df = None
-                
-                # Intentar leer con csv de Python para soportar filas irregulares (jagged rows)
                 for enc in ("utf-8-sig", "utf-8", "latin-1", "cp1252", "iso-8859-1"):
                     try:
                         text = file_content.decode(enc)
-                        # Descubrir separador basado en la primera línea
                         sep = ','
                         first_line = text.splitlines()[0].lower() if text.splitlines() else ""
-                        if ';' in first_line and ('nombres;' in first_line or ';apellidos' in first_line or first_line.count(';') >= 3):
+                        if ';' in first_line and ('nombres;' in first_line or ';apellidos' in first_line or first_line.count(';') >= 2):
                             sep = ';'
-                        elif '\t' in first_line and ('nombres\t' in first_line or '\tapellidos' in first_line or first_line.count('\t') >= 3):
+                        elif '\t' in first_line and ('nombres\t' in first_line or '\tapellidos' in first_line or first_line.count('\t') >= 2):
                             sep = '\t'
                             
                         lines = text.splitlines()
@@ -172,22 +181,26 @@ class EmployeePayrollImporter:
                             
                             headers = parsed_data[0]
                             data_rows = parsed_data[1:]
-                            decoded_df = pd.DataFrame(data_rows, columns=headers, dtype=str)
-                            break
+                            temp_df = pd.DataFrame(data_rows, columns=headers, dtype=str)
+                            normalized_temp = cls._normalize_columns(temp_df.copy())
+                            if "first_name" in normalized_temp.columns or "full_name" in normalized_temp.columns:
+                                df = temp_df
+                                break
+                            elif df is None:
+                                df = temp_df
                     except Exception:
                         continue
-                
-                if decoded_df is None:
-                    # Fallback final a pandas básico
+
+            if df is None:
+                # Fallback final a read_excel o read_csv de pandas
+                try:
+                    df = pd.read_excel(io.BytesIO(file_content), dtype=str, keep_default_na=False)
+                except Exception:
                     df = pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False, encoding="latin-1")
-                else:
-                    df = decoded_df
-            else:
-                df = pd.read_excel(io.BytesIO(file_content), dtype=str, keep_default_na=False)
         except Exception as e:
             err_msg = str(e)
             if "tokenizing data" in err_msg or "Expected" in err_msg:
-                err_msg = "El formato de las columnas es irregular. Por favor, asegúrate de guardar el archivo usando la opción 'Guardar como -> CSV (delimitado por comas)' en Excel, sin alterar las columnas."
+                err_msg = "El formato de las columnas es irregular. Por favor, asegúrate de guardar el archivo usando la plantilla Excel (.xlsx) o CSV estándar."
             return EmployeeImportReport(
                 total_records=0,
                 created_count=0,
@@ -197,6 +210,7 @@ class EmployeePayrollImporter:
                 errors=[f"Error al leer el archivo: {err_msg}"],
                 correlation_id=correlation_id,
             )
+
 
         df = cls._normalize_columns(df)
         

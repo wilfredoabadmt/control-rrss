@@ -145,3 +145,49 @@ async def test_payroll_import_spanish_semicolon_format(async_db, mock_admin):
     assert report_reintento.created_count == 0
     assert report_reintento.unchanged_count == 2
 
+
+@pytest.mark.asyncio
+async def test_payroll_import_excel_with_csv_extension(async_db, mock_admin):
+    """
+    Soporte para archivos Excel (.xlsx) que los usuarios guardan o suben con extensión '.csv'.
+    El backend debe detectar la firma binaria OpenXML (PK\x03\x04) e importarlo transparentemente como Excel.
+    """
+    import io
+    import pandas as pd
+
+    df = pd.DataFrame([
+        {
+            "nombres": "Sergio",
+            "apellidos": "Ramos",
+            "unidad": "Comunicación",
+            "direccion": "Dirección General",
+            "cuenta_facebook": "facebook.com/sergio",
+            "cuenta_tiktok": "@sergio90r"
+        },
+        {
+            "nombres": "Santos",
+            "apellidos": "Quispe",
+            "unidad": "Prensa",
+            "direccion": "Dirección General",
+            "cuenta_facebook": "facebook.com/santos",
+            "cuenta_tiktok": "@chaski_noticias"
+        }
+    ])
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    excel_bytes = out.getvalue()
+
+    report = await EmployeePayrollImporter.import_payroll_file(
+        db=async_db,
+        file_content=excel_bytes,
+        filename="plantilla_funcionarios_gamea.csv",  # Extensión .csv pero contenido .xlsx real
+        current_user=mock_admin,
+    )
+
+    assert report.total_records == 2
+    assert report.created_count == 2
+    assert report.updated_count == 0
+    assert len(report.errors) == 0
+
+

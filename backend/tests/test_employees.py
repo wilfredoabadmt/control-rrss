@@ -265,7 +265,10 @@ def test_import_template_xlsx_headers_and_empty_rows():
     import openpyxl
     from pathlib import Path
 
-    xlsx_path = Path("extras/plantilla_funcionarios.xlsx")
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    xlsx_path = repo_root / "extras" / "plantilla_funcionarios.xlsx"
+    if not xlsx_path.exists():
+        xlsx_path = Path("extras/plantilla_funcionarios.xlsx")
     assert xlsx_path.exists(), "La plantilla extras/plantilla_funcionarios.xlsx debe existir"
 
     wb = openpyxl.load_workbook(xlsx_path)
