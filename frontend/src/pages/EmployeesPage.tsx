@@ -618,9 +618,10 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
             </h2>
             <span
               className="badge badge-success"
-              style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+              style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
             >
-              <Users size={12} /> {total} Registrados
+              <Users size={13} />
+              <strong>{filteredEmployees.length}</strong> de <strong>{total}</strong> Funcionarios Registrados
             </span>
             {user?.workspace_type === 'UNIT' || user?.assigned_unit ? (
               <>
@@ -1045,6 +1046,53 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
 
       {/* Tabla de Funcionarios CRUD */}
       <div className="glass-panel" style={{ overflow: 'hidden' }}>
+        {/* Barra Informativa de Enumeración y Cantidad Total */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px',
+            padding: '10px 18px',
+            background: 'rgba(15, 23, 42, 0.75)',
+            borderBottom: '1px solid var(--border-subtle)',
+            fontSize: '0.8rem',
+            color: 'var(--text-muted)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#38bdf8', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <Users size={14} /> Padrón de Funcionarios:
+            </span>
+            <span>
+              {filteredEmployees.length > 0 ? (
+                <>
+                  Enumerados del <strong style={{ color: '#fff' }}>N° 1</strong> al{' '}
+                  <strong style={{ color: '#fff' }}>N° {filteredEmployees.length}</strong> de un total de{' '}
+                  <strong style={{ color: '#34d399' }}>{total}</strong> funcionarios en el sistema
+                </>
+              ) : (
+                'Sin funcionarios para mostrar con los filtros actuales'
+              )}
+            </span>
+          </div>
+          {search.trim() || filterDireccion !== 'ALL' || filterStatus !== 'ALL' || filterSocial !== 'ALL' ? (
+            <span
+              style={{
+                fontSize: '0.74rem',
+                color: '#f59e0b',
+                background: 'rgba(245, 158, 11, 0.1)',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+              }}
+            >
+              Filtros activos ({filteredEmployees.length} coincidentes)
+            </span>
+          ) : null}
+        </div>
+
         {/* Barra de Acciones de Selección Masiva / en Lote */}
         {selectedEmployeeIds.length > 0 && (
           <div
@@ -1174,6 +1222,18 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                     }}
                   />
                 </th>
+                <th
+                  style={{
+                    padding: '12px 10px',
+                    width: '56px',
+                    textAlign: 'center',
+                    fontWeight: 700,
+                    color: '#38bdf8',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  N°
+                </th>
                 <th style={{ padding: '12px 16px', fontWeight: 600 }}>FUNCIONARIO</th>
                 <th style={{ padding: '12px 16px', fontWeight: 600 }}>UNIDAD</th>
                 <th style={{ padding: '12px 16px', fontWeight: 600 }}>DIRECCIÓN & CARGO</th>
@@ -1186,7 +1246,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
             <tbody style={{ fontSize: '0.84rem' }}>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: '56px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <td colSpan={9} style={{ padding: '56px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', maxWidth: '520px', margin: '0 auto' }}>
                       <div
                         style={{
@@ -1271,7 +1331,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                   </td>
                 </tr>
               ) : (
-                filteredEmployees.map((emp) => {
+                filteredEmployees.map((emp, index) => {
                   const empId = getEmpId(emp);
                   const isEmpSelected = selectedEmployeeIds.includes(empId);
                   return (
@@ -1297,6 +1357,37 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                             accentColor: '#06b6d4',
                           }}
                         />
+                      </td>
+
+                      {/* ENUMERACIÓN CORRELATIVA N° */}
+                      <td
+                        style={{
+                          width: '56px',
+                          padding: '12px 10px',
+                          textAlign: 'center',
+                          verticalAlign: 'middle',
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            minWidth: '28px',
+                            height: '24px',
+                            padding: '0 6px',
+                            borderRadius: '12px',
+                            background: 'rgba(6, 182, 212, 0.12)',
+                            border: '1px solid rgba(6, 182, 212, 0.3)',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            color: '#38bdf8',
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                          title={`Funcionario N° ${index + 1} de ${filteredEmployees.length}`}
+                        >
+                          {index + 1}
+                        </span>
                       </td>
 
                       {/* FUNCIONARIO (Nombres, Apellidos, CI y Correo) */}
@@ -1590,7 +1681,9 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
           }}
         >
           <span>
-            Mostrando <strong>{filteredEmployees.length}</strong> de <strong>{total}</strong> funcionarios en nómina
+            Enumeración correlativa del <strong style={{ color: '#fff' }}>N° 1</strong> al{' '}
+            <strong style={{ color: '#fff' }}>N° {filteredEmployees.length}</strong> • Total:{' '}
+            <strong style={{ color: '#34d399' }}>{total}</strong> funcionarios en nómina
             {selectedEmployeeIds.length > 0 && (
               <span style={{ color: '#38bdf8', marginLeft: '10px', fontWeight: 600 }}>
                 • <strong>{selectedEmployeeIds.length}</strong> seleccionado{selectedEmployeeIds.length !== 1 ? 's' : ''}

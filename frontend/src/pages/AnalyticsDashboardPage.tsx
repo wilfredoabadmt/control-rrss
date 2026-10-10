@@ -755,6 +755,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
           <table className="analytics-table">
             <thead>
               <tr>
+                <th style={{ width: '56px', textAlign: 'center', color: '#38bdf8', fontWeight: 700 }}>N°</th>
                 <th>Funcionario / CI</th>
                 <th>Secretaría / Dirección</th>
                 <th>Unidad Asignada</th>
@@ -768,14 +769,34 @@ export const AnalyticsDashboardPage: React.FC = () => {
             <tbody>
               {loadingEmployees ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                     <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto' }} />
                     <p style={{ margin: 0, fontSize: '0.85rem' }}>Cargando registros de funcionarios...</p>
                   </td>
                 </tr>
               ) : employeesData && employeesData.items.length > 0 ? (
-                employeesData.items.map((emp) => (
+                employeesData.items.map((emp, idx) => (
                   <tr key={emp.employee_id}>
+                    <td style={{ width: '56px', textAlign: 'center', verticalAlign: 'middle' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          minWidth: '28px',
+                          height: '24px',
+                          padding: '0 6px',
+                          borderRadius: '12px',
+                          background: 'rgba(6, 182, 212, 0.12)',
+                          border: '1px solid rgba(6, 182, 212, 0.3)',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          color: '#38bdf8',
+                        }}
+                      >
+                        {(currentPage - 1) * pageSize + idx + 1}
+                      </span>
+                    </td>
                     <td>
                       <div style={{ fontWeight: 600, color: '#ffffff' }}>{emp.full_name}</div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>CI / ID: {emp.document_number}</div>

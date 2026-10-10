@@ -1236,6 +1236,7 @@ export const MonitoringHubPage: React.FC = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ background: 'rgba(15, 23, 42, 0.95)', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <th style={{ width: '56px', padding: '14px 12px', color: '#38bdf8', fontWeight: 700, textAlign: 'center' }}>N°</th>
                   <th style={{ padding: '14px 18px', color: 'var(--text-muted)', fontWeight: 600 }}>C.I. / Identificador</th>
                   <th style={{ padding: '14px 18px', color: 'var(--text-muted)', fontWeight: 600 }}>Nombres y Apellidos</th>
                   <th style={{ padding: '14px 18px', color: 'var(--text-muted)', fontWeight: 600 }}>Unidad Organizacional</th>
@@ -1247,8 +1248,28 @@ export const MonitoringHubPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {audienceList.map((person) => (
+                {audienceList.map((person, idx) => (
                   <tr key={person.ci} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ width: '56px', padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          minWidth: '28px',
+                          height: '24px',
+                          padding: '0 6px',
+                          borderRadius: '12px',
+                          background: 'rgba(6, 182, 212, 0.12)',
+                          border: '1px solid rgba(6, 182, 212, 0.3)',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          color: '#38bdf8',
+                        }}
+                      >
+                        {idx + 1}
+                      </span>
+                    </td>
                     <td style={{ padding: '12px 18px', fontWeight: 700, color: '#22d3ee' }}>{person.ci}</td>
                     <td style={{ padding: '12px 18px', fontWeight: 600, color: '#fff' }}>{person.full_name}</td>
                     <td style={{ padding: '12px 18px', color: 'var(--text-main)' }}>{person.department}</td>
