@@ -140,7 +140,10 @@ class EmployeePayrollImporter:
 
         # 1. Cargar archivo con pandas de forma tolerante a codificaciones y delimitadores
         try:
-            if filename.lower().endswith(".csv"):
+            # Check for Excel magic bytes (PK\\x03\\x04) in case an xlsx was renamed to .csv
+            is_actually_excel = file_content.startswith(b'PK\\x03\\x04')
+            
+            if filename.lower().endswith(".csv") and not is_actually_excel:
                 decoded_df = None
                 # Probar codificaciones típicas de Windows y Excel con distintos delimitadores
                 for enc in ("utf-8-sig", "utf-8", "latin-1", "cp1252", "iso-8859-1"):
@@ -180,19 +183,33 @@ class EmployeePayrollImporter:
                             continue
 
                 if decoded_df is None:
-                    df = pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False, encoding="latin-1")
+                    try:
+                        df = pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False, encoding="latin-1")
+                    except Exception as parse_err:
+                        # Friendly message for uneven rows
+                        err_str = str(parse_err)
+                        if "Expected" in err_str and "fields in line" in err_str:
+                            return EmployeeImportReport(
+                                total_records=0, created_count=0, updated_count=0, unchanged_count=0, deactivated_count=0,
+                                errors=["El archivo CSV está malformado. Algunas filas tienen más o menos columnas que los títulos. Asegúrate de guardarlo correctamente desde Excel."],
+                                correlation_id=correlation_id,
+                            )
+                        raise parse_err
                 else:
                     df = decoded_df
             else:
                 df = pd.read_excel(io.BytesIO(file_content), dtype=str, keep_default_na=False)
         except Exception as e:
+            err_msg = str(e)
+            if "tokenizing data" in err_msg or "Expected" in err_msg:
+                err_msg = "El formato de las columnas es irregular. Por favor, asegúrate de guardar el archivo usando la opción 'Guardar como -> CSV (delimitado por comas)' en Excel, sin alterar las columnas."
             return EmployeeImportReport(
                 total_records=0,
                 created_count=0,
                 updated_count=0,
                 unchanged_count=0,
                 deactivated_count=0,
-                errors=[f"Error al leer el archivo: {str(e)}"],
+                errors=[f"Error al leer el archivo: {err_msg}"],
                 correlation_id=correlation_id,
             )
 
