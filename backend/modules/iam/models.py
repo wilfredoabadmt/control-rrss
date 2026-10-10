@@ -137,7 +137,19 @@ class User(Base, TimestampMixin, UUIDPrimaryKeyMixin):
         String(200),
         nullable=True,
         default=None,
-        comment="Dirección o dependencia superior asignada al usuario para panel individual",
+        comment="Dirección o dependencia superior asignada al usuario",
+    )
+    assigned_unit: Mapped[str | None] = mapped_column(
+        String(200),
+        nullable=True,
+        default=None,
+        comment="Unidad organizacional específica asignada para aislamiento estricto",
+    )
+    workspace_type: Mapped[str] = mapped_column(
+        String(30),
+        default="UNIT",
+        nullable=False,
+        comment="Tipo de espacio de trabajo: GLOBAL, DIRECTION, UNIT, AUTONOMOUS",
     )
 
     # Relaciones

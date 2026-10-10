@@ -157,3 +157,22 @@ export const monitoringApi = {
   },
 };
 
+export const fetchActivityMatrixApi = (params?: {
+  publication_id?: string;
+  platform?: string;
+  department?: string;
+  search?: string;
+  participation_status?: string;
+  max_posts?: number;
+}) => monitoringApi.getActivityMatrix(params);
+
+export const exportActivityMatrixExcelApi = (params?: {
+  publication_id?: string;
+  platform?: string;
+  department?: string;
+  search?: string;
+  participation_status?: string;
+}) => monitoringApi.exportMatrixExcel(params);
+
+export type { ActivityMatrixResponse } from '../types';
+

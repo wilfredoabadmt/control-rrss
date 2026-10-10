@@ -1,19 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, Search, Download, CheckCircle2, XCircle } from 'lucide-react';
+import { RefreshCw, Search, Download, CheckCircle2, XCircle, Filter } from 'lucide-react';
 import { ActivityMatrixResponse, fetchActivityMatrixApi, exportActivityMatrixExcelApi } from '../api/monitoring';
 
 export const MatrixPage: React.FC = () => {
   const [data, setData] = useState<ActivityMatrixResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [department, setDepartment] = useState('ALL');
   const [exporting, setExporting] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await fetchActivityMatrixApi({ search, max_posts: 15 });
-      if (res.success && res.data) {
-        setData(res.data);
+      const res = await fetchActivityMatrixApi({ 
+        search, 
+        department: department === 'ALL' ? undefined : department,
+        max_posts: 15 
+      });
+      if (res && res.rows) {
+        setData(res);
       }
     } catch (err) {
       console.error(err);
@@ -24,12 +29,15 @@ export const MatrixPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [search]);
+  }, [search, department]);
 
   const handleExport = async () => {
     setExporting(true);
     try {
-      await exportActivityMatrixExcelApi({ search });
+      await exportActivityMatrixExcelApi({ 
+        search,
+        department: department === 'ALL' ? undefined : department
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -37,11 +45,16 @@ export const MatrixPage: React.FC = () => {
     }
   };
 
+  // Extraer la lista única de departamentos
+  const uniqueDepartments = Array.from(
+    new Set(data?.rows?.map((r: any) => r.department).filter(Boolean) || [])
+  );
+
   // Extraer la lista única de posts para crear las columnas
   const allPostsMap = new Map<string, any>();
   if (data?.rows) {
-    data.rows.forEach(row => {
-      row.posts.forEach(post => {
+    data.rows.forEach((row: any) => {
+      row.posts?.forEach((post: any) => {
         if (!allPostsMap.has(post.publication_id)) {
           allPostsMap.set(post.publication_id, post);
         }
@@ -148,6 +161,43 @@ export const MatrixPage: React.FC = () => {
               }}
             />
           </div>
+
+          <div
+            style={{
+              width: '250px',
+              position: 'relative',
+              background: 'rgba(0, 0, 0, 0.2)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 14px',
+            }}
+          >
+            <Filter size={18} color="var(--text-muted)" />
+            <select
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                color: '#fff',
+                fontSize: '0.95rem',
+                padding: '12px',
+                outline: 'none',
+                appearance: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="ALL" style={{ background: '#0f1423' }}>Todas las Direcciones</option>
+              {uniqueDepartments.map(dep => (
+                <option key={dep} value={dep} style={{ background: '#0f1423' }}>
+                  {dep}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {loading ? (
@@ -185,7 +235,7 @@ export const MatrixPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {data?.rows.map((row, idx) => (
+                {data?.rows.map((row: any, idx: number) => (
                   <tr
                     key={row.employee_id}
                     style={{
@@ -202,7 +252,7 @@ export const MatrixPage: React.FC = () => {
                     </td>
                     
                     {uniquePosts.map((postCol) => {
-                      const userPostData = row.posts.find(p => p.publication_id === postCol.publication_id);
+                      const userPostData = row.posts?.find((p: any) => p.publication_id === postCol.publication_id);
                       const isComplied = userPostData && (userPostData.reaction_type || userPostData.shared || userPostData.comment_text || userPostData.verification_status === 'CONFIRMED' || userPostData.verification_status === 'DECLARED_CONFIRMED');
                       
                       return (

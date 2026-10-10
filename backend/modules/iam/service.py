@@ -223,12 +223,23 @@ class IAMService:
             if default_role:
                 roles.append(default_role)
 
+        ws_type = (user_in.workspace_type or "UNIT").upper().strip()
+        if ws_type not in ("GLOBAL", "DIRECTION", "UNIT", "AUTONOMOUS"):
+            ws_type = "UNIT"
+
+        # Si asigna SUPER_ADMIN o AUDITOR sin dirección/unidad, por defecto su alcance es GLOBAL
+        role_codes = [r.name for r in roles]
+        if (UserRole.SUPER_ADMIN.value in role_codes or UserRole.AUDITOR.value in role_codes) and not user_in.assigned_direction and not user_in.assigned_unit:
+            ws_type = "GLOBAL"
+
         new_user = User(
             email=user_in.email.lower().strip(),
             full_name=user_in.full_name.strip(),
             password_hash=hash_password(user_in.password),
             is_active=user_in.is_active,
             assigned_direction=user_in.assigned_direction.strip() if user_in.assigned_direction else None,
+            assigned_unit=user_in.assigned_unit.strip() if user_in.assigned_unit else None,
+            workspace_type=ws_type,
             roles=roles,
         )
         db.add(new_user)
@@ -241,7 +252,14 @@ class IAMService:
             entity_id=str(new_user.id),
             user_id=str(current_user.id) if current_user else None,
             user_email=current_user.email if current_user else None,
-            new_state={"email": new_user.email, "full_name": new_user.full_name, "roles": [r.name for r in roles], "assigned_direction": new_user.assigned_direction},
+            new_state={
+                "email": new_user.email,
+                "full_name": new_user.full_name,
+                "roles": [r.name for r in roles],
+                "assigned_direction": new_user.assigned_direction,
+                "assigned_unit": new_user.assigned_unit,
+                "workspace_type": new_user.workspace_type,
+            },
         )
         await db.refresh(new_user)
         return new_user
@@ -263,6 +281,8 @@ class IAMService:
             "full_name": user.full_name,
             "is_active": user.is_active,
             "assigned_direction": user.assigned_direction,
+            "assigned_unit": user.assigned_unit,
+            "workspace_type": user.workspace_type,
             "roles": [r.name for r in user.roles],
         }
 
@@ -272,6 +292,12 @@ class IAMService:
             user.is_active = user_in.is_active
         if user_in.assigned_direction is not None:
             user.assigned_direction = user_in.assigned_direction.strip() or None
+        if user_in.assigned_unit is not None:
+            user.assigned_unit = user_in.assigned_unit.strip() or None
+        if user_in.workspace_type is not None:
+            ws_type = user_in.workspace_type.upper().strip()
+            if ws_type in ("GLOBAL", "DIRECTION", "UNIT", "AUTONOMOUS"):
+                user.workspace_type = ws_type
         if user_in.email is not None:
             new_email = str(user_in.email).lower().strip()
             if new_email != user.email:
@@ -295,6 +321,9 @@ class IAMService:
             "email": user.email,
             "full_name": user.full_name,
             "is_active": user.is_active,
+            "assigned_direction": user.assigned_direction,
+            "assigned_unit": user.assigned_unit,
+            "workspace_type": user.workspace_type,
             "roles": [r.name for r in user.roles],
         }
 

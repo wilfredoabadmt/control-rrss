@@ -840,13 +840,22 @@ class MonitoringHubService:
 
         if current_user:
             user_roles = {r.name for r in current_user.roles}
+            ws_type = getattr(current_user, "workspace_type", "UNIT") or "UNIT"
             is_superadmin = (
-                UserRole.SUPER_ADMIN.value in user_roles or UserRole.COMMUNICATIONS_LEAD.value in user_roles
-            ) and not getattr(current_user, "assigned_direction", None)
+                UserRole.SUPER_ADMIN.value in user_roles or UserRole.AUDITOR.value in user_roles
+            ) and (ws_type == "GLOBAL" or (not getattr(current_user, "assigned_direction", None) and not getattr(current_user, "assigned_unit", None)))
 
             if not is_superadmin:
+                user_unit = getattr(current_user, "assigned_unit", None)
                 user_dir = getattr(current_user, "assigned_direction", None)
-                if user_dir:
+                if user_unit:
+                    u_norm = user_unit.strip().lower()
+                    unit_filter = or_(
+                        Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == u_norm),
+                        Employee.created_by_user_id == current_user.id,
+                    )
+                    stmt = stmt.where(unit_filter)
+                elif user_dir:
                     dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip())
                     dir_filter = or_(
                         func.lower(Employee.direction_name) == dir_norm.lower(),

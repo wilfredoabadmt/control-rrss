@@ -156,6 +156,16 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
   const [newEmail, setNewEmail] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
 
+  const handleOpenCreateModal = () => {
+    if (user?.assigned_direction) {
+      setNewDireccion(user.assigned_direction.replace(/alcaldesa/gi, 'Alcalde'));
+    }
+    if (user?.assigned_unit) {
+      setNewUnit(user.assigned_unit);
+    }
+    setShowCreateModal(true);
+  };
+
   // Cargar funcionarios desde backend PostgreSQL
   const fetchEmployees = async () => {
     setLoading(true);
@@ -393,7 +403,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
 
     const targetDir = newDireccion || user?.assigned_direction || 'Despacho Alcalde';
     const sanitizedDirection = targetDir.replace(/alcaldesa/gi, 'Alcalde');
-    const sanitizedUnit = newUnit.replace(/alcaldesa/gi, 'Alcalde');
+    const sanitizedUnit = (newUnit || user?.assigned_unit || '').replace(/alcaldesa/gi, 'Alcalde');
 
     try {
       await createEmployeeApi({
@@ -605,7 +615,44 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
             >
               <Users size={12} /> {total} Registrados
             </span>
-            {user?.assigned_direction ? (
+            {user?.workspace_type === 'UNIT' || user?.assigned_unit ? (
+              <>
+                <span
+                  style={{
+                    background: 'rgba(168, 85, 247, 0.15)',
+                    border: '1px solid rgba(168, 85, 247, 0.4)',
+                    color: '#c084fc',
+                    padding: '3px 10px',
+                    borderRadius: '12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                  }}
+                >
+                  🏛️ Unidad: {user.assigned_unit}
+                </span>
+                {user.assigned_direction && (
+                  <span
+                    style={{
+                      background: 'rgba(56, 189, 248, 0.12)',
+                      border: '1px solid rgba(56, 189, 248, 0.35)',
+                      color: '#38bdf8',
+                      padding: '3px 10px',
+                      borderRadius: '12px',
+                      fontSize: '0.74rem',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    🏢 {user.assigned_direction.replace(/alcaldesa/gi, 'Alcalde')}
+                  </span>
+                )}
+              </>
+            ) : user?.assigned_direction ? (
               <span
                 style={{
                   background: 'rgba(56, 189, 248, 0.12)',
@@ -620,9 +667,9 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                   gap: '5px',
                 }}
               >
-                🏢 {user.assigned_direction.replace(/alcaldesa/gi, 'Alcalde')}
+                🏢 Espacio de Dirección: {user.assigned_direction.replace(/alcaldesa/gi, 'Alcalde')}
               </span>
-            ) : !hasRole(UserRole.SUPER_ADMIN) ? (
+            ) : user?.workspace_type === 'AUTONOMOUS' || !hasRole(UserRole.SUPER_ADMIN) ? (
               <span
                 style={{
                   background: 'rgba(52, 211, 153, 0.12)',
@@ -639,7 +686,24 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
               >
                 🛡️ Panel Individual Autónomo
               </span>
-            ) : null}
+            ) : (
+              <span
+                style={{
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  color: '#38bdf8',
+                  padding: '3px 10px',
+                  borderRadius: '12px',
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+              >
+                🌐 Alcance Global Municipal (GAMEA)
+              </span>
+            )}
           </div>
           <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: '4px', marginBottom: 0 }}>
             Administración completa (Altas, Modificaciones, Bajas y Cuentas Sociales) para interacción con posts enviados
@@ -715,7 +779,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
 
           {/* Botón: Registrar Funcionario */}
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={handleOpenCreateModal}
             className="btn-primary"
             style={{
               display: 'flex',
@@ -1146,7 +1210,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                       {employees.length === 0 ? (
                         <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
                           <button
-                            onClick={() => setShowCreateModal(true)}
+                            onClick={handleOpenCreateModal}
                             className="btn-primary"
                             style={{
                               padding: '8px 16px',

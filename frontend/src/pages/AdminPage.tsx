@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  Building,
   Check,
   CheckCircle2,
   Facebook,
+  Globe,
   Key,
   Pencil,
   Plus,
@@ -30,7 +32,7 @@ import { monitoringApi } from '../api/monitoring';
 import { useAuth } from '../context/AuthContext';
 import { formatUserRole } from '../utils/formatters';
 import { ConnectorsDiagnosticResponse, UserRole } from '../types';
-import { LISTA_DIRECCIONES } from '../data/organigrama';
+import { LISTA_DIRECCIONES, ORGANIGRAMA_GAMEA } from '../data/organigrama';
 
 export interface RoleMeta {
   role: string;
@@ -175,7 +177,9 @@ export const AdminPage: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [newFullName, setNewFullName] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newWorkspaceType, setNewWorkspaceType] = useState<'GLOBAL' | 'DIRECTION' | 'UNIT' | 'AUTONOMOUS'>('UNIT');
   const [newAssignedDirection, setNewAssignedDirection] = useState('');
+  const [newAssignedUnit, setNewAssignedUnit] = useState('');
   const [selectedRoles, setSelectedRoles] = useState<string[]>(['VIEWER']);
   const [submittingUser, setSubmittingUser] = useState(false);
 
@@ -184,7 +188,9 @@ export const AdminPage: React.FC = () => {
   const [editEmail, setEditEmail] = useState('');
   const [editFullName, setEditFullName] = useState('');
   const [editPassword, setEditPassword] = useState('');
+  const [editWorkspaceType, setEditWorkspaceType] = useState<'GLOBAL' | 'DIRECTION' | 'UNIT' | 'AUTONOMOUS'>('UNIT');
   const [editAssignedDirection, setEditAssignedDirection] = useState('');
+  const [editAssignedUnit, setEditAssignedUnit] = useState('');
   const [editRoles, setEditRoles] = useState<string[]>([]);
   const [editIsActive, setEditIsActive] = useState<boolean>(true);
   const [submittingEdit, setSubmittingEdit] = useState(false);
@@ -237,19 +243,25 @@ export const AdminPage: React.FC = () => {
     e.preventDefault();
     setSubmittingUser(true);
     try {
+      const isGlobal = newWorkspaceType === 'GLOBAL';
+      const isAutonomous = newWorkspaceType === 'AUTONOMOUS';
       const created = await createUserApi({
         email: newEmail.trim(),
         full_name: newFullName.trim(),
         password: newPassword,
         role_names: selectedRoles,
-        assigned_direction: newAssignedDirection.trim() || undefined,
+        workspace_type: newWorkspaceType,
+        assigned_direction: isGlobal || isAutonomous ? undefined : (newAssignedDirection.trim() || undefined),
+        assigned_unit: newWorkspaceType === 'UNIT' ? (newAssignedUnit.trim() || undefined) : undefined,
       });
       setUsers([created, ...users.filter((u) => u.id !== created.id)]);
       setShowCreateUserModal(false);
       setNewEmail('');
       setNewFullName('');
       setNewPassword('');
+      setNewWorkspaceType('UNIT');
       setNewAssignedDirection('');
+      setNewAssignedUnit('');
       setSelectedRoles(['VIEWER']);
     } catch (err: any) {
       alert(err.response?.data?.detail || err.message || 'Error al crear el usuario en la base de datos.');
@@ -264,7 +276,10 @@ export const AdminPage: React.FC = () => {
     setEditFullName(user.full_name);
     setEditRoles(user.roles.map((r) => r.name));
     setEditIsActive(user.is_active);
+    const initialWsType = user.workspace_type || (user.assigned_unit ? 'UNIT' : user.assigned_direction ? 'DIRECTION' : 'AUTONOMOUS');
+    setEditWorkspaceType(initialWsType);
     setEditAssignedDirection(user.assigned_direction || '');
+    setEditAssignedUnit(user.assigned_unit || '');
     setEditPassword('');
     setShowEditUserModal(true);
   };
@@ -273,13 +288,17 @@ export const AdminPage: React.FC = () => {
     e.preventDefault();
     setSubmittingEdit(true);
     try {
+      const isGlobal = editWorkspaceType === 'GLOBAL';
+      const isAutonomous = editWorkspaceType === 'AUTONOMOUS';
       const updated = await updateUserApi(editUserId, {
         full_name: editFullName.trim(),
         email: editEmail.trim(),
         is_active: editIsActive,
         password: editPassword.trim() ? editPassword.trim() : undefined,
         role_names: editRoles,
-        assigned_direction: editAssignedDirection.trim() || undefined,
+        workspace_type: editWorkspaceType,
+        assigned_direction: isGlobal || isAutonomous ? null : (editAssignedDirection.trim() || null),
+        assigned_unit: editWorkspaceType === 'UNIT' ? (editAssignedUnit.trim() || null) : null,
       });
       setUsers(
         users.map((u) =>
@@ -290,7 +309,9 @@ export const AdminPage: React.FC = () => {
                 email: updated.email || editEmail,
                 is_active: updated.is_active !== undefined ? updated.is_active : editIsActive,
                 roles: updated.roles || editRoles.map((r, i) => ({ id: `r-${i}`, name: r })),
+                workspace_type: updated.workspace_type || editWorkspaceType,
                 assigned_direction: updated.assigned_direction !== undefined ? updated.assigned_direction : (editAssignedDirection.trim() || null),
+                assigned_unit: updated.assigned_unit !== undefined ? updated.assigned_unit : (editAssignedUnit.trim() || null),
               }
             : u
         )
@@ -643,9 +664,50 @@ export const AdminPage: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* ÁREA / ALCANCE ASIGNADO */}
+                      {/* ÁREA / ESPACIO ASIGNADO */}
                       <td style={{ padding: '14px 20px' }}>
-                        {u.assigned_direction ? (
+                        {u.workspace_type === 'GLOBAL' ? (
+                          <span
+                            style={{
+                              background: 'rgba(56, 189, 248, 0.15)',
+                              border: '1px solid rgba(56, 189, 248, 0.4)',
+                              color: '#38bdf8',
+                              padding: '4px 10px',
+                              borderRadius: 'var(--radius-sm)',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <Globe size={13} /> GAMEA Global (Municipal)
+                          </span>
+                        ) : u.workspace_type === 'UNIT' || u.assigned_unit ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <span
+                              style={{
+                                background: 'rgba(168, 85, 247, 0.15)',
+                                border: '1px solid rgba(168, 85, 247, 0.4)',
+                                color: '#c084fc',
+                                padding: '3px 8px',
+                                borderRadius: 'var(--radius-sm)',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                              }}
+                            >
+                              🏛️ {u.assigned_unit || 'Unidad Específica'}
+                            </span>
+                            {u.assigned_direction && (
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                ↳ 🏢 {u.assigned_direction}
+                              </span>
+                            )}
+                          </div>
+                        ) : u.assigned_direction ? (
                           <span
                             style={{
                               background: 'rgba(56, 189, 248, 0.12)',
@@ -676,7 +738,7 @@ export const AdminPage: React.FC = () => {
                               gap: '6px',
                             }}
                           >
-                            🛡️ Panel Individual / Autónomo
+                            <Shield size={13} /> Panel Individual
                           </span>
                         )}
                       </td>
@@ -1456,24 +1518,195 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Área / Dirección Asignada */}
-              <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label className="form-label">Área / Dirección Asignada (Alcance de Funcionarios)</label>
-                <select
-                  className="form-input"
-                  value={editAssignedDirection}
-                  onChange={(e) => setEditAssignedDirection(e.target.value)}
+              {/* Espacio de Trabajo / Partición Multi-Tenant */}
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '16px',
+                  marginBottom: '16px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <Building size={16} color="#38bdf8" />
+                  <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#f1f5f9' }}>
+                    Espacio de Trabajo & Alcance de Funcionarios
+                  </span>
+                </div>
+
+                {/* Nivel de Espacio */}
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                    Tipo de Partición / Nivel de Espacio *
+                  </label>
+                  <select
+                    className="form-input"
+                    value={editWorkspaceType}
+                    onChange={(e) => {
+                      const next = e.target.value as 'GLOBAL' | 'DIRECTION' | 'UNIT' | 'AUTONOMOUS';
+                      setEditWorkspaceType(next);
+                      if (next === 'GLOBAL' || next === 'AUTONOMOUS') {
+                        setEditAssignedDirection('');
+                        setEditAssignedUnit('');
+                      } else if (next === 'DIRECTION') {
+                        setEditAssignedUnit('');
+                        if (!editAssignedDirection) {
+                          setEditAssignedDirection(LISTA_DIRECCIONES[0] || '');
+                        }
+                      } else if (next === 'UNIT') {
+                        if (!editAssignedDirection) {
+                          const firstDir = LISTA_DIRECCIONES[0] || '';
+                          setEditAssignedDirection(firstDir);
+                          const units = ORGANIGRAMA_GAMEA[firstDir] || [];
+                          setEditAssignedUnit(units[0] || '');
+                        }
+                      }
+                    }}
+                  >
+                    <option value="UNIT">🏢 Unidad Específica (Recomendado - Espacio 100% Aislado e Independiente)</option>
+                    <option value="DIRECTION">🏛️ Dirección Completa (Acceso a todas las unidades de una Dirección)</option>
+                    <option value="AUTONOMOUS">🛡️ Espacio Autónomo / Personal (Solo funcionarios creados por él)</option>
+                    <option value="GLOBAL">🌐 Global Institucional (Supervisión Total GAMEA - Todas las Direcciones)</option>
+                  </select>
+                </div>
+
+                {/* Dirección (si es UNIT o DIRECTION) */}
+                {(editWorkspaceType === 'UNIT' || editWorkspaceType === 'DIRECTION') && (
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                      Dirección Institucional Asignada *
+                    </label>
+                    <select
+                      className="form-input"
+                      value={editAssignedDirection}
+                      onChange={(e) => {
+                        const newDir = e.target.value;
+                        setEditAssignedDirection(newDir);
+                        if (editWorkspaceType === 'UNIT') {
+                          const units = ORGANIGRAMA_GAMEA[newDir] || [];
+                          setEditAssignedUnit(units[0] || '');
+                        }
+                      }}
+                      required
+                    >
+                      <option value="">-- Seleccionar Dirección GAMEA --</option>
+                      {LISTA_DIRECCIONES.map((dir) => (
+                        <option key={dir} value={dir}>
+                          🏢 {dir}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Unidad (si es UNIT) */}
+                {editWorkspaceType === 'UNIT' && (
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                      Unidad Organizacional Específica *
+                    </label>
+                    {editAssignedDirection && ORGANIGRAMA_GAMEA[editAssignedDirection]?.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <select
+                          className="form-input"
+                          value={
+                            ORGANIGRAMA_GAMEA[editAssignedDirection].includes(editAssignedUnit)
+                              ? editAssignedUnit
+                              : (editAssignedUnit ? '__CUSTOM__' : '')
+                          }
+                          onChange={(e) => {
+                            if (e.target.value !== '__CUSTOM__') {
+                              setEditAssignedUnit(e.target.value);
+                            }
+                          }}
+                        >
+                          <option value="">-- Seleccionar Unidad del Organigrama --</option>
+                          {ORGANIGRAMA_GAMEA[editAssignedDirection].map((unit) => (
+                            <option key={unit} value={unit}>
+                              🏛️ {unit}
+                            </option>
+                          ))}
+                          <option value="__CUSTOM__">✍️ Otra unidad (especificar manualmente)...</option>
+                        </select>
+
+                        {(!ORGANIGRAMA_GAMEA[editAssignedDirection].includes(editAssignedUnit) || !editAssignedUnit) && (
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Escriba el nombre exacto de la Unidad..."
+                            value={editAssignedUnit === '__CUSTOM__' ? '' : editAssignedUnit}
+                            onChange={(e) => setEditAssignedUnit(e.target.value)}
+                            required
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Nombre de la Unidad organizativa..."
+                        value={editAssignedUnit}
+                        onChange={(e) => setEditAssignedUnit(e.target.value)}
+                        required
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* Callout descriptivo de seguridad y alcance */}
+                <div
+                  style={{
+                    background:
+                      editWorkspaceType === 'UNIT'
+                        ? 'rgba(168, 85, 247, 0.12)'
+                        : editWorkspaceType === 'DIRECTION'
+                        ? 'rgba(56, 189, 248, 0.12)'
+                        : editWorkspaceType === 'GLOBAL'
+                        ? 'rgba(234, 179, 8, 0.12)'
+                        : 'rgba(100, 116, 139, 0.15)',
+                    border: `1px solid ${
+                      editWorkspaceType === 'UNIT'
+                        ? 'rgba(168, 85, 247, 0.3)'
+                        : editWorkspaceType === 'DIRECTION'
+                        ? 'rgba(56, 189, 248, 0.3)'
+                        : editWorkspaceType === 'GLOBAL'
+                        ? 'rgba(234, 179, 8, 0.3)'
+                        : 'rgba(100, 116, 139, 0.3)'
+                    }`,
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '8px 12px',
+                    fontSize: '0.74rem',
+                    color: '#e2e8f0',
+                    lineHeight: 1.45,
+                  }}
                 >
-                  <option value="">🛡️ Panel Individual Autónomo (Solo ve funcionarios que él cree)</option>
-                  {LISTA_DIRECCIONES.map((dir) => (
-                    <option key={dir} value={dir}>
-                      🏢 {dir}
-                    </option>
-                  ))}
-                </select>
-                <small style={{ color: 'var(--text-faint)', fontSize: '0.74rem', marginTop: '4px', display: 'block' }}>
-                  Define si este usuario ve únicamente su propia nómina individual o la de toda una Dirección específica.
-                </small>
+                  {editWorkspaceType === 'UNIT' && (
+                    <>
+                      🔒 <strong>Aislamiento Total por Unidad:</strong> Este usuario tendrá un espacio de trabajo estrictamente
+                      independiente. Cargará su propia nómina de funcionarios y ningún usuario de otra unidad o dirección podrá
+                      ver ni alterar sus listas.
+                    </>
+                  )}
+                  {editWorkspaceType === 'DIRECTION' && (
+                    <>
+                      🏛️ <strong>Consolidado de Dirección:</strong> Podrá ver y supervisar la nómina de funcionarios de todas
+                      las unidades que componen esta Dirección específica.
+                    </>
+                  )}
+                  {editWorkspaceType === 'AUTONOMOUS' && (
+                    <>
+                      🛡️ <strong>Espacio Autónomo Personal:</strong> Panel individual. Solo visualizará y administrará los
+                      funcionarios que registre directamente desde su sesión.
+                    </>
+                  )}
+                  {editWorkspaceType === 'GLOBAL' && (
+                    <>
+                      🌐 <strong>Supervisión Global Municipal:</strong> Tendrá visibilidad y acceso de control sobre todas las
+                      Direcciones y Unidades del Gobierno Autónomo Municipal de El Alto.
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Estado de la cuenta & Contraseña opcional */}
@@ -1610,24 +1843,195 @@ export const AdminPage: React.FC = () => {
                 />
               </div>
 
-              {/* Área / Dirección Asignada */}
-              <div className="form-group" style={{ marginBottom: '14px' }}>
-                <label className="form-label">Área / Dirección Asignada (Alcance de Funcionarios)</label>
-                <select
-                  className="form-input"
-                  value={newAssignedDirection}
-                  onChange={(e) => setNewAssignedDirection(e.target.value)}
+              {/* Espacio de Trabajo / Partición Multi-Tenant */}
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '16px',
+                  marginBottom: '16px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <Building size={16} color="#38bdf8" />
+                  <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#f1f5f9' }}>
+                    Espacio de Trabajo & Alcance de Funcionarios
+                  </span>
+                </div>
+
+                {/* Nivel de Espacio */}
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                    Tipo de Partición / Nivel de Espacio *
+                  </label>
+                  <select
+                    className="form-input"
+                    value={newWorkspaceType}
+                    onChange={(e) => {
+                      const next = e.target.value as 'GLOBAL' | 'DIRECTION' | 'UNIT' | 'AUTONOMOUS';
+                      setNewWorkspaceType(next);
+                      if (next === 'GLOBAL' || next === 'AUTONOMOUS') {
+                        setNewAssignedDirection('');
+                        setNewAssignedUnit('');
+                      } else if (next === 'DIRECTION') {
+                        setNewAssignedUnit('');
+                        if (!newAssignedDirection) {
+                          setNewAssignedDirection(LISTA_DIRECCIONES[0] || '');
+                        }
+                      } else if (next === 'UNIT') {
+                        if (!newAssignedDirection) {
+                          const firstDir = LISTA_DIRECCIONES[0] || '';
+                          setNewAssignedDirection(firstDir);
+                          const units = ORGANIGRAMA_GAMEA[firstDir] || [];
+                          setNewAssignedUnit(units[0] || '');
+                        }
+                      }
+                    }}
+                  >
+                    <option value="UNIT">🏢 Unidad Específica (Recomendado - Espacio 100% Aislado e Independiente)</option>
+                    <option value="DIRECTION">🏛️ Dirección Completa (Acceso a todas las unidades de una Dirección)</option>
+                    <option value="AUTONOMOUS">🛡️ Espacio Autónomo / Personal (Solo funcionarios creados por él)</option>
+                    <option value="GLOBAL">🌐 Global Institucional (Supervisión Total GAMEA - Todas las Direcciones)</option>
+                  </select>
+                </div>
+
+                {/* Dirección (si es UNIT o DIRECTION) */}
+                {(newWorkspaceType === 'UNIT' || newWorkspaceType === 'DIRECTION') && (
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                      Dirección Institucional Asignada *
+                    </label>
+                    <select
+                      className="form-input"
+                      value={newAssignedDirection}
+                      onChange={(e) => {
+                        const newDir = e.target.value;
+                        setNewAssignedDirection(newDir);
+                        if (newWorkspaceType === 'UNIT') {
+                          const units = ORGANIGRAMA_GAMEA[newDir] || [];
+                          setNewAssignedUnit(units[0] || '');
+                        }
+                      }}
+                      required
+                    >
+                      <option value="">-- Seleccionar Dirección GAMEA --</option>
+                      {LISTA_DIRECCIONES.map((dir) => (
+                        <option key={dir} value={dir}>
+                          🏢 {dir}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Unidad (si es UNIT) */}
+                {newWorkspaceType === 'UNIT' && (
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                      Unidad Organizacional Específica *
+                    </label>
+                    {newAssignedDirection && ORGANIGRAMA_GAMEA[newAssignedDirection]?.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <select
+                          className="form-input"
+                          value={
+                            ORGANIGRAMA_GAMEA[newAssignedDirection].includes(newAssignedUnit)
+                              ? newAssignedUnit
+                              : (newAssignedUnit ? '__CUSTOM__' : '')
+                          }
+                          onChange={(e) => {
+                            if (e.target.value !== '__CUSTOM__') {
+                              setNewAssignedUnit(e.target.value);
+                            }
+                          }}
+                        >
+                          <option value="">-- Seleccionar Unidad del Organigrama --</option>
+                          {ORGANIGRAMA_GAMEA[newAssignedDirection].map((unit) => (
+                            <option key={unit} value={unit}>
+                              🏛️ {unit}
+                            </option>
+                          ))}
+                          <option value="__CUSTOM__">✍️ Otra unidad (especificar manualmente)...</option>
+                        </select>
+
+                        {(!ORGANIGRAMA_GAMEA[newAssignedDirection].includes(newAssignedUnit) || !newAssignedUnit) && (
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Escriba el nombre exacto de la Unidad..."
+                            value={newAssignedUnit === '__CUSTOM__' ? '' : newAssignedUnit}
+                            onChange={(e) => setNewAssignedUnit(e.target.value)}
+                            required
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Nombre de la Unidad organizativa..."
+                        value={newAssignedUnit}
+                        onChange={(e) => setNewAssignedUnit(e.target.value)}
+                        required
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* Callout descriptivo de seguridad y alcance */}
+                <div
+                  style={{
+                    background:
+                      newWorkspaceType === 'UNIT'
+                        ? 'rgba(168, 85, 247, 0.12)'
+                        : newWorkspaceType === 'DIRECTION'
+                        ? 'rgba(56, 189, 248, 0.12)'
+                        : newWorkspaceType === 'GLOBAL'
+                        ? 'rgba(234, 179, 8, 0.12)'
+                        : 'rgba(100, 116, 139, 0.15)',
+                    border: `1px solid ${
+                      newWorkspaceType === 'UNIT'
+                        ? 'rgba(168, 85, 247, 0.3)'
+                        : newWorkspaceType === 'DIRECTION'
+                        ? 'rgba(56, 189, 248, 0.3)'
+                        : newWorkspaceType === 'GLOBAL'
+                        ? 'rgba(234, 179, 8, 0.3)'
+                        : 'rgba(100, 116, 139, 0.3)'
+                    }`,
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '8px 12px',
+                    fontSize: '0.74rem',
+                    color: '#e2e8f0',
+                    lineHeight: 1.45,
+                  }}
                 >
-                  <option value="">🛡️ Panel Individual Autónomo (Inicia 100% Vacío - Solo ve funcionarios que él cree)</option>
-                  {LISTA_DIRECCIONES.map((dir) => (
-                    <option key={dir} value={dir}>
-                      🏢 {dir}
-                    </option>
-                  ))}
-                </select>
-                <small style={{ color: 'var(--text-faint)', fontSize: '0.74rem', marginTop: '4px', display: 'block' }}>
-                  Si se deja en "Panel Individual Autónomo", el usuario dispondrá de un panel totalmente individual y vacío para su unidad respectiva sin mezclar datos con otras áreas.
-                </small>
+                  {newWorkspaceType === 'UNIT' && (
+                    <>
+                      🔒 <strong>Aislamiento Total por Unidad:</strong> Este usuario tendrá un espacio de trabajo estrictamente
+                      independiente. Cargará su propia nómina de funcionarios y ningún usuario de otra unidad o dirección podrá
+                      ver ni alterar sus listas.
+                    </>
+                  )}
+                  {newWorkspaceType === 'DIRECTION' && (
+                    <>
+                      🏛️ <strong>Consolidado de Dirección:</strong> Podrá ver y supervisar la nómina de funcionarios de todas
+                      las unidades que componen esta Dirección específica.
+                    </>
+                  )}
+                  {newWorkspaceType === 'AUTONOMOUS' && (
+                    <>
+                      🛡️ <strong>Espacio Autónomo Personal:</strong> Panel individual. Solo visualizará y administrará los
+                      funcionarios que registre directamente desde su sesión.
+                    </>
+                  )}
+                  {newWorkspaceType === 'GLOBAL' && (
+                    <>
+                      🌐 <strong>Supervisión Global Municipal:</strong> Tendrá visibilidad y acceso de control sobre todas las
+                      Direcciones y Unidades del Gobierno Autónomo Municipal de El Alto.
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Selector de Roles */}

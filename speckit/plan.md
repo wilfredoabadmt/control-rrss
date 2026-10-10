@@ -192,13 +192,28 @@ graph TB
 
 ---
 
+### 2.3 Arquitectura de Espacios de Trabajo (Workspaces & Tenancy Scoping)
+
+Para resolver la descentralización institucional del GAMEA y soportar cargas masivas de nóminas sin colisiones ni fuga de información entre áreas, se implementa partición por **Espacios de Trabajo**:
+- **Nivel GLOBAL:** Acceso consolidado municipal (exclusivo para `SUPER_ADMIN` y `AUDITOR`).
+- **Nivel DIRECTION:** Confinamiento a una Dirección/Secretaría superior y supervisión de todas sus unidades dependientes.
+- **Nivel UNIT:** Confinamiento estricto a una Unidad Organizacional Específica. Todo funcionario, archivo de nómina y reporte queda aislado en su respectiva unidad.
+- **Nivel AUTONOMOUS:** Panel individual aislado para trabajo personal o proyectos no asignados a un área formal.
+
+Aislamiento en capa de persistencia:
+- `users`: incorpora `workspace_type` (`GLOBAL`, `DIRECTION`, `UNIT`, `AUTONOMOUS`), `assigned_direction` y `assigned_unit`.
+- `employees`: filtrado obligatorio en backend por pertenencia organizacional o creador según el `workspace_type` del usuario autenticado.
+- `EmployeePayrollImporter`: acotado a la búsqueda y actualización idempotente exclusivamente dentro del alcance del usuario ejecutor, prefijando identificadores autogenerados con slug del espacio de trabajo.
+
+---
+
 ## 3. Modelo de Datos Físico
 
 ### 3.1 Tablas (18 entidades)
 
 | Tabla | PK | Propósito |
 | :--- | :--- | :--- |
-| `users` | UUID | Usuarios del sistema |
+| `users` | UUID | Usuarios del sistema (con workspace_type, assigned_direction, assigned_unit) |
 | `roles` | UUID | Roles RBAC (7 roles constitucionales) |
 | `user_roles` | (user_id, role_id) | Asignación M:N |
 | `permissions` | UUID | Permisos granulares por rol |

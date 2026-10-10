@@ -323,7 +323,7 @@ async def get_employee(
 ):
     """Consulta la ficha completa de un funcionario."""
     emp = await EmployeeService.get_employee_by_id(db, employee_id)
-    if not emp:
+    if not emp or not EmployeeService.is_accessible_by_user(emp, current_user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionario no encontrado.")
 
     base_resp = _format_employee_response(emp, current_user)
@@ -347,7 +347,7 @@ async def get_employee_history(
     Retorna la línea temporal de transferencias y cambios organizacionales del funcionario (T-204).
     """
     emp = await EmployeeService.get_employee_by_id(db, employee_id)
-    if not emp:
+    if not emp or not EmployeeService.is_accessible_by_user(emp, current_user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionario no encontrado.")
     return [EmployeeHistoryResponse.model_validate(h) for h in emp.history]
 

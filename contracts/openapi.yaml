@@ -5911,6 +5911,22 @@ components:
           - type: 'null'
           title: Assigned Direction
           description: Dirección o dependencia asignada para panel individual
+        assigned_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assigned Unit
+          description: Unidad organizacional asignada para aislamiento estricto
+        workspace_type:
+          type: string
+          enum:
+          - GLOBAL
+          - DIRECTION
+          - UNIT
+          - AUTONOMOUS
+          title: Workspace Type
+          description: Nivel de aislamiento del espacio de trabajo
+          default: UNIT
         password:
           type: string
           minLength: 12
@@ -5954,6 +5970,16 @@ components:
           - type: 'null'
           title: Assigned Direction
           description: Dirección o dependencia asignada para panel individual
+        assigned_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assigned Unit
+          description: Unidad organizacional asignada para aislamiento estricto
+        workspace_type:
+          type: string
+          title: Workspace Type
+          default: UNIT
         id:
           type: string
           format: uuid
@@ -6029,6 +6055,16 @@ components:
           - type: string
           - type: 'null'
           title: Assigned Direction
+        assigned_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assigned Unit
+        workspace_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Workspace Type
         password:
           anyOf:
           - type: string

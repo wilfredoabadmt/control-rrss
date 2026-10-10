@@ -6,7 +6,9 @@ export interface UserAdminItem {
   email: string;
   full_name: string;
   is_active: boolean;
+  workspace_type?: 'GLOBAL' | 'DIRECTION' | 'UNIT' | 'AUTONOMOUS';
   assigned_direction?: string | null;
+  assigned_unit?: string | null;
   roles: Array<{ id: string; name: string; description?: string }>;
   failed_login_attempts: number;
   locked_until?: string;
@@ -27,7 +29,9 @@ export const createUserApi = async (data: {
   email: string;
   full_name: string;
   password: string;
+  workspace_type?: 'GLOBAL' | 'DIRECTION' | 'UNIT' | 'AUTONOMOUS';
   assigned_direction?: string | null;
+  assigned_unit?: string | null;
   role_names: string[];
 }): Promise<UserAdminItem> => {
   const res = await apiClient.post('/users/', data);
@@ -40,7 +44,9 @@ export const updateUserApi = async (
     full_name?: string;
     email?: string;
     is_active?: boolean;
+    workspace_type?: 'GLOBAL' | 'DIRECTION' | 'UNIT' | 'AUTONOMOUS';
     assigned_direction?: string | null;
+    assigned_unit?: string | null;
     password?: string;
     role_names?: string[];
   }

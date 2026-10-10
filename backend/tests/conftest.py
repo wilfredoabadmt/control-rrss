@@ -4,6 +4,15 @@ Configuración Global de Pytest y Fixtures Compartidos — GAMEA Social Monitor
 
 import pytest_asyncio
 from database import Base
+import core.audit.models  # noqa: F401
+import modules.iam.models  # noqa: F401
+import modules.employees.models  # noqa: F401
+import modules.social_accounts.models  # noqa: F401
+import modules.publications.models  # noqa: F401
+import modules.interactions.models  # noqa: F401
+import modules.verification.models  # noqa: F401
+import modules.reporting.models  # noqa: F401
+import modules.monitoring.models  # noqa: F401
 from modules.social_accounts.seed import seed_social_platforms
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 

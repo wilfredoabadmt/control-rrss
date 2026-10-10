@@ -74,13 +74,17 @@ export enum SocialPlatformType {
   TIKTOK = 'TIKTOK',
 }
 
+export type WorkspaceType = 'GLOBAL' | 'DIRECTION' | 'UNIT' | 'AUTONOMOUS';
+
 export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
   roles: UserRole[];
   is_active: boolean;
+  workspace_type?: WorkspaceType;
   assigned_direction?: string | null;
+  assigned_unit?: string | null;
   last_login_at?: string;
 }
 

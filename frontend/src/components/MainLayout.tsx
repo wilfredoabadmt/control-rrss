@@ -18,6 +18,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     reports: 'Generación & Custodia de Reportes Oficiales',
     audit: 'Pistas de Auditoría Inmutable (Principio X)',
     admin: 'Administración del Sistema & Conectores',
+    matrix: 'Matriz General de Actividad & Cumplimiento',
   };
 
   return (

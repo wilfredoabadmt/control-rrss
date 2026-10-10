@@ -19,7 +19,7 @@ from core.logging_config import (
     setup_logging,
 )
 from database import AsyncSessionLocal
-from fastapi import FastAPI, Request, Response, status
+from fastapi import Depends, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -96,6 +96,12 @@ async def lifespan(app: FastAPI):
                 is_pg = "postgresql" in async_engine.dialect.name
                 if is_pg:
                     await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_direction VARCHAR(200);"))
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_unit VARCHAR(200);"))
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS workspace_type VARCHAR(30) DEFAULT 'UNIT';"))
+                    await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE workspace_type IS NULL AND id IN (SELECT ur.user_id FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE r.name = 'SUPER_ADMIN');"))
+                    await conn.execute(text("UPDATE users SET workspace_type = 'DIRECTION' WHERE workspace_type IS NULL AND assigned_direction IS NOT NULL AND assigned_unit IS NULL;"))
+                    await conn.execute(text("UPDATE users SET workspace_type = 'UNIT' WHERE workspace_type IS NULL AND assigned_unit IS NOT NULL;"))
+                    await conn.execute(text("UPDATE users SET workspace_type = 'AUTONOMOUS' WHERE workspace_type IS NULL AND assigned_direction IS NULL;"))
                     await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS created_by_user_id UUID;"))
                     await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS direction_name VARCHAR(200);"))
                     await conn.execute(text("UPDATE organizational_units SET name = 'Despacho Alcalde' WHERE lower(name) = 'despacho alcaldesa';"))
@@ -112,6 +118,8 @@ async def lifespan(app: FastAPI):
                 else:
                     for _sql_col in (
                         "ALTER TABLE users ADD COLUMN assigned_direction VARCHAR(200)",
+                        "ALTER TABLE users ADD COLUMN assigned_unit VARCHAR(200)",
+                        "ALTER TABLE users ADD COLUMN workspace_type VARCHAR(30) DEFAULT 'UNIT'",
                         "ALTER TABLE employees ADD COLUMN created_by_user_id UUID",
                         "ALTER TABLE employees ADD COLUMN direction_name VARCHAR(200)",
                         "ALTER TABLE publications ADD COLUMN meta_reactions_total INTEGER NOT NULL DEFAULT 0",
@@ -414,7 +422,7 @@ from modules.notifications.router import router as notifications_router
 app.include_router(notifications_router, prefix=settings.API_V1_STR)
 
 @app.get("/api/v1/clean-audits")
-async def clean_audits_direct(db=Depends()):
+async def clean_audits_direct():
     from sqlalchemy.ext.asyncio import AsyncSession
     from database import get_async_db
     # We resolve the generator manually to avoid definition-time NameError

@@ -16,10 +16,11 @@ from core.security.encryption import decrypt_field, encrypt_field, hash_blind_in
 from modules.employees.models import Employee, EmployeeHistory, OrganizationalUnit, Position
 from modules.employees.schemas import EmployeeImportReport
 from modules.iam.models import User
-from modules.shared.enums import AuditAction, BindingStatus, EmployeeStatus
+from modules.shared.enums import AuditAction, BindingStatus, EmployeeStatus, UserRole
 from modules.social_accounts.models import SocialAccount, SocialPlatform
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 
 class EmployeePayrollImporter:
@@ -226,6 +227,23 @@ class EmployeePayrollImporter:
                 correlation_id=correlation_id,
             )
 
+        # Determinar alcance y prefijo de aislamiento de Espacio de Trabajo (REQ-EMP-005, BR-EMP-012, BR-EMP-013)
+        user_roles = {r.name for r in current_user.roles} if current_user else set()
+        ws_type = getattr(current_user, "workspace_type", "UNIT") or "UNIT" if current_user else "GLOBAL"
+        is_superadmin = (
+            UserRole.SUPER_ADMIN.value in user_roles or UserRole.AUDITOR.value in user_roles
+        ) and (ws_type == "GLOBAL" or (not getattr(current_user, "assigned_direction", None) and not getattr(current_user, "assigned_unit", None)))
+        user_unit = getattr(current_user, "assigned_unit", None) if current_user else None
+        user_dir = getattr(current_user, "assigned_direction", None) if current_user else None
+
+        unit_slug = ""
+        if user_unit:
+            unit_slug = re.sub(r"[^A-Za-z0-9]", "", user_unit)[:6].upper()
+        elif user_dir:
+            unit_slug = re.sub(r"[^A-Za-z0-9]", "", user_dir)[:6].upper()
+        elif current_user:
+            unit_slug = str(current_user.id)[:6].upper()
+
         if "document_number" not in df.columns:
             df["document_number"] = ""
         if "employee_id" not in df.columns:
@@ -233,25 +251,26 @@ class EmployeePayrollImporter:
         if "last_name" not in df.columns:
             df["last_name"] = ""
 
+        prefix_tag = f"-{unit_slug}" if unit_slug else ""
         for i in range(len(df)):
             first_name = str(df.at[i, "first_name"]).strip()
             last_name = str(df.at[i, "last_name"]).strip()
-            name_seed = f"{first_name.lower()}_{last_name.lower()}".strip("_") or f"row_{i+1}"
+            name_seed = f"{unit_slug}_{first_name.lower()}_{last_name.lower()}".strip("_") or f"row_{i+1}"
             name_hash = hashlib.sha256(name_seed.encode("utf-8")).hexdigest()[:8].upper()
 
             # document_number
             doc_val = str(df.at[i, "document_number"]).strip()
             if not doc_val:
-                doc_val = f"AUTO-{name_hash}"
+                doc_val = f"AUTO{prefix_tag}-{name_hash}"
                 df.at[i, "document_number"] = doc_val
 
             # employee_id
             emp_val = str(df.at[i, "employee_id"]).strip()
             if not emp_val:
-                if doc_val and not doc_val.startswith("AUTO-"):
+                if doc_val and not doc_val.startswith("AUTO"):
                     df.at[i, "employee_id"] = f"EMP-{doc_val}"
                 else:
-                    df.at[i, "employee_id"] = f"EMP-{name_hash}"
+                    df.at[i, "employee_id"] = f"EMP{prefix_tag}-{name_hash}"
             else:
                 df.at[i, "employee_id"] = emp_val
 
@@ -381,29 +400,94 @@ class EmployeePayrollImporter:
 
             # Buscar funcionario existente por:
             # 1. employee_id exacto
-            stmt_emp = select(Employee).where(Employee.employee_id == emp_id)
+            stmt_emp = (
+                select(Employee)
+                .where(Employee.employee_id == emp_id)
+                .options(selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent))
+            )
             existing_emp = (await db.execute(stmt_emp)).scalar_one_or_none()
 
             # 2. Si no se encontró por employee_id y tenemos un documento real (no AUTO):
-            if not existing_emp and doc_num and not doc_num.startswith("AUTO-"):
+            if not existing_emp and doc_num and not doc_num.startswith("AUTO"):
                 doc_hash = hash_blind_index(doc_num)
-                stmt_doc = select(Employee).where(Employee.document_hash == doc_hash)
+                stmt_doc = (
+                    select(Employee)
+                    .where(Employee.document_hash == doc_hash)
+                    .options(selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent))
+                )
                 existing_emp = (await db.execute(stmt_doc)).scalar_one_or_none()
 
-            # 3. Si sigue sin encontrarse, buscar por coincidencia de nombre
+            # Protección de aislamiento (REQ-EMP-005, BR-EMP-012):
+            # Si se encontró un registro pero pertenece a OTRO espacio de trabajo, NO sobreescribirlo ni trasladarlo
+            from modules.employees.service import EmployeeService
+            if existing_emp and not is_superadmin and not EmployeeService.is_accessible_by_user(existing_emp, current_user):
+                existing_emp = None
+                # Evitar colisión de PK en este lote
+                emp_id = f"{emp_id}-{unit_slug}" if unit_slug and not emp_id.endswith(unit_slug) else f"{emp_id}-R{row_num}"
+
+            # 3. Si sigue sin encontrarse, buscar por coincidencia de nombre (confinado al workspace del usuario)
             if not existing_emp and first_name:
+                stmt_name = (
+                    select(Employee)
+                    .options(selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent))
+                )
                 if last_name:
-                    stmt_name = select(Employee).where(
+                    stmt_name = stmt_name.where(
                         func.lower(Employee.first_name) == first_name.lower(),
                         func.lower(Employee.last_name) == last_name.lower(),
                     )
                 else:
-                    stmt_name = select(Employee).where(
+                    stmt_name = stmt_name.where(
                         func.lower(Employee.first_name) == first_name.lower(),
                     )
+
+                if not is_superadmin and current_user:
+                    if user_unit:
+                        stmt_name = stmt_name.where(
+                            or_(
+                                Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == user_unit.strip().lower()),
+                                Employee.created_by_user_id == current_user.id,
+                            )
+                        )
+                    elif user_dir:
+                        dir_norm_clean = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip()).lower()
+                        stmt_name = stmt_name.where(
+                            or_(
+                                func.lower(Employee.direction_name) == dir_norm_clean,
+                                Employee.created_by_user_id == current_user.id,
+                            )
+                        )
+                    else:
+                        stmt_name = stmt_name.where(Employee.created_by_user_id == current_user.id)
+
                 existing_emp = (await db.execute(stmt_name)).scalars().first()
 
             dir_for_emp = parent_unit.name if parent_unit else (raw_parent_unit.title() if raw_parent_unit else None)
+            if not is_superadmin and current_user:
+                if user_dir and not dir_for_emp:
+                    dir_for_emp = user_dir
+                if user_unit and not target_unit:
+                    target_unit = (
+                        units_by_name.get(user_unit)
+                        or units_by_name.get(user_unit.upper())
+                        or units_by_name.get(user_unit.lower())
+                        or units_by_code.get(user_unit.upper())
+                    )
+                    if not target_unit:
+                        code_cand = re.sub(r"[^A-Za-z0-9]", "", user_unit)[:8].upper() or "UND"
+                        unit_code = f"OU-{code_cand}-{uuid.uuid4().hex[:6].upper()}"
+                        target_unit = OrganizationalUnit(
+                            name=user_unit.strip(),
+                            code=unit_code,
+                            parent_id=parent_unit.id if parent_unit else None,
+                            status="ACTIVE",
+                        )
+                        db.add(target_unit)
+                        await db.flush()
+                        units_by_name[user_unit] = target_unit
+                        units_by_name[user_unit.upper()] = target_unit
+                        units_by_name[user_unit.lower()] = target_unit
+                        units_by_code[unit_code.upper()] = target_unit
 
             if not existing_emp:
                 # ALTA: Nuevo funcionario

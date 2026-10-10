@@ -237,7 +237,7 @@ async def verify_employee_activity_bulk(
     return await MonitoringHubService.verify_employee_activity_bulk(db, req, current_user)
 
 @monitoring_router.delete("/audits/clean-manual")
-async def clean_manual_audits(db: AsyncSession = Depends(get_db)):
+async def clean_manual_audits(db: AsyncSession = Depends(get_async_db)):
     from modules.monitoring.models import Interaction, Verification
     from sqlalchemy import delete
     await db.execute(delete(Verification).where(Verification.verification_method == "MANUAL_OPERATOR"))
@@ -246,7 +246,7 @@ async def clean_manual_audits(db: AsyncSession = Depends(get_db)):
     return {"message": "Manual audits cleared"}
 
 @monitoring_router.get("/audits/clean-manual-get")
-async def clean_manual_audits_get(db: AsyncSession = Depends(get_db)):
+async def clean_manual_audits_get(db: AsyncSession = Depends(get_async_db)):
     from modules.monitoring.models import Interaction, Verification
     from sqlalchemy import delete
     await db.execute(delete(Verification).where(Verification.verification_method == "MANUAL_OPERATOR"))

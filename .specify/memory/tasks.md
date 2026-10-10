@@ -383,6 +383,20 @@
 - **Entregable:** Matriz formal en `docs/constitution-check.md` con 100% de cumplimiento (40/40 principios en PASS con evidencia y trazabilidad).
 - **Estado:** ✅ Completado. Certificación constitucional final aprobada.
 
+---
+
+## Fase 10 — Espacios de Trabajo y Multi-Tenancy (Direcciones y Unidades) [COMPLETADA]
+
+### [x] T-1000: Aislamiento por Espacios de Trabajo (Workspaces Multi-Tenancy para Direcciones y Unidades)
+- **Reqs:** `REQ-IAM-005`, `REQ-EMP-005`, `BR-IAM-014`, `BR-IAM-015`, `BR-EMP-012`, `BR-EMP-013`, `BR-EMP-014`
+- **Entregable:**
+  - Migración idempotente de esquema: `users.workspace_type`, `users.assigned_unit`.
+  - Esquemas Pydantic (`UserBase`, `UserCreate`, `UserUpdate`, `UserResponse`) y servicios de IAM (`IAMService`).
+  - Scoping estricto en directorio y motor de importación (`EmployeeService`, `EmployeePayrollImporter`) para evitar colisiones de homónimos y sobreescrituras de datos entre unidades.
+  - UI de Administración (`AdminPage.tsx`) con selector jerárquico en cascada oficial (Nivel de Espacio ➔ Dirección ➔ Unidad) y visualización de badges de alcance.
+  - Reflejo de espacio de trabajo activo y bloqueo de filtros en `EmployeesPage.tsx`.
+  - Pruebas automatizadas de aislamiento de workspace (`tests/test_workspace_isolation.py`).
+- **Estado:** ✅ Completado. Aislamiento estricto multi-tenant por unidad y dirección verificado con pruebas unitarias y de integración (86/86 pruebas en PASS).
 
 ---
 
@@ -400,5 +414,6 @@
 | **7** | Frontend Completo | T-700 a T-707 | UI para todos los módulos |
 | **8** | Notificaciones y Seguridad | T-800 a T-804 | REQ-NOT-*, Seguridad OWASP |
 | **9** | Despliegue y Documentación | T-900 a T-905 | ADRs, backups, quickstart, OpenAPI |
+| **10** | Espacios de Trabajo Multi-Tenancy | T-1000 | REQ-IAM-005, REQ-EMP-005 |
 
-**Total: 10 fases, 53 tareas, cubriendo los 42 requerimientos y 79 reglas de negocio del spec.md.**
+**Total: 11 fases, 54 tareas, cubriendo los 44 requerimientos y 82 reglas de negocio del spec.md.**

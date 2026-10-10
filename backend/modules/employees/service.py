@@ -340,6 +340,12 @@ class EmployeeService:
         norm_dir = None
         if emp_in.parent_unit_name and emp_in.parent_unit_name.strip():
             norm_dir = re.sub(r'(?i)alcaldesa', 'Alcalde', emp_in.parent_unit_name.strip())
+        elif current_user and getattr(current_user, "assigned_direction", None):
+            norm_dir = re.sub(r'(?i)alcaldesa', 'Alcalde', current_user.assigned_direction.strip())
+
+        if not ou_id and current_user and getattr(current_user, "assigned_unit", None):
+            ou = await EmployeeService._resolve_or_create_unit(db, current_user.assigned_unit, norm_dir)
+            ou_id = ou.id
 
         emp = Employee(
             employee_id=emp_id,
@@ -385,6 +391,44 @@ class EmployeeService:
         return loaded or emp
 
     @staticmethod
+    def is_accessible_by_user(emp: Employee, current_user: User | None) -> bool:
+        """Verifica si un funcionario pertenece al espacio de trabajo accesible por el usuario (REQ-EMP-005)."""
+        if not current_user:
+            return True
+        user_roles = {r.name for r in current_user.roles}
+        ws_type = getattr(current_user, "workspace_type", "UNIT") or "UNIT"
+        is_superadmin = (
+            UserRole.SUPER_ADMIN.value in user_roles or UserRole.AUDITOR.value in user_roles
+        ) and (ws_type == "GLOBAL" or (not getattr(current_user, "assigned_direction", None) and not getattr(current_user, "assigned_unit", None)))
+
+        if is_superadmin:
+            return True
+
+        if emp.created_by_user_id == current_user.id:
+            return True
+
+        user_unit = getattr(current_user, "assigned_unit", None)
+        user_dir = getattr(current_user, "assigned_direction", None)
+
+        if user_unit:
+            u_clean = user_unit.strip().lower()
+            if emp.organizational_unit and (emp.organizational_unit.name or "").strip().lower() == u_clean:
+                return True
+            return False
+
+        if user_dir:
+            dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip()).lower()
+            emp_dir = (emp.direction_name or "").lower()
+            parent_dir = ""
+            if emp.organizational_unit and emp.organizational_unit.parent:
+                parent_dir = (emp.organizational_unit.parent.name or "").lower()
+            if emp_dir == dir_norm or parent_dir == dir_norm:
+                return True
+            return False
+
+        return emp.created_by_user_id == current_user.id
+
+    @staticmethod
     async def update_employee(
         db: AsyncSession,
         employee_id: str,
@@ -396,6 +440,9 @@ class EmployeeService:
         emp = await EmployeeService.get_employee_by_id(db, employee_id)
         if not emp:
             raise EntityNotFoundException("Employee", employee_id)
+
+        if current_user and not EmployeeService.is_accessible_by_user(emp, current_user):
+            raise ValidationException("No cuenta con permisos para modificar funcionarios fuera de su espacio de trabajo.")
 
         cid = correlation_id or get_correlation_id()
 
@@ -501,6 +548,9 @@ class EmployeeService:
         if not emp:
             raise EntityNotFoundException("Employee", employee_id)
 
+        if current_user and not EmployeeService.is_accessible_by_user(emp, current_user):
+            raise ValidationException("No cuenta con permisos para eliminar funcionarios fuera de su espacio de trabajo.")
+
         cid = get_correlation_id()
         if permanent:
             stmt_acc = select(SocialAccount).where(SocialAccount.employee_id == employee_id)
@@ -549,11 +599,6 @@ class EmployeeService:
             }
 
         cid = get_correlation_id()
-        user_roles = {r.name for r in current_user.roles}
-        is_superadmin = (
-            UserRole.SUPER_ADMIN.value in user_roles or UserRole.COMMUNICATIONS_LEAD.value in user_roles
-        ) and not getattr(current_user, "assigned_direction", None)
-
         stmt = (
             select(Employee)
             .where(Employee.employee_id.in_(clean_ids))
@@ -565,21 +610,9 @@ class EmployeeService:
         found_employees = list((await db.execute(stmt)).scalars().all())
 
         allowed_employees: list[Employee] = []
-        user_dir = getattr(current_user, "assigned_direction", None)
         for emp in found_employees:
-            if is_superadmin:
+            if EmployeeService.is_accessible_by_user(emp, current_user):
                 allowed_employees.append(emp)
-            elif user_dir:
-                dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip()).lower()
-                emp_dir = (emp.direction_name or "").lower()
-                parent_dir = ""
-                if emp.organizational_unit and emp.organizational_unit.parent:
-                    parent_dir = (emp.organizational_unit.parent.name or "").lower()
-                if emp_dir == dir_norm or parent_dir == dir_norm or emp.created_by_user_id == current_user.id:
-                    allowed_employees.append(emp)
-            else:
-                if emp.created_by_user_id == current_user.id:
-                    allowed_employees.append(emp)
 
         if not allowed_employees:
             return {
@@ -741,16 +774,26 @@ class EmployeeService:
         query = select(Employee)
         count_query = select(func.count()).select_from(Employee)
 
-        # Aislamiento individual y multi-área por usuario / dirección
+        # Aislamiento por espacio de trabajo (Workspaces & Tenancy Scoping - REQ-IAM-005, REQ-EMP-005)
         if current_user:
             user_roles = {r.name for r in current_user.roles}
+            ws_type = getattr(current_user, "workspace_type", "UNIT") or "UNIT"
             is_superadmin = (
-                UserRole.SUPER_ADMIN.value in user_roles or UserRole.COMMUNICATIONS_LEAD.value in user_roles
-            ) and not getattr(current_user, "assigned_direction", None)
+                UserRole.SUPER_ADMIN.value in user_roles or UserRole.AUDITOR.value in user_roles
+            ) and (ws_type == "GLOBAL" or (not getattr(current_user, "assigned_direction", None) and not getattr(current_user, "assigned_unit", None)))
 
             if not is_superadmin:
+                user_unit = getattr(current_user, "assigned_unit", None)
                 user_dir = getattr(current_user, "assigned_direction", None)
-                if user_dir:
+                if user_unit:
+                    u_norm = user_unit.strip().lower()
+                    unit_filter = or_(
+                        Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == u_norm),
+                        Employee.created_by_user_id == current_user.id,
+                    )
+                    query = query.where(unit_filter)
+                    count_query = count_query.where(unit_filter)
+                elif user_dir:
                     dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip())
                     dir_filter = or_(
                         func.lower(Employee.direction_name) == dir_norm.lower(),

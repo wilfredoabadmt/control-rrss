@@ -189,6 +189,20 @@ El sistema implementará **tres niveles de verificación** derivados de las rest
   * BR-IAM-012: El `SUPER_ADMIN` MUST poder revocar sesiones activas de cualquier usuario.
   * BR-IAM-013: Al cambiar la contraseña, todas las sesiones previas del usuario MUST invalidarse.
 
+### REQ-IAM-005 — Espacios de Trabajo Institucionales (Workspaces / Tenancy Scoping)
+* **Descripción:** El sistema MUST implementar el aislamiento de usuarios y datos mediante Espacios de Trabajo independientes (*Workspaces*) para descentralizar la carga de nóminas por Direcciones, Secretarías y Unidades Organizacionales del GAMEA sin fuga de información cruzada.
+* **Tipología de Espacios (`workspace_type`):**
+  * `GLOBAL`: Acceso municipal integral irrestricto (exclusivo para `SUPER_ADMIN` y `AUDITOR`).
+  * `DIRECTION`: Alcance a nivel de Dirección o Secretaría superior (supervisa y consolida todas sus unidades dependientes).
+  * `UNIT`: Alcance confinado exclusivamente a una **Unidad Organizacional Específica** (aislamiento 100% independiente; sin visibilidad ni acceso a funcionarios de otras unidades).
+  * `AUTONOMOUS`: Panel individual autónomo (acceso exclusivo a funcionarios y registros creados por el propio usuario).
+* **Reglas de Negocio:**
+  * BR-IAM-014 (Jerarquía de Espacios): Todo usuario institucional MUST poseer un `workspace_type` explícito (`GLOBAL`, `DIRECTION`, `UNIT`, `AUTONOMOUS`). Si el tipo es `DIRECTION`, `assigned_direction` es obligatorio; si el tipo es `UNIT`, tanto `assigned_direction` como `assigned_unit` son obligatorios.
+  * BR-IAM-015 (Confinamiento de Alcance): La capa de backend MUST interceptar y filtrar automáticamente todas las consultas de funcionarios, interacciones, matrices de auditoría y reportes según el espacio de trabajo del usuario autenticado. Ocultar opciones en la interfaz visual MUST NOT considerarse control de acceso (Principio XVII).
+* **Criterios de Aceptación:**
+  * **Given** un usuario institucional configurado con alcance `UNIT` en la "Unidad de Prensa", **When** consulta la nómina o intenta acceder a la ficha de un funcionario, **Then** el sistema restringe los resultados únicamente a la "Unidad de Prensa" y rechaza el acceso a funcionarios ajenos con código HTTP 403 o 404.
+  * **Given** un Super Administrador en la gestión de usuarios, **When** registra un nuevo usuario, **Then** dispone de un selector jerárquico en cascada oficial (Nivel de Espacio ➔ Dirección ➔ Unidad) alimentado por el organigrama oficial del GAMEA.
+
 ---
 
 ## Módulo 2 — Employee Directory & Organization
@@ -258,6 +272,16 @@ El sistema implementará **tres niveles de verificación** derivados de las rest
 * **Descripción:** El sistema MUST mantener un historial inmutable de todos los cambios organizacionales de un funcionario (transferencias, promociones, bajas).
 * **Reglas de Negocio:**
   * BR-EMP-011: Cada cambio de `organizational_unit_id`, `position_id` o `status` MUST registrarse como una entrada histórica con `effective_date`, `previous_value` y `new_value`.
+
+### REQ-EMP-005 — Aislamiento y Partición de Nóminas por Espacio de Trabajo
+* **Descripción:** El directorio de funcionarios y el motor de importación masiva (`EmployeePayrollImporter`) MUST garantizar la estricta partición de datos para evitar colisiones de nombres, duplicidades accidentales o fuga de información entre áreas.
+* **Reglas de Negocio:**
+  * BR-EMP-012 (Scoping en Importación de Nóminas): Durante la carga de archivos Excel/CSV, la detección de funcionarios existentes para actualización e idempotencia MUST limitarse exclusivamente a los funcionarios del espacio de trabajo del usuario ejecutor (`assigned_direction` y `assigned_unit`). MUST NOT actualizar, transferir ni alterar funcionarios pertenecientes a otros espacios de trabajo.
+  * BR-EMP-013 (Prevención de Colisiones de Identificador): Cuando un archivo de nómina no contenga `employee_id` institucional explícito y deba autogenerarse mediante hash de nombre o CI, el generador MUST incorporar una semilla o prefijo derivado del espacio de trabajo (ej. `EMP-{unit_slug}-{hash}`), garantizando unicidad y evitando colisiones entre homónimos de diferentes unidades.
+  * BR-EMP-014 (Restricción de Modificación y Baja): Ningún usuario con rol de gestión de personal podrá editar (`PATCH`) ni dar de baja/eliminar (`DELETE`) funcionarios fuera de su espacio de trabajo asignado. La capa de backend retornará error HTTP 403 o 404 ante solicitudes que violen este límite.
+* **Criterios de Aceptación:**
+  * **Given** dos archivos de nómina provenientes de unidades distintas ("Unidad de Tráfico" y "Unidad de Catastro") que contienen un funcionario con el mismo nombre "Juan Carlos Quispe", **When** ambos responsables importan sus archivos, **Then** el sistema registra dos funcionarios independientes con identificadores y pertenencias organizacionales separadas, sin sobreescrituras ni interferencias.
+  * **Given** un operador de una unidad, **When** intenta enviar una petición de actualización o eliminación sobre un funcionario de otra dependencia, **Then** el backend deniega la acción protegiendo la integridad del padrón.
 
 ---
 
