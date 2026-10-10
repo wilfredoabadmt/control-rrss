@@ -151,11 +151,12 @@ class EmployeePayrollImporter:
                 for enc in ("utf-8-sig", "utf-8", "latin-1", "cp1252", "iso-8859-1"):
                     try:
                         text = file_content.decode(enc)
-                        # Descubrir separador
+                        # Descubrir separador basado en la primera línea
                         sep = ','
-                        if ';' in text and text.count(';') > text.count(','):
+                        first_line = text.splitlines()[0].lower() if text.splitlines() else ""
+                        if ';' in first_line and ('nombres;' in first_line or ';apellidos' in first_line or first_line.count(';') >= 3):
                             sep = ';'
-                        elif '\t' in text and text.count('\t') > text.count(','):
+                        elif '\t' in first_line and ('nombres\t' in first_line or '\tapellidos' in first_line or first_line.count('\t') >= 3):
                             sep = '\t'
                             
                         lines = text.splitlines()
