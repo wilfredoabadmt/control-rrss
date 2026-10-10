@@ -117,7 +117,7 @@ export const getOrgUnitsTreeApi = async (): Promise<OrgUnitNode[]> => {
   return res.data;
 };
 
-export const RAW_CSV_TEMPLATE = '\uFEFFnombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok\n';
+export const RAW_CSV_TEMPLATE = '\uFEFFnombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok\n , , , , , \n';
 
 export const triggerBlobDownload = (
   blobData: BlobPart,

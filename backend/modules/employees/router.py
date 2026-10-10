@@ -338,7 +338,7 @@ async def download_import_template(
         )
 
     from fastapi.responses import PlainTextResponse
-    csv_content = "\ufeffnombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok\n"
+    csv_content = "\ufeffnombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok\n , , , , , \n"
     return PlainTextResponse(
         content=csv_content,
         media_type="text/csv; charset=utf-8",
