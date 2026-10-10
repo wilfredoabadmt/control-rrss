@@ -352,8 +352,18 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
   const handleDownloadTemplate = async (format: 'xlsx' | 'csv' = 'xlsx') => {
     try {
       await downloadImportTemplateApi(format);
-    } catch (e) {
+      setFeedback({
+        type: 'info',
+        text: format === 'xlsx'
+          ? 'Plantilla Excel (.xlsx) descargada. Ábrela directamente con doble clic o desde Archivo > Abrir en Excel.'
+          : 'Plantilla CSV descargada.',
+      });
+    } catch (e: any) {
       console.error(e);
+      setFeedback({
+        type: 'error',
+        text: 'Error al descargar la plantilla de importación.',
+      });
     }
   };
 
@@ -2599,16 +2609,19 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr>
-                        <td style={{ padding: '5px 8px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Juan Carlos</td>
-                        <td style={{ padding: '5px 8px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Mamani Quispe</td>
-                        <td style={{ padding: '5px 8px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Unidad de Prensa</td>
-                        <td style={{ padding: '5px 8px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Dirección de Comunicación</td>
-                        <td style={{ padding: '5px 8px', color: '#60a5fa', fontFamily: 'monospace' }}>facebook.com/jc</td>
-                        <td style={{ padding: '5px 8px', color: '#f472b6', fontFamily: 'monospace' }}>@jcmamani</td>
+                      <tr style={{ opacity: 0.65 }}>
+                        <td colSpan={6} style={{ padding: '8px', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.72rem' }}>
+                          (Plantilla limpia sin filas de ejemplo: comience a registrar los funcionarios a partir de la fila 2)
+                        </td>
                       </tr>
                     </tbody>
                   </table>
+                </div>
+                <div style={{ marginTop: '9px', fontSize: '0.73rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Info size={13} style={{ color: '#06b6d4', flexShrink: 0 }} />
+                  <span>
+                    <strong>Cómo abrir en Excel:</strong> Haz doble clic directo en el archivo <code>.xlsx</code> o ve a <em>Archivo &gt; Abrir</em>. No uses <em>Datos &gt; De texto/CSV</em>.
+                  </span>
                 </div>
               </div>
 
