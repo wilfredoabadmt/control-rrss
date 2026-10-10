@@ -258,3 +258,37 @@ async def test_employee_bulk_delete_permanent(async_db, mock_admin):
         emp = await EmployeeService.get_employee_by_id(async_db, eid)
         assert emp is None
 
+
+def test_import_template_xlsx_headers_and_empty_rows():
+    """Valida que la plantilla Excel tenga los encabezados en la Fila 1 y CERO filas de ejemplo."""
+    import io
+    import openpyxl
+    from pathlib import Path
+
+    xlsx_path = Path("extras/plantilla_funcionarios.xlsx")
+    assert xlsx_path.exists(), "La plantilla extras/plantilla_funcionarios.xlsx debe existir"
+
+    wb = openpyxl.load_workbook(xlsx_path)
+    sheet = wb.active
+    assert sheet is not None
+
+    expected_headers = ["nombres", "apellidos", "unidad", "direccion", "cuenta_facebook", "cuenta_tiktok"]
+    row1_values = [cell.value for cell in sheet[1]]
+
+    assert row1_values == expected_headers, f"Fila 1 debe tener {expected_headers}, se encontró {row1_values}"
+    assert sheet.max_row == 1, f"La plantilla no debe contener filas de ejemplo; max_row debe ser 1 pero es {sheet.max_row}"
+
+
+def test_import_template_csv_headers_and_empty_rows():
+    """Valida que la plantilla CSV tenga únicamente los encabezados en la primera línea sin datos de ejemplo."""
+    from pathlib import Path
+
+    csv_path = Path("extras/plantilla_funcionarios.csv")
+    assert csv_path.exists(), "La plantilla extras/plantilla_funcionarios.csv debe existir"
+
+    text = csv_path.read_text(encoding="utf-8-sig")
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+
+    assert len(lines) == 1, f"El archivo CSV debe tener exactamente 1 línea (los encabezados), pero tiene {len(lines)}"
+    assert lines[0] == "nombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok"
+

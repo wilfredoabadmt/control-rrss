@@ -349,9 +349,9 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
   };
 
   // Descarga de Plantilla
-  const handleDownloadTemplate = async () => {
+  const handleDownloadTemplate = async (format: 'xlsx' | 'csv' = 'xlsx') => {
     try {
-      await downloadImportTemplateApi();
+      await downloadImportTemplateApi(format);
     } catch (e) {
       console.error(e);
     }
@@ -736,9 +736,9 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
 
           {/* Botón: Descargar Plantilla Modelo */}
           <button
-            onClick={handleDownloadTemplate}
+            onClick={() => handleDownloadTemplate('xlsx')}
             className="btn-primary"
-            title="Descargar plantilla CSV oficial con el organigrama GAMEA"
+            title="Descargar plantilla oficial Excel (.xlsx) limpia y lista para llenar"
             style={{
               background: 'rgba(16, 185, 129, 0.15)',
               border: '1px solid #10b981',
@@ -752,8 +752,8 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
               borderRadius: 'var(--radius-md)',
             }}
           >
-            <Download size={16} />
-            <span>Modelo CSV</span>
+            <FileSpreadsheet size={16} />
+            <span>Plantilla Excel</span>
           </button>
 
           {/* Botón: Importar Nómina */}
@@ -2528,30 +2528,54 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                   marginBottom: '18px',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
                   <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#06b6d4' }}>
-                    📋 Modelo de Columnas para Importación
+                    📋 Encabezados oficiales (Fila 1 sin datos previos)
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleDownloadTemplate}
-                    style={{
-                      background: 'rgba(16, 185, 129, 0.15)',
-                      border: '1px solid rgba(16, 185, 129, 0.4)',
-                      color: '#34d399',
-                      padding: '5px 12px',
-                      borderRadius: 'var(--radius-sm)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: 'pointer',
-                      fontSize: '0.76rem',
-                      fontWeight: '700',
-                    }}
-                  >
-                    <Download size={13} />
-                    Descargar Plantilla CSV
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadTemplate('xlsx')}
+                      style={{
+                        background: 'rgba(16, 185, 129, 0.2)',
+                        border: '1px solid #10b981',
+                        color: '#34d399',
+                        padding: '6px 14px',
+                        borderRadius: 'var(--radius-sm)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.78rem',
+                        fontWeight: '700',
+                      }}
+                      title="Descargar plantilla Excel oficial (.xlsx) lista para llenar"
+                    >
+                      <FileSpreadsheet size={14} />
+                      Plantilla Excel (.xlsx)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadTemplate('csv')}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        color: 'var(--text-secondary)',
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-sm)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.78rem',
+                        fontWeight: '600',
+                      }}
+                      title="Descargar versión CSV delimitada por comas"
+                    >
+                      <Download size={14} />
+                      CSV
+                    </button>
+                  </div>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>

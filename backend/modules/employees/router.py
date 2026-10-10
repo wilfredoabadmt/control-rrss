@@ -263,32 +263,86 @@ async def create_employee(
 
 @employees_router.get("/import/template")
 async def download_import_template(
+    file_format: str = Query("xlsx", alias="format", description="Formato de plantilla: 'xlsx' o 'csv'"),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Descarga la plantilla CSV modelo para importar funcionarios con sus cuentas de redes sociales.
-    Columnas: nombres, apellidos, unidad, direccion, cuenta_facebook, cuenta_tiktok
+    Descarga la plantilla oficial (.xlsx o .csv) para importar nómina de funcionarios.
+    Fila 1: nombres, apellidos, unidad, direccion, cuenta_facebook, cuenta_tiktok.
+    Sin datos de ejemplo, limpia para llenado institucional.
     """
-    # Buscar el archivo de plantilla en ubicaciones relativas posibles (local y docker container)
+    is_csv = file_format.lower() == "csv"
+    ext = "csv" if is_csv else "xlsx"
+    target_filename = f"plantilla_funcionarios_gamea.{ext}"
+    media_type = "text/csv" if is_csv else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
     candidates = [
-        pathlib.Path(__file__).resolve().parents[3] / "extras" / "plantilla_funcionarios.csv",
-        pathlib.Path(__file__).resolve().parents[2] / "extras" / "plantilla_funcionarios.csv",
-        pathlib.Path("/app/extras/plantilla_funcionarios.csv"),
-        pathlib.Path("extras/plantilla_funcionarios.csv"),
+        pathlib.Path(__file__).resolve().parents[3] / "extras" / f"plantilla_funcionarios.{ext}",
+        pathlib.Path(__file__).resolve().parents[2] / "extras" / f"plantilla_funcionarios.{ext}",
+        pathlib.Path(f"/app/extras/plantilla_funcionarios.{ext}"),
+        pathlib.Path(f"extras/plantilla_funcionarios.{ext}"),
     ]
     template_path = next((p for p in candidates if p.is_file()), None)
 
-    if not template_path:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Plantilla de importación no encontrada en el servidor.",
+    if template_path:
+        return FileResponse(
+            path=str(template_path),
+            filename=target_filename,
+            media_type=media_type,
+            headers={"Content-Disposition": f"attachment; filename={target_filename}"},
         )
 
-    return FileResponse(
-        path=str(template_path),
-        filename="plantilla_funcionarios_gamea.csv",
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=plantilla_funcionarios_gamea.csv"},
+    # Si no existe en disco, generar al vuelo
+    if not is_csv:
+        import io
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from fastapi.responses import Response
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Funcionarios GAMEA"
+        headers = ["nombres", "apellidos", "unidad", "direccion", "cuenta_facebook", "cuenta_tiktok"]
+        ws.append(headers)
+        ws.row_dimensions[1].height = 28
+
+        header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin", color="334155"),
+            right=Side(style="thin", color="334155"),
+            top=Side(style="thin", color="334155"),
+            bottom=Side(style="thin", color="334155"),
+        )
+        col_widths = {"A": 22, "B": 24, "C": 36, "D": 36, "E": 30, "F": 22}
+
+        for col_idx, header in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = col_widths.get(col_letter, 20)
+
+        ws.auto_filter.ref = "A1:F1"
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return Response(
+            content=buf.getvalue(),
+            media_type=media_type,
+            headers={"Content-Disposition": f"attachment; filename={target_filename}"},
+        )
+
+    from fastapi.responses import PlainTextResponse
+    csv_content = "\ufeffnombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok\n"
+    return PlainTextResponse(
+        content=csv_content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={target_filename}"},
     )
 
 
