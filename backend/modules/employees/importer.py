@@ -154,7 +154,7 @@ class EmployeePayrollImporter:
                                 dtype=str,
                                 keep_default_na=False,
                             )
-                            if temp_df is not None and len(temp_df.columns) > 1 and len(temp_df) > 0:
+                            if temp_df is not None and len(temp_df.columns) > 0:
                                 decoded_df = temp_df
                                 break
                         except Exception:
@@ -165,7 +165,7 @@ class EmployeePayrollImporter:
                 if decoded_df is None:
                     for enc in ("utf-8-sig", "utf-8", "latin-1"):
                         try:
-                            decoded_df = pd.read_csv(
+                            temp_df = pd.read_csv(
                                 io.BytesIO(file_content),
                                 sep=None,
                                 engine="python",
@@ -173,13 +173,14 @@ class EmployeePayrollImporter:
                                 dtype=str,
                                 keep_default_na=False,
                             )
-                            if decoded_df is not None and len(decoded_df) > 0:
+                            if temp_df is not None and len(temp_df.columns) > 0:
+                                decoded_df = temp_df
                                 break
                         except Exception:
                             continue
 
                 if decoded_df is None:
-                    df = pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False)
+                    df = pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False, encoding="latin-1")
                 else:
                     df = decoded_df
             else:
@@ -196,6 +197,11 @@ class EmployeePayrollImporter:
             )
 
         df = cls._normalize_columns(df)
+        
+        # Eliminar filas completamente vacías o donde todos los valores sean strings vacíos
+        df.replace("", pd.NA, inplace=True)
+        df.dropna(how="all", inplace=True)
+        df.fillna("", inplace=True)
 
         # Si se recibió "full_name" sin first_name ni last_name separados
         if "full_name" in df.columns:
