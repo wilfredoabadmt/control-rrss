@@ -2560,6 +2560,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                       <Download size={14} />
                       Descargar Plantilla CSV
                     </button>
+                    <span style={{ fontSize: '0.6rem', color: '#64748b', alignSelf: 'flex-end' }}>v2</span>
                   </div>
                 </div>
                 <div style={{ overflowX: 'auto' }}>

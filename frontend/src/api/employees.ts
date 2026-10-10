@@ -141,7 +141,7 @@ export const downloadImportTemplateApi = async (format: 'csv' = 'csv'): Promise<
 
   try {
     const res = await apiClient.get('/employees/import/template', {
-      params: { format },
+      params: { format, t: new Date().getTime() },
       responseType: 'blob',
     });
     triggerBlobDownload(res.data, filename, mimeType);
