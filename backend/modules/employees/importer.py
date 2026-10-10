@@ -144,57 +144,41 @@ class EmployeePayrollImporter:
             is_actually_excel = file_content.startswith(b'PK\\x03\\x04')
             
             if filename.lower().endswith(".csv") and not is_actually_excel:
+                import csv
                 decoded_df = None
-                # Probar codificaciones típicas de Windows y Excel con distintos delimitadores
+                
+                # Intentar leer con csv de Python para soportar filas irregulares (jagged rows)
                 for enc in ("utf-8-sig", "utf-8", "latin-1", "cp1252", "iso-8859-1"):
-                    for sep in (None, ",", ";", "\t", "|"):
-                        try:
-                            temp_df = pd.read_csv(
-                                io.BytesIO(file_content),
-                                sep=sep,
-                                engine="python" if sep is None else "c",
-                                encoding=enc,
-                                dtype=str,
-                                keep_default_na=False,
-                            )
-                            if temp_df is not None and len(temp_df.columns) > 0:
-                                decoded_df = temp_df
-                                break
-                        except Exception:
-                            continue
-                    if decoded_df is not None:
-                        break
-
-                if decoded_df is None:
-                    for enc in ("utf-8-sig", "utf-8", "latin-1"):
-                        try:
-                            temp_df = pd.read_csv(
-                                io.BytesIO(file_content),
-                                sep=None,
-                                engine="python",
-                                encoding=enc,
-                                dtype=str,
-                                keep_default_na=False,
-                            )
-                            if temp_df is not None and len(temp_df.columns) > 0:
-                                decoded_df = temp_df
-                                break
-                        except Exception:
-                            continue
-
-                if decoded_df is None:
                     try:
-                        df = pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False, encoding="latin-1")
-                    except Exception as parse_err:
-                        # Friendly message for uneven rows
-                        err_str = str(parse_err)
-                        if "Expected" in err_str and "fields in line" in err_str:
-                            return EmployeeImportReport(
-                                total_records=0, created_count=0, updated_count=0, unchanged_count=0, deactivated_count=0,
-                                errors=["El archivo CSV está malformado. Algunas filas tienen más o menos columnas que los títulos. Asegúrate de guardarlo correctamente desde Excel."],
-                                correlation_id=correlation_id,
-                            )
-                        raise parse_err
+                        text = file_content.decode(enc)
+                        # Descubrir separador
+                        sep = ','
+                        if ';' in text and text.count(';') > text.count(','):
+                            sep = ';'
+                        elif '\t' in text and text.count('\t') > text.count(','):
+                            sep = '\t'
+                            
+                        lines = text.splitlines()
+                        reader = csv.reader(lines, delimiter=sep)
+                        parsed_data = list(reader)
+                        
+                        if len(parsed_data) > 0 and len(parsed_data[0]) > 0:
+                            # Igualar longitud de todas las filas para evitar errores en DataFrame
+                            max_cols = max(len(row) for row in parsed_data)
+                            for row in parsed_data:
+                                while len(row) < max_cols:
+                                    row.append("")
+                            
+                            headers = parsed_data[0]
+                            data_rows = parsed_data[1:]
+                            decoded_df = pd.DataFrame(data_rows, columns=headers, dtype=str)
+                            break
+                    except Exception:
+                        continue
+                
+                if decoded_df is None:
+                    # Fallback final a pandas básico
+                    df = pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False, encoding="latin-1")
                 else:
                     df = decoded_df
             else:

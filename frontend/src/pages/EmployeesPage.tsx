@@ -2560,27 +2560,6 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                       <FileSpreadsheet size={14} />
                       Plantilla Excel (.xlsx)
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadTemplate('csv')}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.15)',
-                        color: 'var(--text-secondary)',
-                        padding: '6px 12px',
-                        borderRadius: 'var(--radius-sm)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                        fontSize: '0.78rem',
-                        fontWeight: '600',
-                      }}
-                      title="Descargar versión CSV"
-                    >
-                      <Download size={14} />
-                      CSV
-                    </button>
                   </div>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
