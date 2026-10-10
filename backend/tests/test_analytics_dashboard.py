@@ -23,6 +23,7 @@ from modules.publications.models import Publication
 from modules.shared.enums import DataOriginType, UserRole, VerificationStatus
 from modules.social_accounts.models import SocialPlatform
 from modules.verification.models import Verification
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
@@ -308,3 +309,88 @@ async def test_analytics_export_excel(async_db: AsyncSession, super_admin: User)
 
     summary_sheet = wb["Resumen Ejecutivo"]
     assert "GOBIERNO AUTÓNOMO MUNICIPAL DE EL ALTO" in str(summary_sheet["A1"].value)
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_filtering_and_purge(async_db: AsyncSession, super_admin: User):
+    """Verifica el filtrado jerárquico tridimensional y la depuración de datos de prueba."""
+    # 1. Crear estructura y empleados
+    sec = OrganizationalUnit(id=uuid.uuid4(), name="Secretaría Municipal de Educación y Cultura", code="SEC-EDU")
+    dir_dep = OrganizationalUnit(id=uuid.uuid4(), name="Dirección de Deportes", code="DIR-DEP", parent_id=sec.id)
+    unit_infra = OrganizationalUnit(id=uuid.uuid4(), name="Unidad de Infraestructura", code="U-INFRA", parent_id=dir_dep.id)
+    async_db.add_all([sec, dir_dep, unit_infra])
+
+    emp = Employee(
+        employee_id="EMP-EDU-01",
+        first_name="Carlos",
+        last_name="Mendoza",
+        document_number_encrypted="doc",
+        document_hash="hash_edu",
+        organizational_unit_id=unit_infra.id,
+        direction_name="Dirección de Deportes",
+        status="ACTIVE",
+    )
+    async_db.add(emp)
+
+    stmt_plat = select(SocialPlatform).where(SocialPlatform.name == "FACEBOOK")
+    fb_plat = (await async_db.execute(stmt_plat)).scalar_one()
+
+    pub = Publication(
+        id=uuid.uuid4(),
+        platform_id=fb_plat.id,
+        external_post_id="post_real_001",
+        post_url="https://facebook.com/post_real_001",
+        is_monitored=True,
+    )
+    async_db.add(pub)
+
+    inter = Interaction(
+        id=uuid.uuid4(),
+        publication_id=pub.id,
+        platform_id=fb_plat.id,
+        data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
+        interaction_type="LIKE",
+        external_author_name="Carlos Mendoza",
+        external_interaction_id="inter_test_hier",
+    )
+    async_db.add(inter)
+    await async_db.flush()
+
+    verif = Verification(
+        id=uuid.uuid4(),
+        interaction_id=inter.id,
+        employee_id="EMP-EDU-01",
+        verification_status=VerificationStatus.CONFIRMED.value,
+        verification_method="BATCH_REACTION_MATCHER",
+        verified_at=datetime.now(UTC),
+        explanation="Verificación de prueba",
+    )
+    async_db.add(verif)
+    await async_db.commit()
+
+    # Filtro por Secretaría
+    res_sec = await AnalyticsService.get_overview(
+        db=async_db,
+        current_user=super_admin,
+        secretaria="Secretaría Municipal de Educación y Cultura",
+    )
+    assert res_sec.kpis.total_employees == 1
+    assert "Secretaría Municipal de Educación y Cultura" in res_sec.available_secretarias
+
+    # Filtro por otra secretaría inexistente en este empleado
+    res_other = await AnalyticsService.get_overview(
+        db=async_db,
+        current_user=super_admin,
+        secretaria="Secretaría Municipal de Salud",
+    )
+    assert res_other.kpis.total_employees == 0
+
+    # Depuración de datos de prueba
+    purge_res = await AnalyticsService.purge_test_data(async_db)
+    assert purge_res["success"] is True
+
+    # Comprobar que tras el purge no quedan reacciones ni verificaciones
+    res_purged = await AnalyticsService.get_overview(db=async_db, current_user=super_admin)
+    assert res_purged.kpis.total_reactions == 0
+    assert res_purged.kpis.participating_employees == 0
+

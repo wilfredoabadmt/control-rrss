@@ -52,6 +52,15 @@ Se aprueba la implementación del **Módulo 16: Analítica Interactiva de Reacci
 - **Integración de Navegación:**
   - Sección incorporada en `Sidebar.tsx` como **"Analítica de Reacciones"** con icono `BarChart3` e ID `'analytics'`.
 
+### 2.3. Filtrado Jerárquico Tridimensional en Cascada (`organigrama.ts`)
+- Modelado formal de la jerarquía municipal de tres niveles:
+  `Secretaría Municipal / Despacho Alcalde` -> `Dirección Dependiente` -> `Unidad Organizacional`.
+- Los selectores en cascada garantizan que al elegir una secretaría sólo se listen sus direcciones adscritas, y al seleccionar una dirección sólo se listen sus unidades operativas.
+- Sincronización bidireccional entre la selección jerárquica y el gráfico interactivo de barras.
+
+### 2.4. Saneamiento de Datos de Prueba (Pureza Institucional)
+- Depuración completa de interacciones y verificaciones de prueba para asegurar que el tablero presente exclusivamente datos reales correspondientes al padrón y actividad institucional.
+
 ---
 
 ## 3. Consecuencias y Verificación
@@ -60,6 +69,8 @@ Se aprueba la implementación del **Módulo 16: Analítica Interactiva de Reacci
 - Las autoridades cuentan con tableros ejecutivos interactivos sin depender de procesamiento manual.
 - Transparencia y rigor epistémico garantizado: cada número proviene de evidencias y cruces verificados en la base de datos institucional.
 - Experiencia de usuario ágil y visualmente atractiva con paleta dark mode profesional.
+- Navegación organizacional intuitiva adaptada fielmente a la estructura administrativa de El Alto.
 
 ### Verificación Automatizada:
-- Se incorporan pruebas unitarias y de integración en `backend/tests/test_analytics_dashboard.py`, validando el cálculo de KPIs, filtrado por fechas, aislamiento de workspace y exportación.
+- Se incorporan pruebas unitarias y de integración en `backend/tests/test_analytics_dashboard.py`, validando el cálculo de KPIs, filtrado jerárquico por secretaría/dirección/unidad, aislamiento de workspace y exportación.
+

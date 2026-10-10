@@ -430,17 +430,21 @@ app.include_router(notifications_router, prefix=settings.API_V1_STR)
 
 @app.get("/api/v1/clean-audits")
 async def clean_audits_direct():
-    from sqlalchemy.ext.asyncio import AsyncSession
-    from database import get_async_db
-    # We resolve the generator manually to avoid definition-time NameError
-    db_session: AsyncSession = await anext(get_async_db())
-
-    from modules.monitoring.models import Interaction, Verification
+    from database import AsyncSessionLocal
+    from modules.interactions.models import Interaction
+    from modules.verification.models import Verification
     from sqlalchemy import delete
-    await db_session.execute(delete(Verification).where(Verification.verification_method == "MANUAL_OPERATOR"))
-    await db_session.execute(delete(Interaction).where(Interaction.capture_method == "MANUAL_IMPORT"))
-    await db_session.commit()
-    return {"status": "ok"}
+
+    async with AsyncSessionLocal() as session:
+        res_v = await session.execute(delete(Verification))
+        res_i = await session.execute(delete(Interaction))
+        await session.commit()
+    return {
+        "status": "ok",
+        "message": "Datos de prueba de interacciones y verificaciones eliminados exitosamente.",
+        "verifications_deleted": getattr(res_v, "rowcount", 0),
+        "interactions_deleted": getattr(res_i, "rowcount", 0),
+    }
 
 
 

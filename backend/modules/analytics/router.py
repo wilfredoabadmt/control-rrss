@@ -33,7 +33,9 @@ async def get_analytics_overview(
     days: int | None = Query(None, description="Ventana de tiempo relativa en días (ej. 7, 15, 30)"),
     date_from: datetime | None = Query(None, description="Fecha de inicio (ISO 8601)"),
     date_to: datetime | None = Query(None, description="Fecha de fin (ISO 8601)"),
-    direction: str | None = Query(None, description="Filtrar por Dirección o Secretaría específica"),
+    secretaria: str | None = Query(None, description="Filtrar por Secretaría Municipal o Despacho"),
+    direction: str | None = Query(None, description="Filtrar por Dirección dependiente"),
+    unit: str | None = Query(None, description="Filtrar por Unidad organizacional dependiente"),
     publication_id: uuid.UUID | None = Query(None, description="Filtrar por publicación específica"),
     platform_name: str | None = Query(None, description="Filtrar por plataforma: FACEBOOK o TIKTOK"),
     current_user: User = Depends(get_current_user),
@@ -44,7 +46,9 @@ async def get_analytics_overview(
         current_user=current_user,
         date_from=date_from,
         date_to=date_to,
+        secretaria=secretaria,
         direction=direction,
+        unit=unit,
         publication_id=publication_id,
         platform_name=platform_name,
         days=days,
@@ -56,11 +60,13 @@ async def get_analytics_overview(
     response_model=AnalyticsEmployeesPageResponse,
     status_code=status.HTTP_200_OK,
     summary="Obtener listado paginado de funcionarios con métricas de interacción",
-    description="Permite buscar por nombre/CI, filtrar por dirección, publicación, plataforma y estado de participación.",
+    description="Permite buscar por nombre/CI, filtrar por secretaría, dirección, unidad, publicación, plataforma y estado de participación.",
 )
 async def get_analytics_employees(
     search: str | None = Query(None, description="Término de búsqueda (Nombre o CI)"),
-    direction: str | None = Query(None, description="Filtrar por Dirección o Secretaría específica"),
+    secretaria: str | None = Query(None, description="Filtrar por Secretaría Municipal o Despacho"),
+    direction: str | None = Query(None, description="Filtrar por Dirección dependiente"),
+    unit: str | None = Query(None, description="Filtrar por Unidad organizacional dependiente"),
     publication_id: uuid.UUID | None = Query(None, description="Filtrar por publicación específica"),
     platform_name: str | None = Query(None, description="Filtrar por plataforma: FACEBOOK o TIKTOK"),
     participation_status: str | None = Query("ALL", description="ALL, PARTICIPATED, o NO_REACTION"),
@@ -73,7 +79,9 @@ async def get_analytics_employees(
         db=db,
         current_user=current_user,
         search=search,
+        secretaria=secretaria,
         direction=direction,
+        unit=unit,
         publication_id=publication_id,
         platform_name=platform_name,
         participation_status=participation_status,
@@ -88,7 +96,9 @@ async def get_analytics_employees(
     description="Genera y descarga un libro de trabajo Excel con carátula ejecutiva y tabla detallada de fiscalización.",
 )
 async def export_analytics_excel(
+    secretaria: str | None = Query(None, description="Filtrar por Secretaría"),
     direction: str | None = Query(None, description="Filtrar por Dirección"),
+    unit: str | None = Query(None, description="Filtrar por Unidad"),
     publication_id: uuid.UUID | None = Query(None, description="Filtrar por Publicación"),
     platform_name: str | None = Query(None, description="Filtrar por Plataforma"),
     current_user: User = Depends(get_current_user),
@@ -97,7 +107,9 @@ async def export_analytics_excel(
     excel_bytes = await AnalyticsService.export_excel(
         db=db,
         current_user=current_user,
+        secretaria=secretaria,
         direction=direction,
+        unit=unit,
         publication_id=publication_id,
         platform_name=platform_name,
     )
@@ -109,3 +121,16 @@ async def export_analytics_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@analytics_router.post(
+    "/reset-test-data",
+    summary="Depuración de datos de prueba / Reset de simulaciones",
+    description="Elimina interacciones y verificaciones de prueba para que los tableros inicien con datos 100% reales.",
+)
+async def reset_test_data(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    return await AnalyticsService.purge_test_data(db)
+

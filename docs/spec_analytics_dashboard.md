@@ -51,6 +51,18 @@
   - Si el usuario tiene `DIRECTION` o `UNIT`, se restringen a su área asignada.
   - Si el usuario es `SUPER_ADMIN` con alcance `GLOBAL`, accede al consolidado de todo el municipio.
 
+- **RF-ANL-008 (Filtro Jerárquico Tridimensional en Cascada):**
+  - Nivel 1 (Secretaría Municipal): Selección de Secretaría Municipal o Despacho del Alcalde.
+  - Nivel 2 (Dirección dependiente): Al seleccionar una secretaría, se habilitan exclusivamente las direcciones que pertenecen a ella.
+  - Nivel 3 (Unidad dependiente): Al seleccionar una dirección, se habilitan exclusivamente las unidades que pertenecen a ella.
+  - Al resetear o cambiar de secretaría, dirección y unidad se resetean a `ALL`.
+
+- **RF-ANL-009 (Sincronización Bidireccional de Gráficos):**
+  - Al hacer click en una barra del gráfico de direcciones, el filtro jerárquico se auto-selecciona y los KPIs/tabla se sincronizan instantáneamente.
+
+- **RF-ANL-010 (Depuración de Datos de Prueba / Pureza Institucional):**
+  - Mecanismo seguro para eliminar interacciones y verificaciones de prueba para que los tableros visualicen con estricta fidelidad únicamente los datos cargados por operadores reales.
+
 ---
 
 ## 2. Contrato de API (REST Endpoints)

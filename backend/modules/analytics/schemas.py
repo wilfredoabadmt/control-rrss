@@ -68,7 +68,9 @@ class AnalyticsOverviewResponse(BaseModel):
     direction_rankings: list[DirectionRankingItem]
     timeline_series: list[TimelinePoint]
     platform_comparison: PlatformComparison
+    available_secretarias: list[str] = Field(default_factory=list, description="Lista de secretarías municipales para el filtro jerárquico")
     available_directions: list[str] = Field(default_factory=list, description="Lista de direcciones para el filtro")
+    available_units: list[str] = Field(default_factory=list, description="Lista de unidades organizacionales para el filtro jerárquico")
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -77,6 +79,7 @@ class EmployeeAnalyticsItem(BaseModel):
     employee_id: str
     full_name: str
     document_number: str
+    secretaria: str = Field(default="", description="Secretaría Municipal o Despacho al que pertenece")
     direction: str
     unit: str
     position: str

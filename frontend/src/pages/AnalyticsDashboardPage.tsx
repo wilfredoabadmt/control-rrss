@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   BarChart3,
@@ -7,12 +7,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Filter,
   Layers,
   MessageSquare,
   RefreshCw,
   Search,
-  Share2,
   ThumbsUp,
+  Trash2,
   TrendingUp,
   Users,
   X,
@@ -28,6 +29,12 @@ import { BarChartDirection } from '../components/charts/BarChartDirection';
 import { DonutChartReactions } from '../components/charts/DonutChartReactions';
 import { TimelineChart } from '../components/charts/TimelineChart';
 import { PlatformComparisonBar } from '../components/charts/PlatformComparisonBar';
+import {
+  LISTA_SECRETARIAS,
+  getDireccionesBySecretaria,
+  getUnidadesByDireccion,
+  findSecretariaForDireccion,
+} from '../data/organigrama';
 
 export const AnalyticsDashboardPage: React.FC = () => {
   // Estados de datos
@@ -36,16 +43,30 @@ export const AnalyticsDashboardPage: React.FC = () => {
   const [loadingOverview, setLoadingOverview] = useState<boolean>(true);
   const [loadingEmployees, setLoadingEmployees] = useState<boolean>(true);
   const [exportingExcel, setExportingExcel] = useState<boolean>(false);
+  const [purgingData, setPurgingData] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
-  // Estados de filtros
+  // Estados de filtros jerárquicos (Nivel 1 -> Nivel 2 -> Nivel 3)
   const [daysPreset, setDaysPreset] = useState<number | null>(30);
+  const [selectedSecretaria, setSelectedSecretaria] = useState<string>('ALL');
   const [selectedDirection, setSelectedDirection] = useState<string>('ALL');
+  const [selectedUnit, setSelectedUnit] = useState<string>('ALL');
   const [selectedPlatform, setSelectedPlatform] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [participationFilter, setParticipationFilter] = useState<'ALL' | 'PARTICIPATED' | 'NO_REACTION'>('ALL');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const pageSize = 15;
+
+  // Direcciones disponibles en cascada según la Secretaría seleccionada
+  const availableDirectionsList = useMemo(() => {
+    return getDireccionesBySecretaria(selectedSecretaria);
+  }, [selectedSecretaria]);
+
+  // Unidades disponibles en cascada según la Dirección seleccionada
+  const availableUnitsList = useMemo(() => {
+    return getUnidadesByDireccion(selectedSecretaria, selectedDirection);
+  }, [selectedSecretaria, selectedDirection]);
 
   // Cargar Overview
   const fetchOverview = useCallback(async () => {
@@ -54,7 +75,9 @@ export const AnalyticsDashboardPage: React.FC = () => {
       setError(null);
       const filters: AnalyticsFilters = {
         days: daysPreset,
+        secretaria: selectedSecretaria !== 'ALL' ? selectedSecretaria : undefined,
         direction: selectedDirection !== 'ALL' ? selectedDirection : undefined,
+        unit: selectedUnit !== 'ALL' ? selectedUnit : undefined,
         platform_name: selectedPlatform !== 'ALL' ? selectedPlatform : undefined,
       };
       const res = await analyticsApi.getOverview(filters);
@@ -65,14 +88,17 @@ export const AnalyticsDashboardPage: React.FC = () => {
     } finally {
       setLoadingOverview(false);
     }
-  }, [daysPreset, selectedDirection, selectedPlatform]);
+  }, [daysPreset, selectedSecretaria, selectedDirection, selectedUnit, selectedPlatform]);
 
   // Cargar Tabla de Funcionarios
   const fetchEmployees = useCallback(async () => {
     try {
       setLoadingEmployees(true);
       const filters: AnalyticsFilters = {
+        days: daysPreset,
+        secretaria: selectedSecretaria !== 'ALL' ? selectedSecretaria : undefined,
         direction: selectedDirection !== 'ALL' ? selectedDirection : undefined,
+        unit: selectedUnit !== 'ALL' ? selectedUnit : undefined,
         platform_name: selectedPlatform !== 'ALL' ? selectedPlatform : undefined,
         search: searchTerm.trim() || undefined,
         participation_status: participationFilter,
@@ -86,7 +112,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
     } finally {
       setLoadingEmployees(false);
     }
-  }, [selectedDirection, selectedPlatform, searchTerm, participationFilter, currentPage]);
+  }, [daysPreset, selectedSecretaria, selectedDirection, selectedUnit, selectedPlatform, searchTerm, participationFilter, currentPage]);
 
   useEffect(() => {
     fetchOverview();
@@ -101,7 +127,9 @@ export const AnalyticsDashboardPage: React.FC = () => {
     try {
       setExportingExcel(true);
       const blob = await analyticsApi.exportExcel({
+        secretaria: selectedSecretaria !== 'ALL' ? selectedSecretaria : undefined,
         direction: selectedDirection !== 'ALL' ? selectedDirection : undefined,
+        unit: selectedUnit !== 'ALL' ? selectedUnit : undefined,
         platform_name: selectedPlatform !== 'ALL' ? selectedPlatform : undefined,
       });
 
@@ -122,25 +150,95 @@ export const AnalyticsDashboardPage: React.FC = () => {
     }
   };
 
+  // Manejador de depuración de datos de prueba
+  const handlePurgeTestData = async () => {
+    const ok = window.confirm(
+      '⚠️ ¿Está seguro de depurar los datos de prueba?\n\n' +
+      'Esta acción eliminará todas las interacciones y verificaciones de prueba/simulación acumuladas, ' +
+      'dejando las métricas en 0 para que los operadores institucionales registren datos 100% verdaderos.'
+    );
+    if (!ok) return;
+
+    try {
+      setPurgingData(true);
+      const res = await analyticsApi.resetTestData();
+      setSuccessNotice(
+        `✅ ${res.message || 'Datos de prueba eliminados correctamente.'} Se eliminaron ${res.interactions_deleted || 0} interacciones de prueba.`
+      );
+      setTimeout(() => setSuccessNotice(null), 7000);
+      fetchOverview();
+      fetchEmployees();
+    } catch (err: any) {
+      console.error('Error al purgar datos de prueba:', err);
+      alert('Error al purgar datos de prueba: ' + (err.message || 'Verifique permisos de administrador.'));
+    } finally {
+      setPurgingData(false);
+    }
+  };
+
   // Restablecer filtros
   const handleResetFilters = () => {
-    setDaysPreset(null);
+    setDaysPreset(30);
+    setSelectedSecretaria('ALL');
     setSelectedDirection('ALL');
+    setSelectedUnit('ALL');
     setSelectedPlatform('ALL');
     setSearchTerm('');
     setParticipationFilter('ALL');
     setCurrentPage(1);
   };
 
+  // Click en una barra de dirección en el gráfico
+  const handleBarDirectionClick = (dirName: string | null) => {
+    if (!dirName) {
+      setSelectedDirection('ALL');
+      return;
+    }
+    const parentSec = findSecretariaForDireccion(dirName);
+    if (parentSec) {
+      setSelectedSecretaria(parentSec);
+    }
+    setSelectedDirection(dirName);
+    setSelectedUnit('ALL');
+    setCurrentPage(1);
+  };
+
   const hasActiveFilters =
-    daysPreset !== null ||
+    daysPreset !== 30 ||
+    selectedSecretaria !== 'ALL' ||
     selectedDirection !== 'ALL' ||
+    selectedUnit !== 'ALL' ||
     selectedPlatform !== 'ALL' ||
     searchTerm.trim() !== '' ||
     participationFilter !== 'ALL';
 
   return (
     <div className="analytics-container">
+      {/* Notificación de éxito al purgar */}
+      {successNotice && (
+        <div
+          style={{
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid rgba(16, 185, 129, 0.4)',
+            color: '#34d399',
+            padding: '12px 18px',
+            borderRadius: 'var(--radius-md)',
+            fontSize: '0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span>{successNotice}</span>
+          <button
+            onClick={() => setSuccessNotice(null)}
+            style={{ background: 'transparent', border: 'none', color: '#34d399', cursor: 'pointer' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* 1. Header Ejecutivo */}
       <div className="analytics-header-card">
         <div>
@@ -152,7 +250,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
             Analítica de Reacciones y Acompañamiento
           </h1>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-            Métricas cruzadas, índice de participación por dirección y taxonomía de interacciones oficiales del GAMEA.
+            Métricas cruzadas, filtros jerárquicos por secretaría, dirección y unidad, y taxonomía de interacciones oficiales del GAMEA.
           </p>
         </div>
 
@@ -204,13 +302,37 @@ export const AnalyticsDashboardPage: React.FC = () => {
             <Download size={14} />
             <span>{exportingExcel ? 'Generando Excel...' : 'Exportar Excel Oficial'}</span>
           </button>
+
+          <button
+            onClick={handlePurgeTestData}
+            disabled={purgingData}
+            title="Eliminar interacciones y verificaciones de prueba para iniciar en blanco"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#f87171',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            <Trash2 size={14} />
+            <span>{purgingData ? 'Limpiando...' : 'Limpiar Datos de Prueba'}</span>
+          </button>
         </div>
       </div>
 
-      {/* 2. Barra de Filtros Interactivos */}
-      <div className="analytics-filter-bar">
-        {/* Presets de Ventana Temporal */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+      {/* 2. Barra de Filtros Jerárquicos en Cascada */}
+      <div className="analytics-filter-bar" style={{ display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'stretch' }}>
+        {/* Fila Superior: Presets de Ventana Temporal y Redes */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          {/* Presets de Ventana Temporal */}
           <div className="analytics-btn-group">
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', padding: '0 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Calendar size={12} />
@@ -221,458 +343,510 @@ export const AnalyticsDashboardPage: React.FC = () => {
               { label: '15 días', val: 15 },
               { label: '30 días', val: 30 },
               { label: 'Histórico', val: null },
-            ].map((p) => {
-              const active = daysPreset === p.val;
-              return (
-                <button
-                  key={p.label}
-                  onClick={() => setDaysPreset(p.val)}
-                  className={`analytics-tab-btn ${active ? 'active' : ''}`}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
+            ].map((p) => (
+              <button
+                key={p.label}
+                className={`analytics-tab-btn ${daysPreset === p.val ? 'active' : ''}`}
+                onClick={() => setDaysPreset(p.val)}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
 
-          {/* Filtro por Dirección */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Dirección:</span>
+          {/* Toggle de Red Social */}
+          <div className="analytics-btn-group">
+            <button
+              className={`analytics-tab-btn ${selectedPlatform === 'ALL' ? 'active' : ''}`}
+              onClick={() => setSelectedPlatform('ALL')}
+            >
+              Todas las Redes
+            </button>
+            <button
+              className={`analytics-tab-btn ${selectedPlatform === 'FACEBOOK' ? 'active' : ''}`}
+              onClick={() => setSelectedPlatform('FACEBOOK')}
+            >
+              Facebook
+            </button>
+            <button
+              className={`analytics-tab-btn ${selectedPlatform === 'TIKTOK' ? 'active' : ''}`}
+              onClick={() => setSelectedPlatform('TIKTOK')}
+            >
+              TikTok
+            </button>
+          </div>
+
+          {/* Botón de limpiar filtros */}
+          {hasActiveFilters && (
+            <button
+              onClick={handleResetFilters}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-md)',
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#f87171',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <X size={12} />
+              <span>Limpiar Filtros</span>
+            </button>
+          )}
+        </div>
+
+        {/* Fila Inferior: Filtros Jerárquicos en Cascada (Secretaría -> Dirección -> Unidad) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', width: '100%', paddingTop: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+          {/* Nivel 1: Secretaría Municipal */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Layers size={13} color="var(--primary-500)" />
+              1. Secretaría Municipal / Despacho
+            </label>
             <select
-              value={selectedDirection}
+              className="analytics-select"
+              value={selectedSecretaria}
               onChange={(e) => {
-                setSelectedDirection(e.target.value);
+                const sec = e.target.value;
+                setSelectedSecretaria(sec);
+                setSelectedDirection('ALL');
+                setSelectedUnit('ALL');
                 setCurrentPage(1);
               }}
-              className="analytics-select"
-              style={{ maxWidth: '240px' }}
             >
-              <option value="ALL">Todas las Direcciones</option>
-              {overview?.available_directions?.map((d) => (
-                <option key={d} value={d}>
-                  {d}
+              <option value="ALL">🏛️ Todas las Secretarías Municipales</option>
+              {LISTA_SECRETARIAS.map((sec) => (
+                <option key={sec} value={sec}>
+                  🏢 {sec}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Filtro por Plataforma */}
-          <div className="analytics-btn-group">
-            {[
-              { id: 'ALL', label: 'Todas las Redes' },
-              { id: 'FACEBOOK', label: 'Facebook' },
-              { id: 'TIKTOK', label: 'TikTok' },
-            ].map((plat) => {
-              const active = selectedPlatform === plat.id;
-              return (
-                <button
-                  key={plat.id}
-                  onClick={() => {
-                    setSelectedPlatform(plat.id);
-                    setCurrentPage(1);
-                  }}
-                  className={`analytics-tab-btn ${active ? 'active' : ''}`}
-                >
-                  {plat.label}
-                </button>
-              );
-            })}
+          {/* Nivel 2: Dirección Dependiente */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Filter size={13} color={selectedSecretaria !== 'ALL' ? '#10b981' : 'var(--text-faint)'} />
+              2. Dirección a su Cargo
+            </label>
+            <select
+              className="analytics-select"
+              value={selectedDirection}
+              onChange={(e) => {
+                const dir = e.target.value;
+                setSelectedDirection(dir);
+                setSelectedUnit('ALL');
+                if (dir !== 'ALL' && selectedSecretaria === 'ALL') {
+                  const sec = findSecretariaForDireccion(dir);
+                  if (sec) setSelectedSecretaria(sec);
+                }
+                setCurrentPage(1);
+              }}
+            >
+              <option value="ALL">
+                {selectedSecretaria === 'ALL'
+                  ? '📁 Todas las Direcciones'
+                  : `📁 Todas las Direcciones de ${selectedSecretaria}`}
+              </option>
+              {availableDirectionsList.map((dir) => (
+                <option key={dir} value={dir}>
+                  📁 {dir}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Nivel 3: Unidad Organizacional a su Cargo */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Users size={13} color={selectedDirection !== 'ALL' ? '#3b82f6' : 'var(--text-faint)'} />
+              3. Unidad Operativa a su Cargo
+            </label>
+            <select
+              className="analytics-select"
+              value={selectedUnit}
+              disabled={selectedDirection === 'ALL' && selectedSecretaria === 'ALL'}
+              style={{
+                opacity: selectedDirection === 'ALL' && selectedSecretaria === 'ALL' ? 0.5 : 1,
+                cursor: selectedDirection === 'ALL' && selectedSecretaria === 'ALL' ? 'not-allowed' : 'pointer',
+              }}
+              onChange={(e) => {
+                setSelectedUnit(e.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="ALL">
+                {selectedDirection === 'ALL' && selectedSecretaria === 'ALL'
+                  ? '📋 Seleccione Secretaría o Dirección'
+                  : '📋 Todas las Unidades Operativas'}
+              </option>
+              {availableUnitsList.map((u) => (
+                <option key={u} value={u}>
+                  📄 {u}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-
-        {/* Botón Reset si hay filtros aplicados */}
-        {hasActiveFilters && (
-          <button
-            onClick={handleResetFilters}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'rgba(244, 63, 94, 0.15)',
-              border: '1px solid rgba(244, 63, 94, 0.3)',
-              color: '#fb7185',
-              fontSize: '0.78rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-          >
-            <X size={12} />
-            <span>Limpiar Filtros</span>
-          </button>
-        )}
       </div>
 
-      {/* Alerta de Error si ocurre */}
+      {/* Alerta de Error */}
       {error && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 18px', borderRadius: 'var(--radius-md)', background: 'rgba(244, 63, 94, 0.15)', border: '1px solid rgba(244, 63, 94, 0.35)', color: '#fca5a5', fontSize: '0.82rem' }}>
-          <AlertCircle size={16} style={{ color: '#f87171', flexShrink: 0 }} />
-          <span>{error}</span>
+        <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', padding: '14px 18px', borderRadius: 'var(--radius-lg)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <AlertCircle size={20} />
+          <span style={{ fontSize: '0.85rem' }}>{error}</span>
         </div>
       )}
 
-      {/* 3. Tarjetas KPI Métricas Clave */}
-      {overview && (
-        <div className="analytics-kpi-grid">
-          {/* KPI 1: Funcionarios Observables */}
-          <div className="analytics-kpi-card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>
-              <span>Funcionarios en Alcance</span>
-              <Users size={16} color="var(--primary-500)" />
-            </div>
-            <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#ffffff', margin: '8px 0 4px', letterSpacing: '-0.02em' }}>
-              {overview.kpis.total_employees}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--primary-500)' }}>{overview.kpis.observable_employees}</strong> con redes vinculadas
+      {/* 3. Tarjetas KPIs Principales */}
+      <div className="analytics-kpi-grid">
+        {/* KPI 1: Funcionarios Totales */}
+        <div className="analytics-kpi-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Funcionarios Totales
+            </span>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(6, 182, 212, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary-500)' }}>
+              <Users size={16} />
             </div>
           </div>
-
-          {/* KPI 2: Total Reacciones */}
-          <div className="analytics-kpi-card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>
-              <span>Total Reacciones</span>
-              <ThumbsUp size={16} color="#3b82f6" />
-            </div>
-            <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#ffffff', margin: '8px 0 4px', letterSpacing: '-0.02em' }}>
-              {overview.kpis.total_reactions.toLocaleString()}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              Promedio: <strong style={{ color: '#60a5fa' }}>{overview.kpis.average_reactions_per_post}</strong> por publicación
-            </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
+            {overview ? overview.kpis.total_employees : '—'}
           </div>
-
-          {/* KPI 3: Tasa de Participación */}
-          <div className="analytics-kpi-card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>
-              <span>Tasa de Participación</span>
-              <TrendingUp size={16} color="#10b981" />
-            </div>
-            <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#ffffff', margin: '8px 0 4px', letterSpacing: '-0.02em' }}>
-              {overview.kpis.participation_rate.toFixed(1)}%
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              <strong style={{ color: '#34d399' }}>{overview.kpis.participating_employees}</strong> funcionarios interactuaron
-            </div>
-          </div>
-
-          {/* KPI 4: Publicaciones Auditadas */}
-          <div className="analytics-kpi-card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>
-              <span>Posts Auditados</span>
-              <Layers size={16} color="#8b5cf6" />
-            </div>
-            <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#ffffff', margin: '8px 0 4px', letterSpacing: '-0.02em' }}>
-              {overview.kpis.total_publications}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              Evaluados en la ventana activa
-            </div>
-          </div>
-
-          {/* KPI 5: Comentarios y Compartidos */}
-          <div className="analytics-kpi-card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600 }}>
-              <span>Otros Acompañamientos</span>
-              <MessageSquare size={16} color="#ec4899" />
-            </div>
-            <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#ffffff', margin: '8px 0 4px', letterSpacing: '-0.02em' }}>
-              {(overview.kpis.total_comments + overview.kpis.total_shares).toLocaleString()}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '6px' }}>
-              <span>{overview.kpis.total_comments} coment.</span>
-              <span>•</span>
-              <span>{overview.kpis.total_shares} comp.</span>
-            </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '4px' }}>
+            {overview ? `${overview.kpis.observable_employees} con cuentas vinculadas` : 'Cargando...'}
           </div>
         </div>
-      )}
 
-      {/* 4. Grilla de Gráficos Estadísticos Interactivos (2x2) */}
-      {overview && (
-        <div className="analytics-charts-grid">
-          {/* Gráfico 1: Ranking por Dirección */}
-          <div className="analytics-chart-card">
-            <div className="analytics-card-header">
-              <div>
-                <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                  <BarChart3 size={18} color="var(--primary-500)" />
-                  Ranking de Participación por Dirección
-                </h2>
-                <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-                  Tasa de acompañamiento y volumen de reacciones por unidad municipal.
-                </p>
-              </div>
-              {selectedDirection !== 'ALL' && (
-                <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.2)', color: 'var(--primary-500)', border: '1px solid rgba(6, 182, 212, 0.4)' }}>
-                  Filtro activo
-                </span>
-              )}
+        {/* KPI 2: Total Reacciones */}
+        <div className="analytics-kpi-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Total Reacciones
+            </span>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
+              <ThumbsUp size={16} />
             </div>
-            <BarChartDirection
-              data={overview.direction_rankings}
-              selectedDirection={selectedDirection !== 'ALL' ? selectedDirection : null}
-              onSelectDirection={(dir) => {
-                setSelectedDirection(dir || 'ALL');
-                setCurrentPage(1);
-              }}
-            />
           </div>
-
-          {/* Gráfico 2: Desglose Taxonómico de Reacciones (Donut) */}
-          <div className="analytics-chart-card">
-            <div className="analytics-card-header">
-              <div>
-                <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                  <ThumbsUp size={18} color="#3b82f6" />
-                  Taxonomía y Tipos de Reacciones
-                </h2>
-                <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-                  Proporción de Me gusta, Me encanta, Comentarios y Compartidos.
-                </p>
-              </div>
-            </div>
-            <DonutChartReactions
-              data={overview.reactions_breakdown}
-              totalCount={overview.kpis.total_reactions}
-            />
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
+            {overview ? overview.kpis.total_reactions.toLocaleString() : '—'}
           </div>
-
-          {/* Gráfico 3: Serie Temporal Diaria */}
-          <div className="analytics-chart-card">
-            <div className="analytics-card-header">
-              <div>
-                <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                  <TrendingUp size={18} color="#10b981" />
-                  Actividad Cronológica y Tendencia
-                </h2>
-                <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-                  Evolución diaria de interacciones en el rango seleccionado.
-                </p>
-              </div>
-            </div>
-            <TimelineChart data={overview.timeline_series} />
-          </div>
-
-          {/* Gráfico 4: Comparativa de Plataformas */}
-          <div className="analytics-chart-card">
-            <div className="analytics-card-header">
-              <div>
-                <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                  <Share2 size={18} color="#ec4899" />
-                  Comparativa Bilateral de Plataformas
-                </h2>
-                <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-                  Volumen y distribución entre Facebook y TikTok.
-                </p>
-              </div>
-              {selectedPlatform !== 'ALL' && (
-                <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.4)' }}>
-                  {selectedPlatform}
-                </span>
-              )}
-            </div>
-            <PlatformComparisonBar
-              comparison={overview.platform_comparison}
-              selectedPlatform={selectedPlatform !== 'ALL' ? selectedPlatform : null}
-              onSelectPlatform={(plat) => {
-                setSelectedPlatform(plat || 'ALL');
-                setCurrentPage(1);
-              }}
-            />
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '4px' }}>
+            Promedio: {overview ? `${overview.kpis.average_reactions_per_post} por post` : '—'}
           </div>
         </div>
-      )}
+
+        {/* KPI 3: Tasa de Participación */}
+        <div className="analytics-kpi-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Tasa Participación
+            </span>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-emerald)' }}>
+              <TrendingUp size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981', lineHeight: 1.2 }}>
+            {overview ? `${overview.kpis.participation_rate}%` : '—'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '4px' }}>
+            {overview ? `${overview.kpis.participating_employees} funcionarios activos` : '—'}
+          </div>
+        </div>
+
+        {/* KPI 4: Publicaciones Evaluadas */}
+        <div className="analytics-kpi-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Posts Auditados
+            </span>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(139, 92, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-purple)' }}>
+              <Layers size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
+            {overview ? overview.kpis.total_publications : '—'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '4px' }}>
+            Evaluadas en la ventana
+          </div>
+        </div>
+
+        {/* KPI 5: Otros Acompañamientos */}
+        <div className="analytics-kpi-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Otros Acompañamientos
+            </span>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-amber)' }}>
+              <MessageSquare size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
+            {overview ? (overview.kpis.total_comments + overview.kpis.total_shares).toLocaleString() : '—'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '4px' }}>
+            {overview ? `${overview.kpis.total_comments} coment. • ${overview.kpis.total_shares} comp.` : '—'}
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Grilla de Gráficos Estadísticos */}
+      <div className="analytics-charts-grid">
+        {/* Gráfico 1: Ranking por Dirección */}
+        <div className="analytics-chart-card">
+          <div className="analytics-card-header">
+            <div>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
+                Ranking de Participación por Dirección
+              </h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                Tasa de acompañamiento y volumen de reacciones por unidad municipal (haz clic para filtrar).
+              </p>
+            </div>
+          </div>
+          <BarChartDirection
+            data={overview ? overview.direction_rankings : []}
+            selectedDirection={selectedDirection !== 'ALL' ? selectedDirection : null}
+            onSelectDirection={handleBarDirectionClick}
+          />
+        </div>
+
+        {/* Gráfico 2: Taxonomía de Reacciones (Donut) */}
+        <div className="analytics-chart-card">
+          <div className="analytics-card-header">
+            <div>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
+                Taxonomía y Tipos de Reacciones
+              </h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                Distribución porcentual de reacciones institucionales y comentarios.
+              </p>
+            </div>
+          </div>
+          <DonutChartReactions
+            data={overview ? overview.reactions_breakdown : []}
+            totalCount={overview ? overview.kpis.total_reactions : 0}
+          />
+        </div>
+
+        {/* Gráfico 3: Línea de Tendencia Temporal */}
+        <div className="analytics-chart-card">
+          <div className="analytics-card-header">
+            <div>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
+                Tendencia Cronológica de Acompañamiento
+              </h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                Evolución diaria de interacciones en el período seleccionado.
+              </p>
+            </div>
+          </div>
+          <TimelineChart
+            data={overview ? overview.timeline_series : []}
+          />
+        </div>
+
+        {/* Gráfico 4: Comparativa Bilateral Facebook vs TikTok */}
+        <div className="analytics-chart-card">
+          <div className="analytics-card-header">
+            <div>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
+                Distribución Bilateral por Red Social
+              </h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                Comparativa proporcional entre canales oficiales de Facebook y TikTok.
+              </p>
+            </div>
+          </div>
+          <PlatformComparisonBar
+            comparison={
+              overview?.platform_comparison || {
+                facebook: { total_reactions: 0, percentage: 50, total_comments: 0, total_shares: 0 },
+                tiktok: { total_reactions: 0, percentage: 50, total_comments: 0, total_shares: 0 },
+              }
+            }
+            selectedPlatform={selectedPlatform !== 'ALL' ? selectedPlatform : null}
+            onSelectPlatform={(plat) => {
+              setSelectedPlatform(plat || 'ALL');
+              setCurrentPage(1);
+            }}
+          />
+        </div>
+      </div>
 
       {/* 5. Tabla Detallada de Fiscalización por Funcionario */}
       <div className="analytics-table-container">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '18px', paddingBottom: '12px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
           <div>
-            <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-              <Users size={20} color="var(--primary-500)" />
-              Detalle Analítico por Funcionario Municipal
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
+              Padrón de Funcionarios y Registro de Acompañamiento
             </h2>
-            <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-              Auditoría nominal con enlaces de perfil, conteo de reacciones y porcentaje de cumplimiento.
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+              {employeesData ? `${employeesData.total} funcionarios encontrados bajo los filtros actuales` : 'Cargando padrón...'}
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            {/* Input de Búsqueda */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {/* Buscador en Vivo */}
             <div style={{ position: 'relative' }}>
-              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)' }} />
               <input
                 type="text"
-                placeholder="Buscar por Nombre o C.I...."
+                placeholder="Buscar por nombre o CI..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
                 style={{
-                  background: 'rgba(11, 15, 25, 0.85)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-subtle)',
                   borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-main)',
                   padding: '7px 12px 7px 32px',
-                  fontSize: '0.8rem',
-                  color: '#ffffff',
+                  fontSize: '0.82rem',
                   outline: 'none',
-                  width: '210px',
+                  minWidth: 220,
                 }}
               />
             </div>
 
-            {/* Toggle de Estado de Participación */}
+            {/* Filtro de Participación */}
             <div className="analytics-btn-group">
-              {[
-                { id: 'ALL', label: 'Todos' },
-                { id: 'PARTICIPATED', label: 'Con Reacción' },
-                { id: 'NO_REACTION', label: 'Sin Reacción' },
-              ].map((st) => {
-                const active = participationFilter === st.id;
-                return (
-                  <button
-                    key={st.id}
-                    onClick={() => {
-                      setParticipationFilter(st.id as any);
-                      setCurrentPage(1);
-                    }}
-                    className={`analytics-tab-btn ${active ? 'active' : ''}`}
-                  >
-                    {st.label}
-                  </button>
-                );
-              })}
+              <button
+                className={`analytics-tab-btn ${participationFilter === 'ALL' ? 'active' : ''}`}
+                onClick={() => {
+                  setParticipationFilter('ALL');
+                  setCurrentPage(1);
+                }}
+              >
+                Todos
+              </button>
+              <button
+                className={`analytics-tab-btn ${participationFilter === 'PARTICIPATED' ? 'active' : ''}`}
+                onClick={() => {
+                  setParticipationFilter('PARTICIPATED');
+                  setCurrentPage(1);
+                }}
+              >
+                Con Reacción
+              </button>
+              <button
+                className={`analytics-tab-btn ${participationFilter === 'NO_REACTION' ? 'active' : ''}`}
+                onClick={() => {
+                  setParticipationFilter('NO_REACTION');
+                  setCurrentPage(1);
+                }}
+              >
+                Sin Reacción
+              </button>
             </div>
           </div>
         </div>
 
         {/* Tabla Responsiva */}
-        <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+        <div style={{ overflowX: 'auto' }}>
           <table className="analytics-table">
             <thead>
               <tr>
-                <th>Funcionario</th>
-                <th>Dependencia / Cargo</th>
-                <th>Cuentas RRSS</th>
-                <th style={{ textAlign: 'center' }}>Reacciones</th>
-                <th style={{ textAlign: 'center' }}>Cobertura</th>
+                <th>Funcionario / CI</th>
+                <th>Secretaría / Dirección</th>
+                <th>Unidad Asignada</th>
+                <th>Cuentas Vinculadas</th>
+                <th style={{ textAlign: 'center' }}>Total Reacciones</th>
+                <th style={{ textAlign: 'center' }}>Posts Auditados</th>
+                <th style={{ textAlign: 'center' }}>Tasa Acompañamiento</th>
                 <th style={{ textAlign: 'center' }}>Estado</th>
               </tr>
             </thead>
             <tbody>
               {loadingEmployees ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px', color: 'var(--primary-500)' }} />
-                    <div>Cargando detalle de funcionarios...</div>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                    <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto' }} />
+                    <p style={{ margin: 0, fontSize: '0.85rem' }}>Cargando registros de funcionarios...</p>
                   </td>
                 </tr>
-              ) : employeesData?.items && employeesData.items.length > 0 ? (
+              ) : employeesData && employeesData.items.length > 0 ? (
                 employeesData.items.map((emp) => (
                   <tr key={emp.employee_id}>
-                    {/* Funcionario */}
                     <td>
-                      <div style={{ fontWeight: 600, color: '#f8fafc' }}>{emp.full_name}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        <span style={{ fontFamily: 'monospace', background: 'rgba(11, 15, 25, 0.8)', padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                          C.I. {emp.document_number}
-                        </span>
-                      </div>
+                      <div style={{ fontWeight: 600, color: '#ffffff' }}>{emp.full_name}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>CI / ID: {emp.document_number}</div>
                     </td>
-
-                    {/* Dependencia / Cargo */}
-                    <td style={{ maxWidth: '240px' }}>
-                      <div style={{ color: '#e2e8f0', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {emp.direction}
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {emp.position}
-                      </div>
+                    <td>
+                      <div style={{ fontWeight: 600, color: '#f1f5f9' }}>{emp.direction}</div>
+                      {emp.secretaria && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>🏛️ {emp.secretaria}</div>
+                      )}
                     </td>
-
-                    {/* Cuentas RRSS */}
+                    <td>
+                      <div style={{ color: '#cbd5e1' }}>{emp.unit || 'No asignada'}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-faint)' }}>{emp.position}</div>
+                    </td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                         {emp.facebook_account ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: '#60a5fa', fontFamily: 'monospace' }}>
-                            <strong style={{ color: '#1877F2' }}>f</strong> {emp.facebook_account}
+                          <span style={{ fontSize: '0.72rem', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }} />
+                            FB: @{emp.facebook_account}
                           </span>
-                        ) : null}
+                        ) : (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-faint)' }}>FB: No vinculada</span>
+                        )}
                         {emp.tiktok_account ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: '#f472b6', fontFamily: 'monospace' }}>
-                            <span>♪</span> {emp.tiktok_account}
+                          <span style={{ fontSize: '0.72rem', color: '#f472b6', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ec4899' }} />
+                            TT: @{emp.tiktok_account}
                           </span>
-                        ) : null}
-                        {!emp.facebook_account && !emp.tiktok_account && (
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                            Sin cuentas vinculadas
-                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-faint)' }}>TT: No vinculada</span>
                         )}
                       </div>
                     </td>
-
-                    {/* Reacciones */}
                     <td style={{ textAlign: 'center' }}>
-                      <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ffffff' }}>
+                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: emp.total_reactions > 0 ? '#38bdf8' : 'var(--text-faint)' }}>
                         {emp.total_reactions}
                       </span>
-                      {emp.total_comments > 0 && (
-                        <div style={{ fontSize: '0.68rem', color: 'var(--primary-500)' }}>
-                          +{emp.total_comments} coment.
-                        </div>
-                      )}
                     </td>
-
-                    {/* Cobertura */}
                     <td style={{ textAlign: 'center' }}>
-                      <div style={{ fontWeight: 700, color: '#f1f5f9' }}>
-                        {emp.participation_rate.toFixed(1)}%
-                      </div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                        {emp.participated_posts_count} / {emp.total_available_posts} posts
+                      <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
+                        {emp.participated_posts_count} / {emp.total_available_posts}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                        <div style={{ width: 60, height: 6, borderRadius: 3, background: 'rgba(255, 255, 255, 0.1)', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${Math.min(emp.participation_rate, 100)}%`,
+                              height: '100%',
+                              background: emp.participation_rate >= 50 ? '#10b981' : emp.participation_rate > 0 ? '#f59e0b' : '#ef4444',
+                              borderRadius: 3,
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#f1f5f9' }}>
+                          {emp.participation_rate}%
+                        </span>
                       </div>
                     </td>
-
-                    {/* Estado */}
                     <td style={{ textAlign: 'center' }}>
                       {emp.has_participated ? (
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '3px 10px',
-                            borderRadius: '9999px',
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            background: 'rgba(16, 185, 129, 0.15)',
-                            color: '#34d399',
-                            border: '1px solid rgba(16, 185, 129, 0.35)',
-                          }}
-                        >
+                        <span className="badge badge-success" style={{ gap: '4px' }}>
                           <CheckCircle2 size={12} />
                           Activo
                         </span>
                       ) : (
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '3px 10px',
-                            borderRadius: '9999px',
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            background: 'rgba(100, 116, 139, 0.15)',
-                            color: '#94a3b8',
-                            border: '1px solid rgba(100, 116, 139, 0.25)',
-                          }}
-                        >
+                        <span className="badge badge-warning" style={{ gap: '4px' }}>
                           <XCircle size={12} />
-                          Sin Reacción
+                          Sin Acción
                         </span>
                       )}
                     </td>
@@ -680,8 +854,8 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    No se encontraron funcionarios coincidentes con los criterios actuales.
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                    No se encontraron funcionarios que coincidan con los filtros seleccionados.
                   </td>
                 </tr>
               )}
@@ -691,51 +865,50 @@ export const AnalyticsDashboardPage: React.FC = () => {
 
         {/* Paginación */}
         {employeesData && employeesData.total_pages > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '14px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            <span>
-              Mostrando página <strong style={{ color: '#fff' }}>{employeesData.page}</strong> de{' '}
-              <strong style={{ color: '#fff' }}>{employeesData.total_pages}</strong> ({employeesData.total} funcionarios)
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Página {employeesData.page} de {employeesData.total_pages} ({employeesData.total} funcionarios)
             </span>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage <= 1}
                 style={{
-                  padding: '5px 10px',
+                  padding: '6px 12px',
                   borderRadius: 'var(--radius-sm)',
-                  background: 'rgba(11, 15, 25, 0.8)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-subtle)',
                   color: 'var(--text-main)',
+                  fontSize: '0.78rem',
                   cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
-                  opacity: currentPage <= 1 ? 0.3 : 1,
+                  opacity: currentPage <= 1 ? 0.5 : 1,
                   display: 'flex',
                   alignItems: 'center',
+                  gap: '4px',
                 }}
               >
-                <ChevronLeft size={16} />
+                <ChevronLeft size={14} />
+                Anterior
               </button>
-
-              <span style={{ padding: '4px 12px', borderRadius: 'var(--radius-sm)', background: 'rgba(11, 15, 25, 0.9)', border: '1px solid rgba(255, 255, 255, 0.12)', fontFamily: 'monospace', color: '#fff', fontWeight: 700 }}>
-                {currentPage}
-              </span>
-
               <button
                 onClick={() => setCurrentPage((p) => Math.min(employeesData.total_pages, p + 1))}
                 disabled={currentPage >= employeesData.total_pages}
                 style={{
-                  padding: '5px 10px',
+                  padding: '6px 12px',
                   borderRadius: 'var(--radius-sm)',
-                  background: 'rgba(11, 15, 25, 0.8)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-subtle)',
                   color: 'var(--text-main)',
+                  fontSize: '0.78rem',
                   cursor: currentPage >= employeesData.total_pages ? 'not-allowed' : 'pointer',
-                  opacity: currentPage >= employeesData.total_pages ? 0.3 : 1,
+                  opacity: currentPage >= employeesData.total_pages ? 0.5 : 1,
                   display: 'flex',
                   alignItems: 'center',
+                  gap: '4px',
                 }}
               >
-                <ChevronRight size={16} />
+                Siguiente
+                <ChevronRight size={14} />
               </button>
             </div>
           </div>
@@ -744,3 +917,4 @@ export const AnalyticsDashboardPage: React.FC = () => {
     </div>
   );
 };
+export default AnalyticsDashboardPage;

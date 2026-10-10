@@ -53,7 +53,9 @@ export interface AnalyticsOverviewResponse {
   direction_rankings: DirectionRankingItem[];
   timeline_series: TimelinePoint[];
   platform_comparison: PlatformComparison;
+  available_secretarias?: string[];
   available_directions: string[];
+  available_units?: string[];
   generated_at: string;
 }
 
@@ -61,6 +63,7 @@ export interface EmployeeAnalyticsItem {
   employee_id: string;
   full_name: string;
   document_number: string;
+  secretaria?: string;
   direction: string;
   unit: string;
   position: string;
@@ -89,7 +92,9 @@ export interface AnalyticsFilters {
   days?: number | null;
   date_from?: string | null;
   date_to?: string | null;
+  secretaria?: string | null;
   direction?: string | null;
+  unit?: string | null;
   publication_id?: string | null;
   platform_name?: string | null;
   search?: string | null;
@@ -98,13 +103,22 @@ export interface AnalyticsFilters {
   page_size?: number;
 }
 
+export interface ResetTestDataResponse {
+  success: boolean;
+  message: string;
+  verifications_deleted?: number;
+  interactions_deleted?: number;
+}
+
 export const analyticsApi = {
   getOverview: async (filters: AnalyticsFilters = {}): Promise<AnalyticsOverviewResponse> => {
     const params: Record<string, any> = {};
     if (filters.days) params.days = filters.days;
     if (filters.date_from) params.date_from = filters.date_from;
     if (filters.date_to) params.date_to = filters.date_to;
+    if (filters.secretaria && filters.secretaria !== 'ALL') params.secretaria = filters.secretaria;
     if (filters.direction && filters.direction !== 'ALL') params.direction = filters.direction;
+    if (filters.unit && filters.unit !== 'ALL') params.unit = filters.unit;
     if (filters.publication_id && filters.publication_id !== 'ALL') params.publication_id = filters.publication_id;
     if (filters.platform_name && filters.platform_name !== 'ALL') params.platform_name = filters.platform_name;
 
@@ -118,7 +132,9 @@ export const analyticsApi = {
       page_size: filters.page_size || 20,
     };
     if (filters.search) params.search = filters.search;
+    if (filters.secretaria && filters.secretaria !== 'ALL') params.secretaria = filters.secretaria;
     if (filters.direction && filters.direction !== 'ALL') params.direction = filters.direction;
+    if (filters.unit && filters.unit !== 'ALL') params.unit = filters.unit;
     if (filters.publication_id && filters.publication_id !== 'ALL') params.publication_id = filters.publication_id;
     if (filters.platform_name && filters.platform_name !== 'ALL') params.platform_name = filters.platform_name;
     if (filters.participation_status) params.participation_status = filters.participation_status;
@@ -129,7 +145,9 @@ export const analyticsApi = {
 
   exportExcel: async (filters: AnalyticsFilters = {}): Promise<Blob> => {
     const params: Record<string, any> = {};
+    if (filters.secretaria && filters.secretaria !== 'ALL') params.secretaria = filters.secretaria;
     if (filters.direction && filters.direction !== 'ALL') params.direction = filters.direction;
+    if (filters.unit && filters.unit !== 'ALL') params.unit = filters.unit;
     if (filters.publication_id && filters.publication_id !== 'ALL') params.publication_id = filters.publication_id;
     if (filters.platform_name && filters.platform_name !== 'ALL') params.platform_name = filters.platform_name;
 
@@ -137,6 +155,11 @@ export const analyticsApi = {
       params,
       responseType: 'blob',
     });
+    return res.data;
+  },
+
+  resetTestData: async (): Promise<ResetTestDataResponse> => {
+    const res = await apiClient.post<ResetTestDataResponse>('/analytics/reset-test-data');
     return res.data;
   },
 };
