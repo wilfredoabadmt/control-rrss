@@ -227,9 +227,9 @@ class IAMService:
         if ws_type not in ("GLOBAL", "DIRECTION", "UNIT", "AUTONOMOUS"):
             ws_type = "UNIT"
 
-        # Si asigna SUPER_ADMIN o AUDITOR sin dirección/unidad, por defecto su alcance es GLOBAL
+        # Solo si no se especificó workspace_type y el rol es SUPER_ADMIN sin dirección/unidad, su alcance es GLOBAL
         role_codes = [r.name for r in roles]
-        if (UserRole.SUPER_ADMIN.value in role_codes or UserRole.AUDITOR.value in role_codes) and not user_in.assigned_direction and not user_in.assigned_unit:
+        if not user_in.workspace_type and UserRole.SUPER_ADMIN.value in role_codes and not user_in.assigned_direction and not user_in.assigned_unit:
             ws_type = "GLOBAL"
 
         new_user = User(

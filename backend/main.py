@@ -98,19 +98,16 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_direction VARCHAR(200);"))
                     await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_unit VARCHAR(200);"))
                     await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS workspace_type VARCHAR(30) DEFAULT 'UNIT';"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE workspace_type IS NULL AND id IN (SELECT ur.user_id FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE r.name = 'SUPER_ADMIN');"))
+                    await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE lower(email) = 'admin@elalto.gob.bo';"))
                     await conn.execute(text("UPDATE users SET workspace_type = 'DIRECTION' WHERE workspace_type IS NULL AND assigned_direction IS NOT NULL AND assigned_unit IS NULL;"))
                     await conn.execute(text("UPDATE users SET workspace_type = 'UNIT' WHERE workspace_type IS NULL AND assigned_unit IS NOT NULL;"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'AUTONOMOUS' WHERE workspace_type IS NULL AND assigned_direction IS NULL;"))
+                    await conn.execute(text("UPDATE users SET workspace_type = 'AUTONOMOUS' WHERE lower(email) != 'admin@elalto.gob.bo' AND (workspace_type IS NULL OR (assigned_direction IS NULL AND assigned_unit IS NULL));"))
                     await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS created_by_user_id UUID;"))
                     await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS direction_name VARCHAR(200);"))
                     await conn.execute(text("UPDATE organizational_units SET name = 'Despacho Alcalde' WHERE lower(name) = 'despacho alcaldesa';"))
                     await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'Alcaldesa', 'Alcalde') WHERE name LIKE '%Alcaldesa%';"))
                     await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'alcaldesa', 'alcalde') WHERE name LIKE '%alcaldesa%';"))
                     await conn.execute(text("UPDATE organizational_units SET parent_id = (SELECT id FROM organizational_units WHERE lower(name) = 'despacho alcalde' LIMIT 1) WHERE lower(name) = 'unidad de relaciones públicas y protocolo' AND (SELECT count(*) FROM organizational_units WHERE lower(name) = 'despacho alcalde') > 0;"))
-                    await conn.execute(text("UPDATE employees SET direction_name = 'Despacho Alcalde' WHERE lower(first_name) LIKE '%wilfredo%' OR employee_id LIKE '%8736490%';"))
-                    await conn.execute(text("UPDATE employees SET created_by_user_id = (SELECT id FROM users WHERE lower(email) LIKE '%wilfredo%' OR lower(full_name) LIKE '%wilfredo%' LIMIT 1) WHERE created_by_user_id IS NULL AND (SELECT count(*) FROM users WHERE lower(email) LIKE '%wilfredo%' OR lower(full_name) LIKE '%wilfredo%') > 0;"))
-                    await conn.execute(text("INSERT INTO user_roles (user_id, role_id) SELECT u.id, r.id FROM users u, roles r WHERE (lower(u.email) LIKE '%wilfredo%' OR lower(u.full_name) LIKE '%wilfredo%') AND r.name = 'SUPER_ADMIN' ON CONFLICT DO NOTHING;"))
                     # Métricas agregadas de Meta en publications (create_all no agrega columnas a tablas existentes)
                     await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_total INTEGER NOT NULL DEFAULT 0;"))
                     await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_by_type JSON NOT NULL DEFAULT '{}';"))
@@ -138,7 +135,8 @@ async def lifespan(app: FastAPI):
             admin_email = "admin@elalto.gob.bo"
             stmt = select(User).where(User.email == admin_email).options(selectinload(User.roles))
             res = await session.execute(stmt)
-            if not res.scalar_one_or_none():
+            existing_admin = res.scalar_one_or_none()
+            if not existing_admin:
                 stmt_role = select(Role).where(Role.name == UserRole.SUPER_ADMIN.value)
                 role_res = await session.execute(stmt_role)
                 superadmin_role = role_res.scalar_one_or_none()
@@ -147,11 +145,15 @@ async def lifespan(app: FastAPI):
                     full_name="Super Administrador GAMEA",
                     password_hash=hash_password("AdminGamea2026!"),
                     is_active=True,
+                    workspace_type="GLOBAL",
                     roles=[superadmin_role] if superadmin_role else [],
                 )
                 session.add(admin_user)
                 await session.commit()
                 logger.info("superadmin_seeded_successfully", email=admin_email)
+            elif existing_admin.workspace_type != "GLOBAL":
+                existing_admin.workspace_type = "GLOBAL"
+                await session.commit()
 
             # Limpieza de publicaciones sintéticas heredadas para garantizar datos reales (Principio V)
             try:

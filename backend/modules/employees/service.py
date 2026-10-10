@@ -391,21 +391,38 @@ class EmployeeService:
         return loaded or emp
 
     @staticmethod
+    def is_global_superadmin(current_user: User | None) -> bool:
+        """
+        Verifica si un usuario es Super Administrador con alcance GLOBAL.
+        Solo el Super Administrador con alcance GLOBAL (o la cuenta maestra admin@elalto.gob.bo)
+        puede supervisar y gestionar todas las direcciones, unidades y listas institucionales.
+        """
+        if not current_user:
+            return False
+        user_roles = {r.name for r in current_user.roles}
+        if UserRole.SUPER_ADMIN.value not in user_roles:
+            return False
+        ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
+        email = (getattr(current_user, "email", "") or "").lower().strip()
+        if email == "admin@elalto.gob.bo":
+            return True
+        return ws_type == "GLOBAL"
+
+    @staticmethod
     def is_accessible_by_user(emp: Employee, current_user: User | None) -> bool:
         """Verifica si un funcionario pertenece al espacio de trabajo accesible por el usuario (REQ-EMP-005)."""
         if not current_user:
             return True
-        user_roles = {r.name for r in current_user.roles}
-        ws_type = getattr(current_user, "workspace_type", "UNIT") or "UNIT"
-        is_superadmin = (
-            UserRole.SUPER_ADMIN.value in user_roles or UserRole.AUDITOR.value in user_roles
-        ) and (ws_type == "GLOBAL" or (not getattr(current_user, "assigned_direction", None) and not getattr(current_user, "assigned_unit", None)))
-
-        if is_superadmin:
+        if EmployeeService.is_global_superadmin(current_user):
             return True
 
-        if emp.created_by_user_id == current_user.id:
+        # Si el usuario es el creador directo, siempre tiene acceso a su funcionario
+        if emp.created_by_user_id and emp.created_by_user_id == current_user.id:
             return True
+
+        ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
+        if ws_type == "AUTONOMOUS":
+            return emp.created_by_user_id == current_user.id
 
         user_unit = getattr(current_user, "assigned_unit", None)
         user_dir = getattr(current_user, "assigned_direction", None)
@@ -775,40 +792,36 @@ class EmployeeService:
         count_query = select(func.count()).select_from(Employee)
 
         # Aislamiento por espacio de trabajo (Workspaces & Tenancy Scoping - REQ-IAM-005, REQ-EMP-005)
-        if current_user:
-            user_roles = {r.name for r in current_user.roles}
-            ws_type = getattr(current_user, "workspace_type", "UNIT") or "UNIT"
-            is_superadmin = (
-                UserRole.SUPER_ADMIN.value in user_roles or UserRole.AUDITOR.value in user_roles
-            ) and (ws_type == "GLOBAL" or (not getattr(current_user, "assigned_direction", None) and not getattr(current_user, "assigned_unit", None)))
+        # Aislamiento por espacio de trabajo (Workspaces & Tenancy Scoping - REQ-IAM-005, REQ-EMP-005)
+        if current_user and not EmployeeService.is_global_superadmin(current_user):
+            ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
+            user_unit = getattr(current_user, "assigned_unit", None)
+            user_dir = getattr(current_user, "assigned_direction", None)
 
-            if not is_superadmin:
-                user_unit = getattr(current_user, "assigned_unit", None)
-                user_dir = getattr(current_user, "assigned_direction", None)
-                if user_unit:
-                    u_norm = user_unit.strip().lower()
-                    unit_filter = or_(
-                        Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == u_norm),
-                        Employee.created_by_user_id == current_user.id,
-                    )
-                    query = query.where(unit_filter)
-                    count_query = count_query.where(unit_filter)
-                elif user_dir:
-                    dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip())
-                    dir_filter = or_(
-                        func.lower(Employee.direction_name) == dir_norm.lower(),
-                        Employee.organizational_unit.has(
-                            OrganizationalUnit.parent.has(func.lower(OrganizationalUnit.name) == dir_norm.lower())
-                        ),
-                        Employee.created_by_user_id == current_user.id,
-                    )
-                    query = query.where(dir_filter)
-                    count_query = count_query.where(dir_filter)
-                else:
-                    # Usuario individual sin dirección asignada: panel 100% individual y vacío para nuevas cuentas
-                    indiv_filter = (Employee.created_by_user_id == current_user.id)
-                    query = query.where(indiv_filter)
-                    count_query = count_query.where(indiv_filter)
+            if ws_type == "AUTONOMOUS" or (not user_unit and not user_dir):
+                # Panel 100% individual y autónomo: ÚNICA Y EXCLUSIVAMENTE sus funcionarios creados por él
+                indiv_filter = (Employee.created_by_user_id == current_user.id)
+                query = query.where(indiv_filter)
+                count_query = count_query.where(indiv_filter)
+            elif user_unit:
+                u_norm = user_unit.strip().lower()
+                unit_filter = or_(
+                    Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == u_norm),
+                    Employee.created_by_user_id == current_user.id,
+                )
+                query = query.where(unit_filter)
+                count_query = count_query.where(unit_filter)
+            elif user_dir:
+                dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip())
+                dir_filter = or_(
+                    func.lower(Employee.direction_name) == dir_norm.lower(),
+                    Employee.organizational_unit.has(
+                        OrganizationalUnit.parent.has(func.lower(OrganizationalUnit.name) == dir_norm.lower())
+                    ),
+                    Employee.created_by_user_id == current_user.id,
+                )
+                query = query.where(dir_filter)
+                count_query = count_query.where(dir_filter)
 
         if direction and direction.strip():
             clean_dir = re.sub(r'(?i)alcaldesa', 'Alcalde', direction.strip())

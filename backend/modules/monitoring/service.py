@@ -839,16 +839,14 @@ class MonitoringHubService:
         )
 
         if current_user:
-            user_roles = {r.name for r in current_user.roles}
-            ws_type = getattr(current_user, "workspace_type", "UNIT") or "UNIT"
-            is_superadmin = (
-                UserRole.SUPER_ADMIN.value in user_roles or UserRole.AUDITOR.value in user_roles
-            ) and (ws_type == "GLOBAL" or (not getattr(current_user, "assigned_direction", None) and not getattr(current_user, "assigned_unit", None)))
-
-            if not is_superadmin:
+            from modules.employees.service import EmployeeService
+            if not EmployeeService.is_global_superadmin(current_user):
+                ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
                 user_unit = getattr(current_user, "assigned_unit", None)
                 user_dir = getattr(current_user, "assigned_direction", None)
-                if user_unit:
+                if ws_type == "AUTONOMOUS" or (not user_unit and not user_dir):
+                    stmt = stmt.where(Employee.created_by_user_id == current_user.id)
+                elif user_unit:
                     u_norm = user_unit.strip().lower()
                     unit_filter = or_(
                         Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == u_norm),
@@ -865,8 +863,6 @@ class MonitoringHubService:
                         Employee.created_by_user_id == current_user.id,
                     )
                     stmt = stmt.where(dir_filter)
-                else:
-                    stmt = stmt.where(Employee.created_by_user_id == current_user.id)
 
         employees = list((await db.execute(stmt)).scalars().all())
 

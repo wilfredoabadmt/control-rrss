@@ -273,3 +273,148 @@ async def test_workspace_importer_isolation_and_no_collision(
     assert list_imagen[0].position.title == "Fotografo"
     assert list_imagen[0].organizational_unit.name == "Unidad de Imagen Corporativa"
 
+
+@pytest.mark.asyncio
+async def test_autonomous_users_full_independence_and_superadmin_oversight(async_db):
+    """
+    Verifica que cada usuario con panel individual/autónomo (incluso con roles como Auditor o Líder)
+    es 100% independiente:
+    - Lo que sube Usuario 1 NO aparece en la cuenta de Usuario 2.
+    - Usuario 2 NO puede eliminar los funcionarios de Usuario 1.
+    - Únicamente el Super Administrador Global puede ver las listas completas de todos los usuarios y direcciones.
+    """
+    role_auditor = Role(id=uuid.uuid4(), name=UserRole.AUDITOR.value, description="Auditor")
+    role_super = Role(id=uuid.uuid4(), name=UserRole.SUPER_ADMIN.value, description="Super Admin")
+
+    user_jose = User(
+        id=uuid.uuid4(),
+        email="jose@elalto.gob.bo",
+        full_name="Jose Auditor",
+        password_hash="hash",
+        workspace_type="AUTONOMOUS",
+        assigned_direction=None,
+        assigned_unit=None,
+        roles=[role_auditor],
+    )
+
+    user_wilfredo = User(
+        id=uuid.uuid4(),
+        email="wilfredo@elalto.gob.bo",
+        full_name="Wilfredo Operador",
+        password_hash="hash",
+        workspace_type="AUTONOMOUS",
+        assigned_direction=None,
+        assigned_unit=None,
+        roles=[Role(id=uuid.uuid4(), name=UserRole.OPERATOR.value, description="Operador")],
+    )
+
+    user_admin = User(
+        id=uuid.uuid4(),
+        email="admin@elalto.gob.bo",
+        full_name="Super Administrador GAMEA",
+        password_hash="hash",
+        workspace_type="GLOBAL",
+        assigned_direction=None,
+        assigned_unit=None,
+        roles=[role_super],
+    )
+
+    # 1. Jose sube una lista de 2 funcionarios a su cuenta
+    csv_jose = (
+        "nombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok\n"
+        "Sergio,Ramos,Prensa,Comunicacion,fb.com/sergio,@sergio\n"
+        "Santos,Quispe,Prensa,Comunicacion,fb.com/santos,@santos\n"
+    ).encode("utf-8")
+
+    report_jose = await EmployeePayrollImporter.import_payroll_file(
+        db=async_db,
+        file_content=csv_jose,
+        filename="nomina_jose.csv",
+        current_user=user_jose,
+    )
+    assert report_jose.total_records == 2
+    assert report_jose.created_count == 2
+
+    # 2. Jose consulta su lista: ve exactamente sus 2 funcionarios
+    list_jose, count_jose = await EmployeeService.list_employees(
+        db=async_db, current_user=user_jose
+    )
+    assert count_jose == 2
+    assert {e.first_name for e in list_jose} == {"Sergio", "Santos"}
+
+    # 3. Wilfredo inicia sesión y consulta funcionarios: ve 0 funcionarios (completamente aislado)
+    list_wilfredo, count_wilfredo = await EmployeeService.list_employees(
+        db=async_db, current_user=user_wilfredo
+    )
+    assert count_wilfredo == 0
+    assert len(list_wilfredo) == 0
+
+    # 4. Wilfredo intenta eliminar un funcionario creado por Jose: es BLOQUEADO
+    jose_emp_id = list_jose[0].employee_id
+    with pytest.raises(ValidationException) as exc_del:
+        await EmployeeService.delete_employee(
+            async_db,
+            jose_emp_id,
+            user_wilfredo,
+            permanent=True,
+            reason="Intento de borrado cruzado",
+        )
+    assert "fuera de su espacio de trabajo" in str(exc_del.value)
+
+    # 5. Wilfredo intenta eliminación en lote: no se elimina ningún registro de Jose
+    bulk_res = await EmployeeService.bulk_delete_employees(
+        db=async_db,
+        employee_ids=[e.employee_id for e in list_jose],
+        current_user=user_wilfredo,
+        permanent=True,
+    )
+    assert bulk_res["deleted_count"] == 0
+    assert bulk_res["failed_count"] == 2
+
+    # 6. Jose sigue teniendo intactos sus 2 funcionarios
+    list_jose_after, count_jose_after = await EmployeeService.list_employees(
+        db=async_db, current_user=user_jose
+    )
+    assert count_jose_after == 2
+
+    # 7. Super Administrador Central consulta funcionarios: ve los 2 funcionarios de Jose
+    list_admin, count_admin = await EmployeeService.list_employees(
+        db=async_db, current_user=user_admin
+    )
+    assert count_admin == 2
+    assert {e.first_name for e in list_admin} == {"Sergio", "Santos"}
+
+    # 8. Wilfredo sube sus propios funcionarios (1 funcionario)
+    csv_wilfredo = (
+        "nombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok\n"
+        "Mariela,Flores,Protocolo,Comunicacion,fb.com/mariela,@mariela\n"
+    ).encode("utf-8")
+    report_wilf = await EmployeePayrollImporter.import_payroll_file(
+        db=async_db,
+        file_content=csv_wilfredo,
+        filename="nomina_wilf.csv",
+        current_user=user_wilfredo,
+    )
+    assert report_wilf.created_count == 1
+
+    # 9. Wilfredo ve SOLO su 1 funcionario
+    list_w_now, count_w_now = await EmployeeService.list_employees(
+        db=async_db, current_user=user_wilfredo
+    )
+    assert count_w_now == 1
+    assert list_w_now[0].first_name == "Mariela"
+
+    # 10. Jose sigue viendo SOLO sus 2 funcionarios (no ve el de Wilfredo)
+    list_j_now, count_j_now = await EmployeeService.list_employees(
+        db=async_db, current_user=user_jose
+    )
+    assert count_j_now == 2
+    assert {e.first_name for e in list_j_now} == {"Sergio", "Santos"}
+
+    # 11. Super Admin ve la consolidación total (3 funcionarios)
+    list_admin_final, count_admin_final = await EmployeeService.list_employees(
+        db=async_db, current_user=user_admin
+    )
+    assert count_admin_final == 3
+
+

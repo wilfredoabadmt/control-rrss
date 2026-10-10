@@ -250,11 +250,9 @@ class EmployeePayrollImporter:
             )
 
         # Determinar alcance y prefijo de aislamiento de Espacio de Trabajo (REQ-EMP-005, BR-EMP-012, BR-EMP-013)
-        user_roles = {r.name for r in current_user.roles} if current_user else set()
-        ws_type = getattr(current_user, "workspace_type", "UNIT") or "UNIT" if current_user else "GLOBAL"
-        is_superadmin = (
-            UserRole.SUPER_ADMIN.value in user_roles or UserRole.AUDITOR.value in user_roles
-        ) and (ws_type == "GLOBAL" or (not getattr(current_user, "assigned_direction", None) and not getattr(current_user, "assigned_unit", None)))
+        from modules.employees.service import EmployeeService
+        is_superadmin = EmployeeService.is_global_superadmin(current_user)
+        ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip() if current_user else "GLOBAL"
         user_unit = getattr(current_user, "assigned_unit", None) if current_user else None
         user_dir = getattr(current_user, "assigned_direction", None) if current_user else None
 
@@ -464,7 +462,9 @@ class EmployeePayrollImporter:
                     )
 
                 if not is_superadmin and current_user:
-                    if user_unit:
+                    if ws_type == "AUTONOMOUS" or (not user_unit and not user_dir):
+                        stmt_name = stmt_name.where(Employee.created_by_user_id == current_user.id)
+                    elif user_unit:
                         stmt_name = stmt_name.where(
                             or_(
                                 Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == user_unit.strip().lower()),
@@ -479,8 +479,6 @@ class EmployeePayrollImporter:
                                 Employee.created_by_user_id == current_user.id,
                             )
                         )
-                    else:
-                        stmt_name = stmt_name.where(Employee.created_by_user_id == current_user.id)
 
                 existing_emp = (await db.execute(stmt_name)).scalars().first()
 
