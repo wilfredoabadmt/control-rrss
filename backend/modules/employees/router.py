@@ -271,8 +271,8 @@ async def download_import_template(
     Fila 1: nombres, apellidos, unidad, direccion, cuenta_facebook, cuenta_tiktok.
     Sin datos de ejemplo, limpia para llenado institucional.
     """
-    is_csv = file_format.lower() == "csv"
-    ext = "csv" if is_csv else "xlsx"
+    is_csv = False # Force excel generation always
+    ext = "xlsx"
     target_filename = f"plantilla_funcionarios_gamea.{ext}"
     media_type = "text/csv" if is_csv else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 

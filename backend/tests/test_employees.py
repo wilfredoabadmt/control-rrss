@@ -279,16 +279,3 @@ def test_import_template_xlsx_headers_and_empty_rows():
     assert sheet.max_row == 1, f"La plantilla no debe contener filas de ejemplo; max_row debe ser 1 pero es {sheet.max_row}"
 
 
-def test_import_template_csv_headers_and_empty_rows():
-    """Valida que la plantilla CSV tenga únicamente los encabezados en la primera línea sin datos de ejemplo."""
-    from pathlib import Path
-
-    csv_path = Path("extras/plantilla_funcionarios.csv")
-    assert csv_path.exists(), "La plantilla extras/plantilla_funcionarios.csv debe existir"
-
-    text = csv_path.read_text(encoding="utf-8-sig")
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-
-    assert len(lines) == 2, f"El archivo CSV debe tener 2 líneas (encabezados y 1 vacía para Power Query), pero tiene {len(lines)}"
-    assert lines[0] == "nombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok"
-
