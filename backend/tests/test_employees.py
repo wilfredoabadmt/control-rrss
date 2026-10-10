@@ -287,8 +287,8 @@ def test_import_template_csv_headers_and_empty_rows():
     assert csv_path.exists(), "La plantilla extras/plantilla_funcionarios.csv debe existir"
 
     text = csv_path.read_text(encoding="utf-8-sig")
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
 
-    assert len(lines) == 1, f"El archivo CSV debe tener exactamente 1 línea (los encabezados), pero tiene {len(lines)}"
+    assert len(lines) == 2, f"El archivo CSV debe tener 2 líneas (encabezados y 1 vacía para Power Query), pero tiene {len(lines)}"
     assert lines[0] == "nombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok"
 

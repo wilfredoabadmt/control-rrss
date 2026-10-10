@@ -346,17 +346,13 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         text: `Error al alternar estado: ${errorMsg}`,
       });
     }
-  };
-
   // Descarga de Plantilla
-  const handleDownloadTemplate = async (format: 'xlsx' | 'csv' = 'xlsx') => {
+  const handleDownloadTemplate = async (format: 'csv' = 'csv') => {
     try {
       await downloadImportTemplateApi(format);
       setFeedback({
         type: 'info',
-        text: format === 'xlsx'
-          ? 'Plantilla Excel (.xlsx) descargada. Ábrela directamente con doble clic o desde Archivo > Abrir en Excel.'
-          : 'Plantilla CSV descargada.',
+        text: 'Plantilla descargada.',
       });
     } catch (e: any) {
       console.error(e);
@@ -746,9 +742,9 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
 
           {/* Botón: Descargar Plantilla Modelo */}
           <button
-            onClick={() => handleDownloadTemplate('xlsx')}
+            onClick={() => handleDownloadTemplate('csv')}
             className="btn-primary"
-            title="Descargar plantilla oficial Excel (.xlsx) limpia y lista para llenar"
+            title="Descargar plantilla CSV oficial para importar la nómina"
             style={{
               background: 'rgba(16, 185, 129, 0.15)',
               border: '1px solid #10b981',
@@ -762,8 +758,8 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
               borderRadius: 'var(--radius-md)',
             }}
           >
-            <FileSpreadsheet size={16} />
-            <span>Plantilla Excel</span>
+            <Download size={16} />
+            <span>Plantilla</span>
           </button>
 
           {/* Botón: Importar Nómina */}
@@ -2545,7 +2541,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                       type="button"
-                      onClick={() => handleDownloadTemplate('xlsx')}
+                      onClick={() => handleDownloadTemplate('csv')}
                       style={{
                         background: 'rgba(16, 185, 129, 0.2)',
                         border: '1px solid #10b981',
@@ -2559,31 +2555,10 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                         fontSize: '0.78rem',
                         fontWeight: '700',
                       }}
-                      title="Descargar plantilla Excel oficial (.xlsx) lista para llenar"
-                    >
-                      <FileSpreadsheet size={14} />
-                      Plantilla Excel (.xlsx)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadTemplate('csv')}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.15)',
-                        color: 'var(--text-secondary)',
-                        padding: '6px 12px',
-                        borderRadius: 'var(--radius-sm)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                        fontSize: '0.78rem',
-                        fontWeight: '600',
-                      }}
-                      title="Descargar versión CSV delimitada por comas"
+                      title="Descargar plantilla CSV"
                     >
                       <Download size={14} />
-                      CSV
+                      Descargar Plantilla CSV
                     </button>
                   </div>
                 </div>
@@ -2616,12 +2591,6 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                       </tr>
                     </tbody>
                   </table>
-                </div>
-                <div style={{ marginTop: '9px', fontSize: '0.73rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Info size={13} style={{ color: '#06b6d4', flexShrink: 0 }} />
-                  <span>
-                    <strong>Cómo abrir en Excel:</strong> Haz doble clic directo en el archivo <code>.xlsx</code> o ve a <em>Archivo &gt; Abrir</em>. No uses <em>Datos &gt; De texto/CSV</em>.
-                  </span>
                 </div>
               </div>
 

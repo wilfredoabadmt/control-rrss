@@ -135,12 +135,9 @@ export const triggerBlobDownload = (
   window.URL.revokeObjectURL(url);
 };
 
-export const downloadImportTemplateApi = async (format: 'xlsx' | 'csv' = 'xlsx'): Promise<void> => {
-  const isXlsx = format === 'xlsx';
-  const filename = isXlsx ? 'plantilla_funcionarios_gamea.xlsx' : 'plantilla_funcionarios_gamea.csv';
-  const mimeType = isXlsx
-    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    : 'text/csv;charset=utf-8;';
+export const downloadImportTemplateApi = async (format: 'csv' = 'csv'): Promise<void> => {
+  const filename = 'plantilla_funcionarios_gamea.csv';
+  const mimeType = 'text/csv;charset=utf-8;';
 
   try {
     const res = await apiClient.get('/employees/import/template', {
