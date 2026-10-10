@@ -10,29 +10,27 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
 
   if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-        <span className="text-sm">No se registran publicaciones en la serie temporal para el rango actual.</span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
+        <span style={{ fontSize: '0.85rem' }}>No se registran publicaciones en la serie temporal para el rango actual.</span>
       </div>
     );
   }
 
-  const height = 220;
+  const height = 210;
   const paddingX = 40;
-  const paddingY = 30;
-  const viewBoxWidth = 600;
+  const paddingY = 25;
+  const viewBoxWidth = 580;
   const innerWidth = viewBoxWidth - paddingX * 2;
   const innerHeight = height - paddingY * 2;
 
   const maxVal = Math.max(1, ...data.map((d) => Math.max(d.reactions, d.comments + d.reactions)));
 
-  // Calcular coordenadas para cada punto
   const points = data.map((d, i) => {
     const x = paddingX + (data.length > 1 ? (i / (data.length - 1)) * innerWidth : innerWidth / 2);
     const yReactions = paddingY + innerHeight - (d.reactions / maxVal) * innerHeight;
     return { ...d, x, y: yReactions };
   });
 
-  // Generar path SVG para la línea y área de reacciones
   const linePath = points.reduce(
     (acc, p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `${acc} L ${p.x} ${p.y}`),
     ''
@@ -48,33 +46,34 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
   const activePoint = hoverIndex !== null ? points[hoverIndex] : null;
 
   return (
-    <div className="w-full relative">
-      <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-            <span className="text-slate-300">Reacciones</span>
+    <div style={{ width: '100%', position: 'relative', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* Leyenda */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#06b6d4', display: 'inline-block' }} />
+            <span style={{ color: '#e2e8f0', fontWeight: 600 }}>Reacciones</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-pink-400" />
-            <span className="text-slate-300">Comentarios</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#ec4899', display: 'inline-block' }} />
+            <span style={{ color: '#e2e8f0', fontWeight: 600 }}>Comentarios</span>
           </div>
         </div>
-        <span className="text-[11px] text-slate-400">Evolución Diaria</span>
+        <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Evolución Diaria</span>
       </div>
 
-      <div className="relative w-full overflow-hidden">
+      <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
         <svg
           viewBox={`0 0 ${viewBoxWidth} ${height}`}
-          className="w-full h-auto overflow-visible select-none"
+          style={{ width: '100%', height: 'auto', overflow: 'visible', userSelect: 'none' }}
           onMouseLeave={() => setHoverIndex(null)}
         >
           <defs>
-            <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
+            <linearGradient id="timelineAreaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.4" />
               <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
             </linearGradient>
-            <filter id="glowLine" x="-20%" y="-20%" width="140%" height="140%">
+            <filter id="timelineGlow" x="-20%" y="-20%" width="140%" height="140%">
               <feGaussianBlur stdDeviation="3" result="blur" />
               <feMerge>
                 <feMergeNode in="blur" />
@@ -83,7 +82,7 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
             </filter>
           </defs>
 
-          {/* Líneas de guía horizontal */}
+          {/* Líneas guía */}
           {[0, 0.5, 1].map((pct, idx) => {
             const yLine = paddingY + innerHeight * (1 - pct);
             const valLabel = Math.round(maxVal * pct);
@@ -94,17 +93,17 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
                   y1={yLine}
                   x2={paddingX + innerWidth}
                   y2={yLine}
-                  stroke="#334155"
+                  stroke="rgba(255, 255, 255, 0.08)"
                   strokeDasharray="4 4"
                   strokeWidth={0.8}
-                  opacity={0.5}
                 />
                 <text
                   x={paddingX - 8}
                   y={yLine + 3}
                   textAnchor="end"
                   fill="#64748b"
-                  fontSize="10"
+                  fontSize="9"
+                  fontFamily="inherit"
                 >
                   {valLabel}
                 </text>
@@ -113,7 +112,7 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
           })}
 
           {/* Área sombreada */}
-          {areaPath && <path d={areaPath} fill="url(#areaGradient)" />}
+          {areaPath && <path d={areaPath} fill="url(#timelineAreaGradient)" />}
 
           {/* Línea de tendencia */}
           {linePath && (
@@ -124,38 +123,35 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              filter="url(#glowLine)"
+              filter="url(#timelineGlow)"
             />
           )}
 
-          {/* Puntos y zonas de detección de hover */}
+          {/* Puntos y zonas de detección */}
           {points.map((p, idx) => (
             <g key={p.date || idx}>
-              {/* Círculo visible */}
               <circle
                 cx={p.x}
                 cy={p.y}
                 r={hoverIndex === idx ? 5 : 3.5}
                 fill={hoverIndex === idx ? '#38bdf8' : '#06b6d4'}
-                stroke="#0f172a"
+                stroke="#0b0f19"
                 strokeWidth={2}
-                className="transition-all duration-150"
+                style={{ transition: 'all 0.15s ease' }}
               />
-
-              {/* Zona sensible transparente */}
               <rect
-                x={p.x - 15}
+                x={p.x - 16}
                 y={paddingY}
-                width={30}
+                width={32}
                 height={innerHeight}
                 fill="transparent"
-                className="cursor-pointer"
+                style={{ cursor: 'pointer' }}
                 onMouseEnter={() => setHoverIndex(idx)}
               />
             </g>
           ))}
 
-          {/* Línea vertical guía de hover activo */}
+          {/* Línea vertical guía en hover */}
           {activePoint && (
             <line
               x1={activePoint.x}
@@ -169,9 +165,8 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
             />
           )}
 
-          {/* Fechas en el eje X */}
+          {/* Etiquetas fecha en X */}
           {points.map((p, idx) => {
-            // Mostrar solo algunas fechas si son muchas
             if (points.length > 8 && idx % Math.ceil(points.length / 6) !== 0 && idx !== points.length - 1) {
               return null;
             }
@@ -183,6 +178,7 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
                 textAnchor="middle"
                 fill="#94a3b8"
                 fontSize="9"
+                fontFamily="inherit"
               >
                 {p.date ? p.date.substring(5) : ''}
               </text>
@@ -193,24 +189,35 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
         {/* Tooltip flotante interactivo */}
         {activePoint && (
           <div
-            className="absolute z-30 pointer-events-none px-3 py-2 rounded-lg bg-slate-950/95 border border-cyan-500/40 text-white text-xs shadow-2xl backdrop-blur-md"
             style={{
+              position: 'absolute',
+              zIndex: 30,
+              pointerEvents: 'none',
+              padding: '8px 12px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(11, 15, 25, 0.95)',
+              border: '1px solid rgba(6, 182, 212, 0.5)',
+              color: '#fff',
+              fontSize: '0.75rem',
+              boxShadow: '0 12px 25px rgba(0, 0, 0, 0.8)',
+              backdropFilter: 'blur(8px)',
               left: `${(activePoint.x / viewBoxWidth) * 100}%`,
               top: '10px',
               transform: 'translateX(-50%)',
+              whiteSpace: 'nowrap',
             }}
           >
-            <div className="font-semibold text-slate-300 border-b border-slate-800 pb-1 mb-1.5 text-[11px]">
+            <div style={{ fontWeight: 700, color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '4px', marginBottom: '6px', fontSize: '0.72rem' }}>
               {activePoint.date}
             </div>
-            <div className="flex flex-col gap-1 text-[11px]">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-cyan-400 font-medium">Reacciones:</span>
-                <span className="font-bold text-white">{activePoint.reactions}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                <span style={{ color: '#22d3ee', fontWeight: 600 }}>Reacciones:</span>
+                <span style={{ fontWeight: 700, color: '#fff' }}>{activePoint.reactions}</span>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-pink-400 font-medium">Comentarios:</span>
-                <span className="font-bold text-white">{activePoint.comments}</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                <span style={{ color: '#f472b6', fontWeight: 600 }}>Comentarios:</span>
+                <span style={{ fontWeight: 700, color: '#fff' }}>{activePoint.comments}</span>
               </div>
             </div>
           </div>

@@ -16,46 +16,58 @@ export const BarChartDirection: React.FC<BarChartDirectionProps> = ({
 
   if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-        <span className="text-sm">No se encontraron datos para las direcciones evaluadas.</span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
+        <span style={{ fontSize: '0.85rem' }}>No se encontraron datos para las direcciones evaluadas.</span>
       </div>
     );
   }
 
-  // Máximo porcentaje para escala relativa (mínimo 100 para porcentaje estándar)
   const maxRate = Math.max(100, ...data.map((d) => d.participation_rate));
 
   return (
-    <div className="space-y-3 w-full">
-      <div className="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-slate-800">
-        <span>Dirección / Secretaría</span>
-        <div className="flex items-center gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+      {/* Cabecera */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', paddingBottom: '6px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+        <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Dirección / Dependencia</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <span>Participación</span>
-          <span>% Tasa</span>
+          <span>Tasa %</span>
         </div>
       </div>
 
-      <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar">
+      {/* Lista de barras */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
         {data.map((item, index) => {
           const isSelected = selectedDirection === item.direction;
           const isHovered = hoveredIndex === index;
           const widthPct = Math.min(100, Math.max(4, (item.participation_rate / maxRate) * 100));
 
-          // Color dinámico según desempeño
-          let barGradient = 'from-blue-600 to-cyan-400';
-          let badgeColor = 'text-cyan-300 bg-cyan-950/40 border-cyan-800/40';
+          // Colores temáticos institucionales
+          let barGradient = 'linear-gradient(90deg, #0284c7 0%, #06b6d4 100%)';
+          let badgeBg = 'rgba(6, 182, 212, 0.15)';
+          let badgeColor = '#22d3ee';
+          let badgeBorder = 'rgba(6, 182, 212, 0.35)';
+
           if (item.participation_rate >= 70) {
-            barGradient = 'from-emerald-600 to-teal-400';
-            badgeColor = 'text-emerald-300 bg-emerald-950/40 border-emerald-800/40';
+            barGradient = 'linear-gradient(90deg, #059669 0%, #10b981 100%)';
+            badgeBg = 'rgba(16, 185, 129, 0.15)';
+            badgeColor = '#34d399';
+            badgeBorder = 'rgba(16, 185, 129, 0.35)';
           } else if (item.participation_rate >= 40) {
-            barGradient = 'from-sky-600 to-blue-400';
-            badgeColor = 'text-sky-300 bg-sky-950/40 border-sky-800/40';
+            barGradient = 'linear-gradient(90deg, #2563eb 0%, #38bdf8 100%)';
+            badgeBg = 'rgba(59, 130, 246, 0.15)';
+            badgeColor = '#60a5fa';
+            badgeBorder = 'rgba(59, 130, 246, 0.35)';
           } else if (item.participation_rate > 0) {
-            barGradient = 'from-amber-600 to-orange-400';
-            badgeColor = 'text-amber-300 bg-amber-950/40 border-amber-800/40';
+            barGradient = 'linear-gradient(90deg, #d97706 0%, #f59e0b 100%)';
+            badgeBg = 'rgba(245, 158, 11, 0.15)';
+            badgeColor = '#fbbf24';
+            badgeBorder = 'rgba(245, 158, 11, 0.35)';
           } else {
-            barGradient = 'from-slate-600 to-slate-500';
-            badgeColor = 'text-slate-400 bg-slate-900 border-slate-800';
+            barGradient = 'linear-gradient(90deg, #475569 0%, #64748b 100%)';
+            badgeBg = 'rgba(100, 116, 139, 0.15)';
+            badgeColor = '#94a3b8';
+            badgeBorder = 'rgba(100, 116, 139, 0.35)';
           }
 
           return (
@@ -68,52 +80,117 @@ export const BarChartDirection: React.FC<BarChartDirectionProps> = ({
               }}
               onMouseEnter={() => setHoveredIndex(index)}
               onMouseLeave={() => setHoveredIndex(null)}
-              className={`group relative p-2.5 rounded-lg border transition-all duration-200 cursor-pointer ${
-                isSelected
-                  ? 'bg-cyan-950/30 border-cyan-500/60 shadow-[0_0_15px_rgba(6,182,212,0.15)] ring-1 ring-cyan-500/40'
+              style={{
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-md)',
+                border: isSelected
+                  ? '1px solid rgba(6, 182, 212, 0.7)'
                   : isHovered
-                  ? 'bg-slate-800/60 border-slate-700'
-                  : 'bg-slate-900/40 border-slate-800/60 hover:border-slate-700/80'
-              }`}
+                  ? '1px solid rgba(255, 255, 255, 0.18)'
+                  : '1px solid rgba(255, 255, 255, 0.06)',
+                background: isSelected
+                  ? 'rgba(6, 182, 212, 0.12)'
+                  : isHovered
+                  ? 'rgba(31, 41, 55, 0.7)'
+                  : 'rgba(17, 24, 39, 0.5)',
+                boxShadow: isSelected ? '0 0 15px rgba(6, 182, 212, 0.2)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
             >
-              <div className="flex items-center justify-between mb-1.5 text-xs">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem' }}>
                 <span
-                  className={`font-medium truncate max-w-[280px] ${
-                    isSelected ? 'text-cyan-300 font-semibold' : 'text-slate-200'
-                  }`}
+                  style={{
+                    fontWeight: isSelected ? 700 : 600,
+                    color: isSelected ? 'var(--primary-500)' : '#f1f5f9',
+                    maxWidth: '260px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
                   title={item.direction}
                 >
                   {item.direction}
                 </span>
 
-                <div className="flex items-center gap-4 text-xs">
-                  <span className="text-slate-400">
-                    <strong className="text-slate-200">{item.participating_employees}</strong> /{' '}
-                    {item.total_employees} func.
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                    <strong style={{ color: '#fff' }}>{item.participating_employees}</strong> / {item.total_employees} func.
                   </span>
                   <span
-                    className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${badgeColor}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '2px 8px',
+                      borderRadius: '9999px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      background: badgeBg,
+                      color: badgeColor,
+                      border: `1px solid ${badgeBorder}`,
+                      minWidth: '52px',
+                      justifyContent: 'center',
+                    }}
                   >
                     {item.participation_rate.toFixed(1)}%
                   </span>
                 </div>
               </div>
 
-              {/* Barra de progreso interactiva */}
-              <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800/80">
+              {/* Barra de progreso */}
+              <div
+                style={{
+                  width: '100%',
+                  height: '8px',
+                  background: 'rgba(11, 15, 25, 0.8)',
+                  borderRadius: '4px',
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                  padding: '1px',
+                }}
+              >
                 <div
-                  className={`h-full rounded-full bg-gradient-to-r ${barGradient} transition-all duration-500`}
-                  style={{ width: `${widthPct}%` }}
+                  style={{
+                    height: '100%',
+                    width: `${widthPct}%`,
+                    background: barGradient,
+                    borderRadius: '3px',
+                    transition: 'width 0.4s ease',
+                  }}
                 />
               </div>
 
-              {/* Tooltip emergente al pasar el mouse */}
+              {/* Tooltip en hover */}
               {isHovered && (
-                <div className="absolute left-1/2 -top-12 -translate-x-1/2 z-20 px-3 py-1.5 rounded-md bg-slate-950 border border-cyan-500/30 text-white text-[11px] shadow-xl whitespace-nowrap pointer-events-none flex items-center gap-3 animate-in fade-in zoom-in-95 duration-150">
-                  <span className="text-cyan-400 font-medium">
-                    {item.total_reactions} reacciones registradas
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '-36px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 20,
+                    background: '#090d16',
+                    border: '1px solid rgba(6, 182, 212, 0.5)',
+                    borderRadius: '6px',
+                    padding: '6px 12px',
+                    color: '#fff',
+                    fontSize: '0.75rem',
+                    boxShadow: '0 8px 20px rgba(0, 0, 0, 0.8)',
+                    whiteSpace: 'nowrap',
+                    pointerEvents: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <span style={{ color: 'var(--primary-500)', fontWeight: 600 }}>
+                    {item.total_reactions} reacciones acumuladas
                   </span>
-                  <span className="text-slate-400">
+                  <span style={{ color: 'var(--text-muted)' }}>
                     • Clic para {isSelected ? 'quitar filtro' : 'filtrar por esta dirección'}
                   </span>
                 </div>

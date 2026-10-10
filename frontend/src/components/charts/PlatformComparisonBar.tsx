@@ -20,9 +20,9 @@ export const PlatformComparisonBar: React.FC<PlatformComparisonBarProps> = ({
   const ttPct = total > 0 ? (tt.total_reactions / total) * 100 : 50;
 
   return (
-    <div className="w-full space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
       {/* Tarjetas Bilaterales Interactivas */}
-      <div className="grid grid-cols-2 gap-3">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
         {/* Facebook Card */}
         <div
           onClick={() => {
@@ -30,29 +30,51 @@ export const PlatformComparisonBar: React.FC<PlatformComparisonBarProps> = ({
               onSelectPlatform(selectedPlatform === 'FACEBOOK' ? null : 'FACEBOOK');
             }
           }}
-          className={`p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
-            selectedPlatform === 'FACEBOOK'
-              ? 'bg-blue-950/40 border-blue-500 ring-1 ring-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]'
-              : 'bg-slate-900/60 border-slate-800 hover:border-blue-700/60'
-          }`}
+          style={{
+            padding: '16px 18px',
+            borderRadius: 'var(--radius-lg)',
+            border: selectedPlatform === 'FACEBOOK'
+              ? '1px solid #3b82f6'
+              : '1px solid rgba(255, 255, 255, 0.08)',
+            background: selectedPlatform === 'FACEBOOK'
+              ? 'rgba(59, 130, 246, 0.15)'
+              : 'rgba(17, 24, 39, 0.55)',
+            boxShadow: selectedPlatform === 'FACEBOOK' ? '0 0 18px rgba(59, 130, 246, 0.25)' : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
         >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-md bg-[#1877F2]/20 border border-[#1877F2]/40 flex items-center justify-center text-[#1877F2] font-black text-xs">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span
+                style={{
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '6px',
+                  background: 'rgba(24, 119, 242, 0.2)',
+                  border: '1px solid rgba(24, 119, 242, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#1877F2',
+                  fontWeight: 900,
+                  fontSize: '0.85rem',
+                }}
+              >
                 f
               </span>
-              <span className="text-xs font-semibold text-slate-200">Facebook</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f1f5f9' }}>Facebook</span>
             </div>
-            <span className="text-xs font-bold text-blue-400">{fbPct.toFixed(1)}%</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#60a5fa' }}>{fbPct.toFixed(1)}%</span>
           </div>
 
-          <div className="text-2xl font-black text-white tracking-tight">
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em' }}>
             {fb.total_reactions.toLocaleString()}
           </div>
-          <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
-            <span>{fb.total_comments} comentarios</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+            <span>{fb.total_comments} coment.</span>
             <span>•</span>
-            <span>{fb.total_shares} compartidos</span>
+            <span>{fb.total_shares} comp.</span>
           </div>
         </div>
 
@@ -63,50 +85,96 @@ export const PlatformComparisonBar: React.FC<PlatformComparisonBarProps> = ({
               onSelectPlatform(selectedPlatform === 'TIKTOK' ? null : 'TIKTOK');
             }
           }}
-          className={`p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
-            selectedPlatform === 'TIKTOK'
-              ? 'bg-cyan-950/40 border-cyan-400 ring-1 ring-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
-              : 'bg-slate-900/60 border-slate-800 hover:border-pink-700/60'
-          }`}
+          style={{
+            padding: '16px 18px',
+            borderRadius: 'var(--radius-lg)',
+            border: selectedPlatform === 'TIKTOK'
+              ? '1px solid #f43f5e'
+              : '1px solid rgba(255, 255, 255, 0.08)',
+            background: selectedPlatform === 'TIKTOK'
+              ? 'rgba(244, 63, 94, 0.15)'
+              : 'rgba(17, 24, 39, 0.55)',
+            boxShadow: selectedPlatform === 'TIKTOK' ? '0 0 18px rgba(244, 63, 94, 0.25)' : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
         >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-md bg-gradient-to-tr from-[#fe2c55]/30 to-[#00f2fe]/30 border border-pink-500/40 flex items-center justify-center text-pink-400 font-black text-xs">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span
+                style={{
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '6px',
+                  background: 'linear-gradient(135deg, rgba(254, 44, 85, 0.25) 0%, rgba(0, 242, 254, 0.25) 100%)',
+                  border: '1px solid rgba(254, 44, 85, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#f43f5e',
+                  fontWeight: 900,
+                  fontSize: '0.85rem',
+                }}
+              >
                 ♪
               </span>
-              <span className="text-xs font-semibold text-slate-200">TikTok</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f1f5f9' }}>TikTok</span>
             </div>
-            <span className="text-xs font-bold text-pink-400">{ttPct.toFixed(1)}%</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#f472b6' }}>{ttPct.toFixed(1)}%</span>
           </div>
 
-          <div className="text-2xl font-black text-white tracking-tight">
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em' }}>
             {tt.total_reactions.toLocaleString()}
           </div>
-          <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
-            <span>{tt.total_comments} comentarios</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+            <span>{tt.total_comments} coment.</span>
             <span>•</span>
-            <span>{tt.total_shares} compartidos</span>
+            <span>{tt.total_shares} comp.</span>
           </div>
         </div>
       </div>
 
-      {/* Proportional Split Bar */}
-      <div className="w-full">
-        <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden flex p-0.5 border border-slate-800">
+      {/* Barra Proporcional Dividida */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+        <div
+          style={{
+            width: '100%',
+            height: '10px',
+            background: 'rgba(11, 15, 25, 0.9)',
+            borderRadius: '9999px',
+            overflow: 'hidden',
+            display: 'flex',
+            padding: '1px',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+          }}
+        >
           <div
-            className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-l-full transition-all duration-500"
-            style={{ width: `${fbPct}%` }}
+            style={{
+              height: '100%',
+              width: `${fbPct}%`,
+              background: 'linear-gradient(90deg, #1877F2 0%, #3b82f6 100%)',
+              borderTopLeftRadius: '9999px',
+              borderBottomLeftRadius: '9999px',
+              transition: 'width 0.4s ease',
+            }}
             title={`Facebook: ${fb.total_reactions} (${fbPct.toFixed(1)}%)`}
           />
           <div
-            className="h-full bg-gradient-to-r from-cyan-400 to-pink-500 rounded-r-full transition-all duration-500"
-            style={{ width: `${ttPct}%` }}
+            style={{
+              height: '100%',
+              width: `${ttPct}%`,
+              background: 'linear-gradient(90deg, #00f2fe 0%, #fe2c55 100%)',
+              borderTopRightRadius: '9999px',
+              borderBottomRightRadius: '9999px',
+              transition: 'width 0.4s ease',
+            }}
             title={`TikTok: ${tt.total_reactions} (${ttPct.toFixed(1)}%)`}
           />
         </div>
-        <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1 px-1">
-          <span>{fb.total_reactions} reacciones</span>
-          <span>{tt.total_reactions} reacciones</span>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', padding: '0 2px' }}>
+          <span>{fb.total_reactions} reacciones FB</span>
+          <span>{tt.total_reactions} reacciones TT</span>
         </div>
       </div>
     </div>
