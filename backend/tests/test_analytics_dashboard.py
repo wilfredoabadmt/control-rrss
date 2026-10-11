@@ -394,3 +394,68 @@ async def test_hierarchical_filtering_and_purge(async_db: AsyncSession, super_ad
     assert res_purged.kpis.total_reactions == 0
     assert res_purged.kpis.participating_employees == 0
 
+
+@pytest.mark.asyncio
+async def test_analytics_subalcaldias_filtering(async_db: AsyncSession, super_admin: User):
+    """Verifica que las Subalcaldías aparezcan en el organigrama y funcionen en los filtros jerárquicos."""
+    # 1. Comprobar que Subalcaldías esté en las secretarías disponibles
+    overview = await AnalyticsService.get_overview(db=async_db, current_user=super_admin)
+    assert "Subalcaldías" in overview.available_secretarias
+
+    # 2. Registrar unidad y funcionario perteneciente a una Subalcaldía (Distrito 3)
+    unit_sub3 = OrganizationalUnit(
+        id=uuid.uuid4(),
+        name="Unidad de Infraestructura Pública",
+        code="SUB3-INFRA",
+    )
+    async_db.add(unit_sub3)
+    await async_db.flush()
+
+    emp_sub = Employee(
+        employee_id="EMP-SUB-03",
+        first_name="Ramiro",
+        last_name="Callisaya",
+        document_number_encrypted="enc_sub3",
+        document_hash="hash_sub3",
+        organizational_unit_id=unit_sub3.id,
+        direction_name="Subalcaldía Distrito Municipal 3",
+        status="ACTIVE",
+    )
+    async_db.add(emp_sub)
+    await async_db.commit()
+
+    # 3. Filtrar por Secretaría "Subalcaldías"
+    res_sub = await AnalyticsService.get_overview(
+        db=async_db,
+        current_user=super_admin,
+        secretaria="Subalcaldías",
+    )
+    assert res_sub.kpis.total_employees == 1
+    assert "Subalcaldía Distrito Municipal 3" in res_sub.available_directions
+
+    # 4. Filtrar por Dirección específica "Subalcaldía Distrito Municipal 3"
+    res_dir = await AnalyticsService.get_overview(
+        db=async_db,
+        current_user=super_admin,
+        direction="Subalcaldía Distrito Municipal 3",
+    )
+    assert res_dir.kpis.total_employees == 1
+
+    # 5. Filtrar por otra Subalcaldía (Distrito 4) -> 0 empleados
+    res_other = await AnalyticsService.get_overview(
+        db=async_db,
+        current_user=super_admin,
+        direction="Subalcaldía Distrito Municipal 4",
+    )
+    assert res_other.kpis.total_employees == 0
+
+    # 6. Verificar en la tabla de funcionarios
+    table_res = await AnalyticsService.get_employees_table(
+        db=async_db,
+        current_user=super_admin,
+        secretaria="Subalcaldías",
+    )
+    assert table_res.total == 1
+    assert table_res.items[0].secretaria == "Subalcaldías"
+    assert table_res.items[0].direction == "Subalcaldía Distrito Municipal 3"
+

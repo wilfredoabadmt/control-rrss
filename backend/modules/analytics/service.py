@@ -300,6 +300,101 @@ ORGANIGRAMA_HIERARCHY: list[dict[str, Any]] = [
             ],
         },
     },
+    {
+        "secretaria": "Subalcaldías",
+        "direcciones": {
+            "Subalcaldía Distrito Municipal 1": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+            "Subalcaldía Distrito Municipal 2": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+            "Subalcaldía Distrito Municipal 3": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+            "Subalcaldía Distrito Municipal 4": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+            "Subalcaldía Distrito Municipal 5": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+            "Subalcaldía Distrito Municipal 6": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+            "Subalcaldía Distrito Municipal 7": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+                "Hospital Municipal Modelo Corea",
+                "Terminal Metropolitana El Alto",
+            ],
+            "Subalcaldía Distrito Municipal 8": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+                "Hospital Municipal Boliviano Holandés",
+            ],
+            "Subalcaldía Distrito Municipal 9": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+                "Hospital Municipal Modelo Boliviano Japonés",
+                "Hospital Municipal Qullañ Uta",
+            ],
+            "Subalcaldía Distrito Municipal 10": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+                "Laboratorio Industrial de Oxígeno Medicinal GAMEA",
+            ],
+            "Subalcaldía Distrito Municipal 11": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+            "Subalcaldía Distrito Municipal 12": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+            "Subalcaldía Distrito Municipal 13": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+            "Subalcaldía Distrito Municipal 14": [
+                "Asesoría Jurídica",
+                "Unidad de Finanzas y Administración",
+                "Unidad de Infraestructura Pública",
+                "Unidad de Desarrollo Humano",
+            ],
+        },
+    },
 ]
 
 ALL_SECRETARIAS: list[str] = [sec["secretaria"] for sec in ORGANIGRAMA_HIERARCHY]
@@ -312,15 +407,7 @@ def resolve_org_hierarchy(direction_name: str | None, unit_name: str | None) -> 
     d_clean = (direction_name or "").strip()
     u_clean = (unit_name or "").strip()
 
-    # 1. Intentar resolver por el nombre de la unidad
-    if u_clean and u_clean.lower() not in ("no asignada", "sin unidad asignada", "none", ""):
-        u_norm = u_clean.lower()
-        for sec_item in ORGANIGRAMA_HIERARCHY:
-            for dir_nombre, unidades in sec_item["direcciones"].items():
-                if any(u_norm == u.lower() or u_norm in u.lower() or u.lower() in u_norm for u in unidades):
-                    return sec_item["secretaria"], dir_nombre, u_clean
-
-    # 2. Intentar resolver por el nombre de la dirección
+    # 1. Intentar resolver por el nombre de la dirección si está especificado
     if d_clean and d_clean.lower() not in ("otras direcciones", "no especificada", "none", ""):
         d_norm = d_clean.lower()
         for sec_item in ORGANIGRAMA_HIERARCHY:
@@ -330,7 +417,29 @@ def resolve_org_hierarchy(direction_name: str | None, unit_name: str | None) -> 
                 if d_norm == dir_nombre.lower() or d_norm in dir_nombre.lower() or dir_nombre.lower() in d_norm:
                     return sec_item["secretaria"], dir_nombre, u_clean or "Sin Unidad Asignada"
 
-    # 3. Fallback inteligente
+    # 2. Intentar resolver por el nombre de la unidad
+    if u_clean and u_clean.lower() not in ("no asignada", "sin unidad asignada", "none", ""):
+        u_norm = u_clean.lower()
+        for sec_item in ORGANIGRAMA_HIERARCHY:
+            for dir_nombre, unidades in sec_item["direcciones"].items():
+                if any(u_norm == u.lower() or u_norm in u.lower() or u.lower() in u_norm for u in unidades):
+                    return sec_item["secretaria"], dir_nombre, u_clean
+
+    # 3. Detección especial de menciones a Subalcaldías / Distritos
+    text_to_check = f"{d_clean} {u_clean}".lower()
+    if "subalcal" in text_to_check or "sub alcal" in text_to_check or "distrito" in text_to_check:
+        for i in range(1, 15):
+            if (
+                f"distrito municipal {i}" in text_to_check
+                or f"distrito municipal - {i}" in text_to_check
+                or f"distrito {i}" in text_to_check
+                or f"d-{i}" in text_to_check
+                or f"d{i}" in text_to_check
+            ):
+                return "Subalcaldías", f"Subalcaldía Distrito Municipal {i}", u_clean or "Sin Unidad Asignada"
+        return "Subalcaldías", "Subalcaldía Distrito Municipal 1", u_clean or "Sin Unidad Asignada"
+
+    # 4. Fallback inteligente
     resolved_dir = d_clean or u_clean or "Dirección de Comunicación"
     resolved_sec = "Despacho Alcalde"
     # Verificar si coincide con alguna secretaría conocida
@@ -400,13 +509,29 @@ class AnalyticsService:
 
             # Filtro por Secretaría
             if secretaria and secretaria != "ALL":
-                if sec_res.lower() != secretaria.strip().lower():
+                sec_target = secretaria.strip().lower()
+                matches_sec = (sec_res.lower() == sec_target) or (
+                    "subalcal" in sec_res.lower() and "subalcal" in sec_target
+                )
+                if not matches_sec:
                     continue
 
             # Filtro por Dirección
             if direction and direction != "ALL":
                 d_target = direction.strip().lower()
-                if dir_res.lower() != d_target and r.department.lower() != d_target:
+                matches_dir = (
+                    dir_res.lower() == d_target
+                    or r.department.lower() == d_target
+                    or (
+                        ("subalcal" in dir_res.lower() or "distrito" in dir_res.lower())
+                        and ("subalcal" in d_target or "distrito" in d_target)
+                        and any(
+                            f" {i}" in dir_res.lower() and f" {i}" in d_target
+                            for i in range(1, 15)
+                        )
+                    )
+                )
+                if not matches_dir:
                     continue
 
             # Filtro por Unidad
@@ -688,11 +813,27 @@ class AnalyticsService:
 
             # Filtros jerárquicos
             if secretaria and secretaria != "ALL":
-                if sec_res.lower() != secretaria.strip().lower():
+                sec_target = secretaria.strip().lower()
+                matches_sec = (sec_res.lower() == sec_target) or (
+                    "subalcal" in sec_res.lower() and "subalcal" in sec_target
+                )
+                if not matches_sec:
                     continue
             if direction and direction != "ALL":
                 d_target = direction.strip().lower()
-                if dir_res.lower() != d_target and r.department.lower() != d_target:
+                matches_dir = (
+                    dir_res.lower() == d_target
+                    or r.department.lower() == d_target
+                    or (
+                        ("subalcal" in dir_res.lower() or "distrito" in dir_res.lower())
+                        and ("subalcal" in d_target or "distrito" in d_target)
+                        and any(
+                            f" {i}" in dir_res.lower() and f" {i}" in d_target
+                            for i in range(1, 15)
+                        )
+                    )
+                )
+                if not matches_dir:
                     continue
             if unit and unit != "ALL":
                 u_target = unit.strip().lower()

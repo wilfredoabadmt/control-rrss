@@ -402,6 +402,143 @@ export const ESTRUCTURA_ORGANICA_GAMEA: SecretariaOrganica[] = [
       },
     ],
   },
+  {
+    nombre: 'Subalcaldías',
+    direcciones: [
+      {
+        nombre: 'Subalcaldía Distrito Municipal 1',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 2',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 3',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 4',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 5',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 6',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 7',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+          'Hospital Municipal Modelo Corea',
+          'Terminal Metropolitana El Alto',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 8',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+          'Hospital Municipal Boliviano Holandés',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 9',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+          'Hospital Municipal Modelo Boliviano Japonés',
+          'Hospital Municipal Qullañ Uta',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 10',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+          'Laboratorio Industrial de Oxígeno Medicinal GAMEA',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 11',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 12',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 13',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+      {
+        nombre: 'Subalcaldía Distrito Municipal 14',
+        unidades: [
+          'Asesoría Jurídica',
+          'Unidad de Finanzas y Administración',
+          'Unidad de Infraestructura Pública',
+          'Unidad de Desarrollo Humano',
+        ],
+      },
+    ],
+  },
 ];
 
 export const LISTA_SECRETARIAS: string[] = ESTRUCTURA_ORGANICA_GAMEA.map((s) => s.nombre);
@@ -415,7 +552,7 @@ for (const sec of ESTRUCTURA_ORGANICA_GAMEA) {
 }
 
 export const LISTA_DIRECCIONES = Object.keys(ORGANIGRAMA_GAMEA).sort((a, b) =>
-  a.localeCompare(b, 'es')
+  a.localeCompare(b, 'es', { numeric: true })
 );
 
 // Helpers de resolución jerárquica
@@ -424,10 +561,14 @@ export function getDireccionesBySecretaria(secretaria: string): string[] {
     return LISTA_DIRECCIONES;
   }
   const sec = ESTRUCTURA_ORGANICA_GAMEA.find(
-    (s) => s.nombre.toLowerCase() === secretaria.toLowerCase()
+    (s) =>
+      s.nombre.toLowerCase() === secretaria.toLowerCase() ||
+      (s.nombre.toLowerCase().includes('subalcal') && secretaria.toLowerCase().includes('subalcal'))
   );
   if (!sec) return [];
-  return sec.direcciones.map((d) => d.nombre).sort((a, b) => a.localeCompare(b, 'es'));
+  return sec.direcciones
+    .map((d) => d.nombre)
+    .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
 }
 
 export function getUnidadesByDireccion(secretaria: string, direccion: string): string[] {
@@ -435,11 +576,13 @@ export function getUnidadesByDireccion(secretaria: string, direccion: string): s
     if (!secretaria || secretaria === 'ALL') return [];
     // Si hay secretaría pero no dirección, retornar todas las unidades de esa secretaría
     const sec = ESTRUCTURA_ORGANICA_GAMEA.find(
-      (s) => s.nombre.toLowerCase() === secretaria.toLowerCase()
+      (s) =>
+        s.nombre.toLowerCase() === secretaria.toLowerCase() ||
+        (s.nombre.toLowerCase().includes('subalcal') && secretaria.toLowerCase().includes('subalcal'))
     );
     if (!sec) return [];
     const allUnits = sec.direcciones.flatMap((d) => d.unidades);
-    return Array.from(new Set(allUnits)).sort((a, b) => a.localeCompare(b, 'es'));
+    return Array.from(new Set(allUnits)).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
   }
 
   // Buscar unidades de la dirección específica
@@ -448,12 +591,12 @@ export function getUnidadesByDireccion(secretaria: string, direccion: string): s
       (d) => d.nombre.toLowerCase() === direccion.toLowerCase()
     );
     if (dir) {
-      return [...dir.unidades].sort((a, b) => a.localeCompare(b, 'es'));
+      return [...dir.unidades].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
     }
   }
 
   // Fallback al diccionario plano
-  return (ORGANIGRAMA_GAMEA[direccion] || []).slice().sort((a, b) => a.localeCompare(b, 'es'));
+  return (ORGANIGRAMA_GAMEA[direccion] || []).slice().sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
 }
 
 export function findSecretariaForDireccion(direccion: string): string | null {
@@ -464,6 +607,9 @@ export function findSecretariaForDireccion(direccion: string): string | null {
     for (const d of sec.direcciones) {
       if (d.nombre.toLowerCase() === dirNorm) return sec.nombre;
     }
+  }
+  if (dirNorm.includes('subalcald') || dirNorm.includes('sub alcald') || dirNorm.startsWith('distrito')) {
+    return 'Subalcaldías';
   }
   return null;
 }

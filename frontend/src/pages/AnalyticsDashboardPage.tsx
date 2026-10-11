@@ -402,11 +402,11 @@ export const AnalyticsDashboardPage: React.FC = () => {
 
         {/* Fila Inferior: Filtros Jerárquicos en Cascada (Secretaría -> Dirección -> Unidad) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', width: '100%', paddingTop: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
-          {/* Nivel 1: Secretaría Municipal */}
+          {/* Nivel 1: Secretaría Municipal / Subalcaldías */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <Layers size={13} color="var(--primary-500)" />
-              1. Secretaría Municipal / Despacho
+              1. Secretaría Municipal / Subalcaldías
             </label>
             <select
               className="analytics-select"
@@ -419,20 +419,20 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 setCurrentPage(1);
               }}
             >
-              <option value="ALL">🏛️ Todas las Secretarías Municipales</option>
+              <option value="ALL">🏛️ Todas las Secretarías y Subalcaldías</option>
               {LISTA_SECRETARIAS.map((sec) => (
                 <option key={sec} value={sec}>
-                  🏢 {sec}
+                  {sec.toLowerCase().includes('subalcal') ? '🏘️' : '🏢'} {sec}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Nivel 2: Dirección Dependiente */}
+          {/* Nivel 2: Dirección o Subalcaldía Dependiente */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <Filter size={13} color={selectedSecretaria !== 'ALL' ? '#10b981' : 'var(--text-faint)'} />
-              2. Dirección a su Cargo
+              2. Dirección / Subalcaldía a su Cargo
             </label>
             <select
               className="analytics-select"
@@ -450,12 +450,14 @@ export const AnalyticsDashboardPage: React.FC = () => {
             >
               <option value="ALL">
                 {selectedSecretaria === 'ALL'
-                  ? '📁 Todas las Direcciones'
+                  ? '📁 Todas las Direcciones y Subalcaldías'
+                  : selectedSecretaria.toLowerCase().includes('subalcal')
+                  ? '🏘️ Todas las Subalcaldías'
                   : `📁 Todas las Direcciones de ${selectedSecretaria}`}
               </option>
               {availableDirectionsList.map((dir) => (
                 <option key={dir} value={dir}>
-                  📁 {dir}
+                  {dir.toLowerCase().includes('subalcal') ? '🏘️' : '📁'} {dir}
                 </option>
               ))}
             </select>
@@ -482,7 +484,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
             >
               <option value="ALL">
                 {selectedDirection === 'ALL' && selectedSecretaria === 'ALL'
-                  ? '📋 Seleccione Secretaría o Dirección'
+                  ? '📋 Seleccione Secretaría, Subalcaldía o Dirección'
                   : '📋 Todas las Unidades Operativas'}
               </option>
               {availableUnitsList.map((u) => (
