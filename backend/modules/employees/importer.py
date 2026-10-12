@@ -10,6 +10,7 @@ import re
 import uuid
 
 import pandas as pd
+import structlog
 from core.audit.service import record_audit_event
 from core.logging_config import get_correlation_id
 from core.security.encryption import decrypt_field, encrypt_field, hash_blind_index
@@ -21,6 +22,9 @@ from modules.social_accounts.models import SocialAccount, SocialPlatform
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+logger = structlog.get_logger(__name__)
+
 
 
 class EmployeePayrollImporter:
@@ -315,317 +319,373 @@ class EmployeePayrollImporter:
         for p in all_positions:
             positions_by_title[p.title.strip().lower()] = p
 
-        # 3. Procesar cada registro
+        # 3. Control de concurrencia y deduplicación en memoria del lote
+        session_employees_by_id: dict[str, Employee] = {}
+        session_employees_by_doc_hash: dict[str, Employee] = {}
+        session_employees_by_name: dict[tuple[str, str], Employee] = {}
+        session_social_accounts: set[tuple[str, uuid.UUID]] = set()
+
         created_count = 0
         updated_count = 0
         unchanged_count = 0
         deactivated_count = 0
         errors: list[str] = []
 
-        for index, row in df.iterrows():
-            row_num = int(index) + 2  # 1-indexed + header
-            emp_id = str(row.get("employee_id", "")).strip()
-            doc_num = str(row.get("document_number", "")).strip()
-            first_name = str(row.get("first_name", "")).strip()
-            last_name = str(row.get("last_name", "")).strip()
-            raw_unit = re.sub(r'(?i)alcaldesa', 'Alcalde', str(row.get("org_unit_code", "")).strip().upper())
-            raw_parent_unit = re.sub(r'(?i)alcaldesa', 'Alcalde', str(row.get("parent_unit_name", "")).strip().upper())
-            raw_pos = str(row.get("position_title", "")).strip().upper()
-            raw_status = str(row.get("status", EmployeeStatus.ACTIVE.value)).strip().upper() or EmployeeStatus.ACTIVE.value
-            raw_facebook = str(row.get("facebook_account", "")).strip()
-            raw_tiktok = str(row.get("tiktok_account", "")).strip()
+        try:
+            for index, row in df.iterrows():
+                row_num = int(index) + 2  # 1-indexed + header
+                first_name = str(row.get("first_name", "")).strip()
+                last_name = str(row.get("last_name", "")).strip()
 
-            if not first_name:
-                errors.append(f"Fila {row_num}: El nombre del funcionario es obligatorio.")
-                continue
+                if not first_name:
+                    errors.append(f"Fila {row_num}: El nombre del funcionario es obligatorio.")
+                    continue
 
-            if not emp_id or not doc_num:
-                name_seed = f"{first_name.lower()}_{last_name.lower()}".strip("_") or f"row_{row_num}"
+                emp_id = str(row.get("employee_id", "")).strip()
+                doc_num = str(row.get("document_number", "")).strip()
+                raw_unit = re.sub(r'(?i)alcaldesa', 'Alcalde', str(row.get("org_unit_code", "")).strip().upper())
+                raw_parent_unit = re.sub(r'(?i)alcaldesa', 'Alcalde', str(row.get("parent_unit_name", "")).strip().upper())
+                raw_pos = str(row.get("position_title", "")).strip().upper()
+                raw_status = str(row.get("status", EmployeeStatus.ACTIVE.value)).strip().upper() or EmployeeStatus.ACTIVE.value
+                raw_facebook = str(row.get("facebook_account", "")).strip()
+                raw_tiktok = str(row.get("tiktok_account", "")).strip()
+
+                name_seed = f"{unit_slug}_{first_name.lower()}_{last_name.lower()}".strip("_") or f"row_{row_num}"
                 name_hash = hashlib.sha256(name_seed.encode("utf-8")).hexdigest()[:8].upper()
+
                 if not doc_num:
-                    doc_num = f"AUTO-{name_hash}"
+                    doc_num = f"AUTO{prefix_tag}-{name_hash}"
                 if not emp_id:
-                    emp_id = f"EMP-{name_hash}"
+                    emp_id = f"EMP{prefix_tag}-{name_hash}"
 
-            # Resolver o crear la Dirección padre si se proporcionó
-            parent_unit: OrganizationalUnit | None = None
-            if raw_parent_unit:
-                parent_unit = (
-                    units_by_code.get(raw_parent_unit)
-                    or units_by_name.get(raw_parent_unit)
-                    or units_by_name.get(raw_parent_unit.lower())
-                )
-                if not parent_unit:
-                    code_cand = re.sub(r"[^A-Za-z0-9]", "", raw_parent_unit)[:8].upper() or "DIR"
-                    parent_code = f"{code_cand}-{uuid.uuid4().hex[:6].upper()}"
-                    parent_unit = OrganizationalUnit(
-                        name=raw_parent_unit.title(),
-                        code=parent_code,
-                        status="ACTIVE",
-                    )
-                    db.add(parent_unit)
-                    await db.flush()  # Ensure parent_unit gets an ID
-                    units_by_code[parent_code.upper()] = parent_unit
-                    units_by_name[raw_parent_unit] = parent_unit
-                    units_by_name[raw_parent_unit.lower()] = parent_unit
-                    units_by_name[parent_unit.name.upper()] = parent_unit
-                    units_by_name[parent_unit.name.lower()] = parent_unit
-
-            # Resolver o crear Unidad Organizacional si no existe
-            target_unit: OrganizationalUnit | None = None
-            if raw_unit:
-                target_unit = (
-                    units_by_code.get(raw_unit)
-                    or units_by_name.get(raw_unit)
-                    or units_by_name.get(raw_unit.lower())
-                )
-                if not target_unit:
-                    code_cand = re.sub(r"[^A-Za-z0-9]", "", raw_unit)[:8].upper() or "UND"
-                    unit_code = f"{code_cand}-{uuid.uuid4().hex[:6].upper()}"
-                    target_unit = OrganizationalUnit(
-                        name=raw_unit.title(),
-                        code=unit_code,
-                        status="ACTIVE",
-                        parent_id=parent_unit.id if parent_unit else None,
-                    )
-                    db.add(target_unit)
-                    await db.flush()
-                    units_by_code[unit_code.upper()] = target_unit
-                    units_by_name[raw_unit] = target_unit
-                    units_by_name[raw_unit.lower()] = target_unit
-                    units_by_name[target_unit.name.upper()] = target_unit
-                    units_by_name[target_unit.name.lower()] = target_unit
-                elif parent_unit and target_unit.parent_id != parent_unit.id:
-                    # Vincular unidad existente a su dirección padre si cambió o no estaba asignada
-                    target_unit.parent_id = parent_unit.id
-
-            # Resolver o crear Cargo si no existe
-            target_pos: Position | None = None
-            if raw_pos:
-                target_pos = (
-                    positions_by_title.get(raw_pos)
-                    or positions_by_title.get(raw_pos.lower())
-                )
-                if not target_pos:
-                    target_pos = Position(
-                        title=raw_pos.title(),
-                        status="ACTIVE",
-                    )
-                    db.add(target_pos)
-                    await db.flush()
-                    positions_by_title[raw_pos] = target_pos
-                    positions_by_title[raw_pos.lower()] = target_pos
-                    positions_by_title[target_pos.title.upper()] = target_pos
-                    positions_by_title[target_pos.title.lower()] = target_pos
-
-            # Buscar funcionario existente por:
-            # 1. employee_id exacto
-            stmt_emp = (
-                select(Employee)
-                .where(Employee.employee_id == emp_id)
-                .options(selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent))
-            )
-            existing_emp = (await db.execute(stmt_emp)).scalar_one_or_none()
-
-            # 2. Si no se encontró por employee_id y tenemos un documento real (no AUTO):
-            if not existing_emp and doc_num and not doc_num.startswith("AUTO"):
                 doc_hash = hash_blind_index(doc_num)
-                stmt_doc = (
-                    select(Employee)
-                    .where(Employee.document_hash == doc_hash)
-                    .options(selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent))
-                )
-                existing_emp = (await db.execute(stmt_doc)).scalar_one_or_none()
+                name_key = (first_name.lower(), last_name.lower())
 
-            # Protección de aislamiento (REQ-EMP-005, BR-EMP-012):
-            # Si se encontró un registro pero pertenece a OTRO espacio de trabajo, NO sobreescribirlo ni trasladarlo
-            from modules.employees.service import EmployeeService
-            if existing_emp and not is_superadmin and not EmployeeService.is_accessible_by_user(existing_emp, current_user):
-                existing_emp = None
-                # Evitar colisión de PK en este lote
-                emp_id = f"{emp_id}-{unit_slug}" if unit_slug and not emp_id.endswith(unit_slug) else f"{emp_id}-R{row_num}"
-
-            # 3. Si sigue sin encontrarse, buscar por coincidencia de nombre (confinado al workspace del usuario)
-            if not existing_emp and first_name:
-                stmt_name = (
-                    select(Employee)
-                    .options(selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent))
-                )
-                if last_name:
-                    stmt_name = stmt_name.where(
-                        func.lower(Employee.first_name) == first_name.lower(),
-                        func.lower(Employee.last_name) == last_name.lower(),
-                    )
-                else:
-                    stmt_name = stmt_name.where(
-                        func.lower(Employee.first_name) == first_name.lower(),
-                    )
-
-                if not is_superadmin and current_user:
-                    if ws_type == "AUTONOMOUS" or (not user_unit and not user_dir):
-                        stmt_name = stmt_name.where(Employee.created_by_user_id == current_user.id)
-                    elif user_unit:
-                        stmt_name = stmt_name.where(
-                            or_(
-                                Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == user_unit.strip().lower()),
-                                Employee.created_by_user_id == current_user.id,
+                # Procesar cada registro dentro de un savepoint anidado para resiliencia total
+                try:
+                    async with db.begin_nested():
+                        # Resolver o crear la Dirección padre si se proporcionó
+                        parent_unit: OrganizationalUnit | None = None
+                        if raw_parent_unit:
+                            parent_unit = (
+                                units_by_code.get(raw_parent_unit)
+                                or units_by_name.get(raw_parent_unit)
+                                or units_by_name.get(raw_parent_unit.lower())
                             )
-                        )
-                    elif user_dir:
-                        dir_norm_clean = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip()).lower()
-                        stmt_name = stmt_name.where(
-                            or_(
-                                func.lower(Employee.direction_name) == dir_norm_clean,
-                                Employee.created_by_user_id == current_user.id,
+                            if not parent_unit:
+                                code_cand = re.sub(r"[^A-Za-z0-9]", "", raw_parent_unit)[:8].upper() or "DIR"
+                                parent_code = f"{code_cand}-{uuid.uuid4().hex[:6].upper()}"
+                                parent_unit = OrganizationalUnit(
+                                    name=raw_parent_unit.title(),
+                                    code=parent_code,
+                                    status="ACTIVE",
+                                )
+                                db.add(parent_unit)
+                                await db.flush()
+                                units_by_code[parent_code.upper()] = parent_unit
+                                units_by_name[raw_parent_unit] = parent_unit
+                                units_by_name[raw_parent_unit.lower()] = parent_unit
+                                units_by_name[parent_unit.name.upper()] = parent_unit
+                                units_by_name[parent_unit.name.lower()] = parent_unit
+
+                        # Resolver o crear Unidad Organizacional si no existe
+                        target_unit: OrganizationalUnit | None = None
+                        if raw_unit:
+                            target_unit = (
+                                units_by_code.get(raw_unit)
+                                or units_by_name.get(raw_unit)
+                                or units_by_name.get(raw_unit.lower())
                             )
+                            if not target_unit:
+                                code_cand = re.sub(r"[^A-Za-z0-9]", "", raw_unit)[:8].upper() or "UND"
+                                unit_code = f"{code_cand}-{uuid.uuid4().hex[:6].upper()}"
+                                target_unit = OrganizationalUnit(
+                                    name=raw_unit.title(),
+                                    code=unit_code,
+                                    status="ACTIVE",
+                                    parent_id=parent_unit.id if parent_unit else None,
+                                )
+                                db.add(target_unit)
+                                await db.flush()
+                                units_by_code[unit_code.upper()] = target_unit
+                                units_by_name[raw_unit] = target_unit
+                                units_by_name[raw_unit.lower()] = target_unit
+                                units_by_name[target_unit.name.upper()] = target_unit
+                                units_by_name[target_unit.name.lower()] = target_unit
+                            elif parent_unit and target_unit.parent_id != parent_unit.id:
+                                target_unit.parent_id = parent_unit.id
+
+                        # Resolver o crear Cargo si no existe
+                        target_pos: Position | None = None
+                        if raw_pos:
+                            target_pos = (
+                                positions_by_title.get(raw_pos)
+                                or positions_by_title.get(raw_pos.lower())
+                            )
+                            if not target_pos:
+                                target_pos = Position(
+                                    title=raw_pos.title(),
+                                    status="ACTIVE",
+                                )
+                                db.add(target_pos)
+                                await db.flush()
+                                positions_by_title[raw_pos] = target_pos
+                                positions_by_title[raw_pos.lower()] = target_pos
+                                positions_by_title[target_pos.title.upper()] = target_pos
+                                positions_by_title[target_pos.title.lower()] = target_pos
+
+                        # Identificar si el funcionario ya fue visto en este mismo lote (deduplicación en memoria)
+                        existing_emp: Employee | None = (
+                            session_employees_by_id.get(emp_id)
+                            or (session_employees_by_doc_hash.get(doc_hash) if not doc_num.startswith("AUTO") else None)
+                            or session_employees_by_name.get(name_key)
                         )
 
-                existing_emp = (await db.execute(stmt_name)).scalars().first()
+                        # Si no está en memoria, consultar la base de datos
+                        if not existing_emp:
+                            # 1. Por employee_id exacto
+                            stmt_emp = (
+                                select(Employee)
+                                .where(Employee.employee_id == emp_id)
+                                .options(selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent))
+                            )
+                            existing_emp = (await db.execute(stmt_emp)).scalar_one_or_none()
 
-            dir_for_emp = parent_unit.name if parent_unit else (raw_parent_unit.title() if raw_parent_unit else None)
-            if not is_superadmin and current_user:
-                if user_dir and not dir_for_emp:
-                    dir_for_emp = user_dir
-                if user_unit and not target_unit:
-                    target_unit = (
-                        units_by_name.get(user_unit)
-                        or units_by_name.get(user_unit.upper())
-                        or units_by_name.get(user_unit.lower())
-                        or units_by_code.get(user_unit.upper())
+                            # 2. Por documento real si existe
+                            if not existing_emp and doc_num and not doc_num.startswith("AUTO"):
+                                stmt_doc = (
+                                    select(Employee)
+                                    .where(Employee.document_hash == doc_hash)
+                                    .options(selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent))
+                                )
+                                existing_emp = (await db.execute(stmt_doc)).scalar_one_or_none()
+
+                            # 3. Por coincidencia de nombre con ámbito del usuario
+                            if not existing_emp:
+                                stmt_name = (
+                                    select(Employee)
+                                    .where(
+                                        func.lower(Employee.first_name) == first_name.lower(),
+                                        func.lower(Employee.last_name) == last_name.lower(),
+                                    )
+                                    .options(selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent))
+                                )
+                                if not is_superadmin and current_user:
+                                    if ws_type == "AUTONOMOUS" or (not user_unit and not user_dir):
+                                        stmt_name = stmt_name.where(Employee.created_by_user_id == current_user.id)
+                                    elif user_unit:
+                                        stmt_name = stmt_name.where(
+                                            or_(
+                                                Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == user_unit.strip().lower()),
+                                                Employee.created_by_user_id == current_user.id,
+                                            )
+                                        )
+                                    elif user_dir:
+                                        dir_norm_clean = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip()).lower()
+                                        stmt_name = stmt_name.where(
+                                            or_(
+                                                func.lower(Employee.direction_name) == dir_norm_clean,
+                                                Employee.created_by_user_id == current_user.id,
+                                            )
+                                        )
+                                existing_emp = (await db.execute(stmt_name)).scalars().first()
+
+                        # Validación de aislamiento de espacio de trabajo
+                        if existing_emp and not is_superadmin and not EmployeeService.is_accessible_by_user(existing_emp, current_user):
+                            # El registro pertenece a otro espacio; no sobreescribir
+                            existing_emp = None
+                            # Generar un ID único garantizado para este usuario
+                            base_cand_id = f"EMP{prefix_tag}-{name_hash}"
+                            cand_id = base_cand_id
+                            seq = 1
+                            while cand_id in session_employees_by_id or (await db.execute(select(Employee.employee_id).where(Employee.employee_id == cand_id))).scalar_one_or_none():
+                                cand_id = f"{base_cand_id}-{seq}"
+                                seq += 1
+                            emp_id = cand_id
+                            if doc_num.startswith("AUTO"):
+                                doc_num = f"AUTO{prefix_tag}-{name_hash}" + (f"-{seq-1}" if seq > 1 else "")
+                                doc_hash = hash_blind_index(doc_num)
+
+                        dir_for_emp = parent_unit.name if parent_unit else (raw_parent_unit.title() if raw_parent_unit else None)
+                        if not is_superadmin and current_user:
+                            if user_dir and not dir_for_emp:
+                                dir_for_emp = user_dir
+                            if user_unit and not target_unit:
+                                target_unit = (
+                                    units_by_name.get(user_unit)
+                                    or units_by_name.get(user_unit.upper())
+                                    or units_by_name.get(user_unit.lower())
+                                    or units_by_code.get(user_unit.upper())
+                                )
+                                if not target_unit:
+                                    code_cand = re.sub(r"[^A-Za-z0-9]", "", user_unit)[:8].upper() or "UND"
+                                    unit_code = f"OU-{code_cand}-{uuid.uuid4().hex[:6].upper()}"
+                                    target_unit = OrganizationalUnit(
+                                        name=user_unit.strip(),
+                                        code=unit_code,
+                                        parent_id=parent_unit.id if parent_unit else None,
+                                        status="ACTIVE",
+                                    )
+                                    db.add(target_unit)
+                                    await db.flush()
+                                    units_by_name[user_unit] = target_unit
+                                    units_by_name[user_unit.upper()] = target_unit
+                                    units_by_name[user_unit.lower()] = target_unit
+                                    units_by_code[unit_code.upper()] = target_unit
+
+                        if not existing_emp:
+                            # Asegurar que emp_id no colisione con nada en DB o en lote
+                            cand_id = emp_id
+                            seq = 1
+                            while cand_id in session_employees_by_id or (await db.execute(select(Employee.employee_id).where(Employee.employee_id == cand_id))).scalar_one_or_none():
+                                cand_id = f"{emp_id}-{seq}"
+                                seq += 1
+                            emp_id = cand_id
+
+                            # ALTA: Nuevo funcionario
+                            new_emp = Employee(
+                                employee_id=emp_id,
+                                document_number_encrypted=encrypt_field(doc_num),
+                                document_hash=doc_hash,
+                                first_name=first_name,
+                                last_name=last_name,
+                                organizational_unit_id=target_unit.id if target_unit else None,
+                                direction_name=dir_for_emp,
+                                position_id=target_pos.id if target_pos else None,
+                                status=raw_status,
+                                created_by_user_id=current_user.id if current_user else None,
+                            )
+                            db.add(new_emp)
+                            await db.flush()  # Garantiza persistencia y FKs para social accounts
+                            created_count += 1
+                            existing_emp = new_emp
+                        else:
+                            # MODIFICACIÓN / IDEMPOTENCIA
+                            prev_unit_id = existing_emp.organizational_unit_id
+                            prev_pos_id = existing_emp.position_id
+                            prev_status = existing_emp.status
+
+                            new_unit_id = target_unit.id if target_unit else None
+                            new_pos_id = target_pos.id if target_pos else None
+
+                            unit_changed = new_unit_id is not None and new_unit_id != prev_unit_id
+                            pos_changed = new_pos_id is not None and new_pos_id != prev_pos_id
+                            status_changed = raw_status != prev_status
+                            name_changed = (first_name != existing_emp.first_name) or (last_name != existing_emp.last_name)
+
+                            current_doc = decrypt_field(existing_emp.document_number_encrypted)
+                            doc_changed = doc_num != current_doc and not doc_num.startswith("AUTO")
+
+                            if unit_changed or pos_changed or status_changed or name_changed or doc_changed:
+                                existing_emp.first_name = first_name
+                                if last_name:
+                                    existing_emp.last_name = last_name
+                                if doc_changed:
+                                    existing_emp.document_number_encrypted = encrypt_field(doc_num)
+                                    existing_emp.document_hash = doc_hash
+                                if new_unit_id:
+                                    existing_emp.organizational_unit_id = new_unit_id
+                                if dir_for_emp:
+                                    existing_emp.direction_name = dir_for_emp
+                                if not existing_emp.created_by_user_id and current_user:
+                                    existing_emp.created_by_user_id = current_user.id
+                                if new_pos_id:
+                                    existing_emp.position_id = new_pos_id
+                                existing_emp.status = raw_status
+
+                                if unit_changed or pos_changed or status_changed:
+                                    history_entry = EmployeeHistory(
+                                        employee_id=existing_emp.employee_id,
+                                        previous_organizational_unit_id=prev_unit_id,
+                                        new_organizational_unit_id=existing_emp.organizational_unit_id,
+                                        previous_position_id=prev_pos_id,
+                                        new_position_id=existing_emp.position_id,
+                                        previous_status=prev_status,
+                                        new_status=existing_emp.status,
+                                        change_reason=f"Sincronización de nómina: {filename}",
+                                        recorded_by_user_id=str(current_user.id),
+                                        correlation_id=correlation_id,
+                                    )
+                                    db.add(history_entry)
+
+                                if raw_status in (EmployeeStatus.TERMINATED.value, EmployeeStatus.INACTIVE.value) and prev_status == EmployeeStatus.ACTIVE.value:
+                                    deactivated_count += 1
+                                else:
+                                    updated_count += 1
+                                await db.flush()
+                            else:
+                                unchanged_count += 1
+
+                        # Registrar en cachés en memoria para reutilizar en filas subsecuentes del mismo archivo
+                        session_employees_by_id[existing_emp.employee_id] = existing_emp
+                        session_employees_by_doc_hash[existing_emp.document_hash] = existing_emp
+                        session_employees_by_name[name_key] = existing_emp
+
+                        # Vincular cuentas sociales (Facebook / TikTok) si se proporcionaron
+                        if has_social_cols:
+                            await cls._link_social_account(
+                                db, existing_emp.employee_id, "FACEBOOK", raw_facebook,
+                                platforms_by_name, session_social_accounts,
+                            )
+                            await cls._link_social_account(
+                                db, existing_emp.employee_id, "TIKTOK", raw_tiktok,
+                                platforms_by_name, session_social_accounts,
+                            )
+
+                except Exception as row_exc:
+                    logger.warning(
+                        "employee_import_row_error",
+                        row=row_num,
+                        employee=f"{first_name} {last_name}",
+                        error=str(row_exc),
+                        correlation_id=correlation_id,
                     )
-                    if not target_unit:
-                        code_cand = re.sub(r"[^A-Za-z0-9]", "", user_unit)[:8].upper() or "UND"
-                        unit_code = f"OU-{code_cand}-{uuid.uuid4().hex[:6].upper()}"
-                        target_unit = OrganizationalUnit(
-                            name=user_unit.strip(),
-                            code=unit_code,
-                            parent_id=parent_unit.id if parent_unit else None,
-                            status="ACTIVE",
-                        )
-                        db.add(target_unit)
-                        await db.flush()
-                        units_by_name[user_unit] = target_unit
-                        units_by_name[user_unit.upper()] = target_unit
-                        units_by_name[user_unit.lower()] = target_unit
-                        units_by_code[unit_code.upper()] = target_unit
+                    errors.append(f"Fila {row_num} ({first_name} {last_name}): Error al registrar ({str(row_exc)})")
 
-            if not existing_emp:
-                # ALTA: Nuevo funcionario
-                new_emp = Employee(
-                    employee_id=emp_id,
-                    document_number_encrypted=encrypt_field(doc_num),
-                    document_hash=hash_blind_index(doc_num),
-                    first_name=first_name,
-                    last_name=last_name,
-                    organizational_unit_id=target_unit.id if target_unit else None,
-                    direction_name=dir_for_emp,
-                    position_id=target_pos.id if target_pos else None,
-                    status=raw_status,
-                    created_by_user_id=current_user.id if current_user else None,
-                )
-                db.add(new_emp)
-                created_count += 1
-            else:
-                # MODIFICACIÓN / IDEMPOTENCIA
-                prev_unit_id = existing_emp.organizational_unit_id
-                prev_pos_id = existing_emp.position_id
-                prev_status = existing_emp.status
+            # Registrar auditoría del lote completo (Principio X y VIII)
+            await record_audit_event(
+                db=db,
+                action=AuditAction.EXECUTE,
+                entity_name="EmployeeImportBatch",
+                entity_id=filename,
+                user_id=str(current_user.id),
+                user_email=current_user.email,
+                details={
+                    "filename": filename,
+                    "total_records": len(df),
+                    "created": created_count,
+                    "updated": updated_count,
+                    "unchanged": unchanged_count,
+                    "deactivated": deactivated_count,
+                    "error_count": len(errors),
+                },
+                correlation_id=correlation_id,
+            )
 
-                new_unit_id = target_unit.id if target_unit else None
-                new_pos_id = target_pos.id if target_pos else None
+            await db.commit()
 
-                unit_changed = new_unit_id is not None and new_unit_id != prev_unit_id
-                pos_changed = new_pos_id is not None and new_pos_id != prev_pos_id
-                status_changed = raw_status != prev_status
-                name_changed = (first_name != existing_emp.first_name) or (last_name != existing_emp.last_name)
+            return EmployeeImportReport(
+                total_records=len(df),
+                created_count=created_count,
+                updated_count=updated_count,
+                unchanged_count=unchanged_count,
+                deactivated_count=deactivated_count,
+                errors=errors,
+                correlation_id=correlation_id,
+            )
 
-                # Verificar si el documento cambió (no sobreescribir documento real con AUTO generado)
-                current_doc = decrypt_field(existing_emp.document_number_encrypted)
-                doc_changed = doc_num != current_doc and not doc_num.startswith("AUTO-")
-
-                if unit_changed or pos_changed or status_changed or name_changed or doc_changed:
-                    existing_emp.first_name = first_name
-                    if last_name:
-                        existing_emp.last_name = last_name
-                    if doc_changed:
-                        existing_emp.document_number_encrypted = encrypt_field(doc_num)
-                        existing_emp.document_hash = hash_blind_index(doc_num)
-                    if new_unit_id:
-                        existing_emp.organizational_unit_id = new_unit_id
-                    if dir_for_emp:
-                        existing_emp.direction_name = dir_for_emp
-                    if not existing_emp.created_by_user_id and current_user:
-                        existing_emp.created_by_user_id = current_user.id
-                    if new_pos_id:
-                        existing_emp.position_id = new_pos_id
-                    existing_emp.status = raw_status
-
-                    # Registrar cambio organizacional
-                    if unit_changed or pos_changed or status_changed:
-                        history_entry = EmployeeHistory(
-                            employee_id=existing_emp.employee_id,
-                            previous_organizational_unit_id=prev_unit_id,
-                            new_organizational_unit_id=existing_emp.organizational_unit_id,
-                            previous_position_id=prev_pos_id,
-                            new_position_id=existing_emp.position_id,
-                            previous_status=prev_status,
-                            new_status=existing_emp.status,
-                            change_reason=f"Sincronización de nómina: {filename}",
-                            recorded_by_user_id=str(current_user.id),
-                            correlation_id=correlation_id,
-                        )
-                        db.add(history_entry)
-
-                    if raw_status in (EmployeeStatus.TERMINATED.value, EmployeeStatus.INACTIVE.value) and prev_status == EmployeeStatus.ACTIVE.value:
-                        deactivated_count += 1
-                    else:
-                        updated_count += 1
-                else:
-                    unchanged_count += 1
-
-            # Vincular cuentas sociales (Facebook / TikTok) si se proporcionaron
-            if has_social_cols:
-                current_emp_id = existing_emp.employee_id if existing_emp else emp_id
-                await cls._link_social_account(
-                    db, current_emp_id, "FACEBOOK", raw_facebook,
-                    platforms_by_name,
-                )
-                await cls._link_social_account(
-                    db, current_emp_id, "TIKTOK", raw_tiktok,
-                    platforms_by_name,
-                )
-
-        # Registrar auditoría del lote completo (Principio X y VIII)
-        await record_audit_event(
-            db=db,
-            action=AuditAction.EXECUTE,
-            entity_name="EmployeeImportBatch",
-            entity_id=filename,
-            user_id=str(current_user.id),
-            user_email=current_user.email,
-            details={
-                "filename": filename,
-                "total_records": len(df),
-                "created": created_count,
-                "updated": updated_count,
-                "unchanged": unchanged_count,
-                "deactivated": deactivated_count,
-                "error_count": len(errors),
-            },
-            correlation_id=correlation_id,
-        )
-
-        await db.commit()
-
-        return EmployeeImportReport(
-            total_records=len(df),
-            created_count=created_count,
-            updated_count=updated_count,
-            unchanged_count=unchanged_count,
-            deactivated_count=deactivated_count,
-            errors=errors,
-            correlation_id=correlation_id,
-        )
+        except Exception as e:
+            logger.error("payroll_import_batch_failed", error=str(e), correlation_id=correlation_id, exc_info=True)
+            await db.rollback()
+            return EmployeeImportReport(
+                total_records=len(df),
+                created_count=0,
+                updated_count=0,
+                unchanged_count=0,
+                deactivated_count=0,
+                errors=[f"Error crítico al procesar la nómina: {str(e)}"],
+                correlation_id=correlation_id,
+            )
 
     @staticmethod
     async def _link_social_account(
@@ -634,8 +694,9 @@ class EmployeePayrollImporter:
         platform_name: str,
         account_value: str,
         platforms_by_name: dict[str, SocialPlatform],
+        session_social_accounts: set[tuple[str, uuid.UUID]],
     ) -> None:
-        """Vincula o actualiza una cuenta social para un funcionario importado."""
+        """Vincula o actualiza una cuenta social para un funcionario importado evitando duplicados."""
         if not account_value:
             return
 
@@ -652,27 +713,46 @@ class EmployeePayrollImporter:
             await db.flush()
             platforms_by_name[platform.name.upper()] = platform
 
-        # Verificar si ya existe una cuenta para este funcionario en esta plataforma
+        acc_key = (employee_id, platform.id)
+
+        # Normalizar username: extraer handle de URL o texto directo
+        username = account_value.strip()
+        if "/" in username:
+            username = username.rstrip("/").split("/")[-1]
+        username = username.lstrip("@")
+
+        if not username:
+            return
+
+        # Si ya fue procesada en este lote en memoria
+        if acc_key in session_social_accounts:
+            stmt = select(SocialAccount).where(
+                SocialAccount.employee_id == employee_id,
+                SocialAccount.platform_id == platform.id,
+            )
+            existing = (await db.execute(stmt)).scalar_one_or_none()
+            if existing and existing.current_username != username:
+                existing.current_username = username
+                if any(k in account_value for k in ("facebook.com", "fb.com", "tiktok.com")):
+                    existing.profile_url = account_value if account_value.startswith("http") else f"https://{account_value}"
+                await db.flush()
+            return
+
+        # Verificar si ya existe una cuenta en la base de datos
         stmt = select(SocialAccount).where(
             SocialAccount.employee_id == employee_id,
             SocialAccount.platform_id == platform.id,
         )
         existing = (await db.execute(stmt)).scalar_one_or_none()
 
-        # Normalizar username: extraer handle de URL o texto directo
-        username = account_value.strip()
-        if "/" in username:
-            # Extraer la última parte de una URL tipo facebook.com/usuario
-            username = username.rstrip("/").split("/")[-1]
-        username = username.lstrip("@")
-
         if existing:
+            session_social_accounts.add(acc_key)
             if existing.current_username != username:
                 existing.current_username = username
-                if "facebook.com" in account_value or "fb.com" in account_value or "tiktok.com" in account_value:
+                if any(k in account_value for k in ("facebook.com", "fb.com", "tiktok.com")):
                     existing.profile_url = account_value if account_value.startswith("http") else f"https://{account_value}"
+                await db.flush()
         else:
-            # Construir URL de perfil
             profile_url = None
             if platform_name.upper() == "FACEBOOK":
                 profile_url = f"https://facebook.com/{username}"
@@ -687,3 +767,6 @@ class EmployeePayrollImporter:
                 binding_status=BindingStatus.ACTIVE.value,
             )
             db.add(new_account)
+            await db.flush()
+            session_social_accounts.add(acc_key)
+
