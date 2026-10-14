@@ -10,6 +10,7 @@ import {
   Settings,
   ShieldAlert,
   Users,
+  X,
   Zap,
   TableProperties,
 } from 'lucide-react';
@@ -31,6 +32,8 @@ export type ActivePage =
 interface SidebarProps {
   activePage: ActivePage;
   onSelectPage: (page: ActivePage) => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 interface NavItem {
@@ -40,7 +43,12 @@ interface NavItem {
   roles?: UserRole[];
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  activePage,
+  onSelectPage,
+  isOpen = false,
+  onClose,
+}) => {
   const { hasRole } = useAuth();
 
   const navItems: NavItem[] = [
@@ -55,7 +63,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) =>
       icon: Zap,
       roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
     },
-
     {
       id: 'employees',
       label: 'Funcionarios',
@@ -109,100 +116,70 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onSelectPage }) =>
   const visibleItems = navItems.filter((item) => !item.roles || hasRole(item.roles));
 
   return (
-    <aside
-      style={{
-        width: '260px',
-        background: 'rgba(15, 23, 42, 0.95)',
-        backdropFilter: 'blur(16px)',
-        borderRight: '1px solid var(--border-subtle)',
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        position: 'sticky',
-        top: 0,
-      }}
-    >
-      {/* Brand Header */}
+    <>
+      {/* Telón de fondo oscuro para móviles / tablets */}
       <div
-        style={{
-          padding: '24px 20px',
-          borderBottom: '1px solid var(--border-subtle)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-        }}
-      >
-        <div
-          style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '10px',
-            background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            boxShadow: '0 0 15px rgba(6, 182, 212, 0.4)',
-          }}
-        >
-          <Layers size={20} />
+        className={`sidebar-backdrop ${isOpen ? 'active' : ''}`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      <aside className={`app-sidebar ${isOpen ? 'open' : ''}`}>
+        {/* Encabezado Institucional */}
+        <div className="sidebar-brand-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+            <div className="sidebar-brand-icon">
+              <Layers size={20} />
+            </div>
+            <div style={{ overflow: 'hidden' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: '700', color: '#fff', letterSpacing: '-0.02em', margin: 0 }}>
+                GAMEA Monitor
+              </h2>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Gestión Social & Analítica</span>
+            </div>
+          </div>
+
+          {/* Botón de Cierre en Dispositivos Móviles */}
+          <button
+            onClick={onClose}
+            className="mobile-sidebar-close-btn"
+            title="Cerrar panel"
+            aria-label="Cerrar navegación"
+          >
+            <X size={18} />
+          </button>
         </div>
-        <div>
-          <h2 style={{ fontSize: '1rem', fontWeight: '700', color: '#fff', letterSpacing: '-0.02em' }}>
-            GAMEA Monitor
-          </h2>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Gestión Social & Analítica</span>
+
+        {/* Lista de Navegación */}
+        <nav className="sidebar-nav-list">
+          {visibleItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activePage === item.id;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  onSelectPage(item.id);
+                  if (onClose) onClose();
+                }}
+                className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+              >
+                <Icon size={18} color={isActive ? '#06b6d4' : 'currentColor'} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Pie de Firma Institucional */}
+        <div className="sidebar-footer">
+          GAMEA Social Monitor v1.0
+          <br />
+          Constitución & Auditoría Estricta
         </div>
-      </div>
-
-      {/* Navigation List */}
-      <nav style={{ flex: 1, padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {visibleItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activePage === item.id;
-
-          return (
-            <button
-              key={item.id}
-              onClick={() => onSelectPage(item.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '11px 14px',
-                borderRadius: 'var(--radius-md)',
-                border: 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-                fontSize: '0.875rem',
-                fontWeight: isActive ? '600' : '500',
-                background: isActive ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
-                color: isActive ? '#22d3ee' : 'var(--text-muted)',
-                borderLeft: isActive ? '3px solid #06b6d4' : '3px solid transparent',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <Icon size={18} color={isActive ? '#06b6d4' : 'currentColor'} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Footer info */}
-      <div
-        style={{
-          padding: '16px 20px',
-          borderTop: '1px solid var(--border-subtle)',
-          fontSize: '0.72rem',
-          color: 'var(--text-faint)',
-          textAlign: 'center',
-        }}
-      >
-        GAMEA Social Monitor v1.0
-        <br />
-        Constitución & Auditoría Estricta
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 };
+

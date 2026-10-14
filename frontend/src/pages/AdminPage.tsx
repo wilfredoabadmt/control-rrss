@@ -409,6 +409,7 @@ export const AdminPage: React.FC = () => {
         <div
           style={{
             display: 'flex',
+            flexWrap: 'wrap',
             background: 'rgba(31, 41, 55, 0.7)',
             padding: '4px',
             borderRadius: 'var(--radius-md)',
@@ -538,7 +539,7 @@ export const AdminPage: React.FC = () => {
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button
                 onClick={fetchUsers}
                 title="Actualizar listado de usuarios"

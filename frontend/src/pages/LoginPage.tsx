@@ -36,7 +36,7 @@ export const LoginPage: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '20px',
+        padding: '16px 12px',
         background: 'var(--bg-primary)',
       }}
     >
@@ -45,7 +45,7 @@ export const LoginPage: React.FC = () => {
         style={{
           width: '100%',
           maxWidth: '460px',
-          padding: '44px 36px',
+          padding: 'clamp(28px, 6vw, 44px) clamp(18px, 6vw, 36px)',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
         }}
       >

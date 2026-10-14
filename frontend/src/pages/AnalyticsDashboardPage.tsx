@@ -753,7 +753,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
         </div>
 
         {/* Tabla Responsiva */}
-        <div style={{ overflowX: 'auto' }}>
+        <div className="table-responsive" style={{ overflowX: 'auto' }}>
           <table className="analytics-table">
             <thead>
               <tr>

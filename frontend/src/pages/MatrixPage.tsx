@@ -69,8 +69,8 @@ export const MatrixPage: React.FC = () => {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
             Dashboard: Matriz de Control General
@@ -79,7 +79,7 @@ export const MatrixPage: React.FC = () => {
             Cruce general de reacciones de los usuarios vs las últimas publicaciones enviadas.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           <button
             onClick={handleExport}
             disabled={exporting}
@@ -131,10 +131,11 @@ export const MatrixPage: React.FC = () => {
           padding: '24px',
         }}
       >
-        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <div
             style={{
-              flex: 1,
+              flex: '1 1 240px',
+              minWidth: '200px',
               position: 'relative',
               background: 'rgba(0, 0, 0, 0.2)',
               border: '1px solid var(--border-subtle)',
@@ -164,7 +165,8 @@ export const MatrixPage: React.FC = () => {
 
           <div
             style={{
-              width: '250px',
+              flex: '1 1 220px',
+              minWidth: '180px',
               position: 'relative',
               background: 'rgba(0, 0, 0, 0.2)',
               border: '1px solid var(--border-subtle)',

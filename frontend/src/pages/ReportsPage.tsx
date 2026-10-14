@@ -141,7 +141,7 @@ export const ReportsPage: React.FC = () => {
         </div>
 
         <form onSubmit={handleGenerateReport}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '20px' }}>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label">Filtro por Campaña Institucional</label>
               <input

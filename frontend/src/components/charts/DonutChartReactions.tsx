@@ -28,7 +28,7 @@ export const DonutChartReactions: React.FC<DonutChartReactionsProps> = ({ data, 
         flexDirection: 'row',
         flexWrap: 'wrap',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
         gap: '24px',
         width: '100%',
       }}

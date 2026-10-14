@@ -10,8 +10,6 @@ import {
   Facebook,
   HelpCircle,
   Info,
-  Layers,
-  LogOut,
   RefreshCw,
   Shield,
   ShieldCheck,
@@ -32,7 +30,7 @@ interface DashboardPageProps {
   onLogout?: () => void;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
+export const DashboardPage: React.FC<DashboardPageProps> = () => {
   const [activeTab, setActiveTab] = useState<'operational' | 'executive'>('operational');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,48 +115,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   );
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
-      {/* Header Institucional GAMEA */}
-      <header
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
+      {/* Barra de Control de Dashboard y Pestañas */}
+      <div
+        className="glass-panel"
         style={{
-          background: 'rgba(17, 24, 39, 0.85)',
-          backdropFilter: 'blur(16px)',
-          borderBottom: '1px solid var(--border-subtle)',
-          padding: '16px 32px',
+          padding: '14px 20px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          position: 'sticky',
-          top: 0,
-          zIndex: 40
+          flexWrap: 'wrap',
+          gap: '12px',
+          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(17, 24, 39, 0.8) 100%)',
+          borderLeft: '4px solid var(--primary-500)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              boxShadow: '0 0 15px rgba(6, 182, 212, 0.4)'
-            }}
-          >
-            <Layers size={22} />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#fff', lineHeight: 1.2 }}>
-              GAMEA Social Monitor
-            </h1>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Gobierno Autónomo Municipal de El Alto — Sistema de Monitoreo & Analítica
-            </p>
-          </div>
-        </div>
-
         {/* Tab Selector */}
         <div
           style={{
@@ -166,13 +137,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
             background: 'rgba(31, 41, 55, 0.6)',
             padding: '4px',
             borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-subtle)'
+            border: '1px solid var(--border-subtle)',
+            flexWrap: 'wrap',
+            gap: '4px',
           }}
         >
           <button
             onClick={() => setActiveTab('operational')}
             style={{
-              padding: '8px 18px',
+              padding: '8px 16px',
               borderRadius: 'var(--radius-sm)',
               border: 'none',
               cursor: 'pointer',
@@ -183,7 +156,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
               gap: '8px',
               background: activeTab === 'operational' ? 'var(--primary-500)' : 'transparent',
               color: activeTab === 'operational' ? '#fff' : 'var(--text-muted)',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.2s ease',
             }}
           >
             <Activity size={16} />
@@ -193,7 +166,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
           <button
             onClick={() => setActiveTab('executive')}
             style={{
-              padding: '8px 18px',
+              padding: '8px 16px',
               borderRadius: 'var(--radius-sm)',
               border: 'none',
               cursor: 'pointer',
@@ -204,7 +177,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
               gap: '8px',
               background: activeTab === 'executive' ? 'var(--primary-500)' : 'transparent',
               color: activeTab === 'executive' ? '#fff' : 'var(--text-muted)',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.2s ease',
             }}
           >
             <BarChart3 size={16} />
@@ -213,48 +186,33 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         </div>
 
         {/* User Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             onClick={fetchData}
             title="Actualizar datos"
             disabled={loading}
             style={{
-              background: 'rgba(31, 41, 55, 0.6)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-muted)',
-              padding: '8px',
-              borderRadius: 'var(--radius-sm)',
-              display: 'flex',
-              alignItems: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
-
-          <button
-            onClick={onLogout}
-            style={{
-              background: 'transparent',
+              background: 'rgba(31, 41, 55, 0.8)',
               border: '1px solid var(--border-subtle)',
               color: 'var(--text-muted)',
               padding: '8px 14px',
-              borderRadius: 'var(--radius-sm)',
+              borderRadius: 'var(--radius-md)',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
               cursor: 'pointer',
-              fontSize: '0.85rem'
+              fontSize: '0.82rem',
+              fontWeight: 600,
             }}
           >
-            <LogOut size={16} />
-            <span>Salir</span>
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            <span>Refrescar</span>
           </button>
         </div>
-      </header>
+      </div>
 
-      {/* Main Container */}
-      <main style={{ flex: 1, padding: '32px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
+      {/* Contenedor Principal Adaptable */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
         {error && (
           <div
             className="glass-panel"
@@ -666,9 +624,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
             </div>
 
             {/* Desglose Ejecutivo de Cumplimiento y Plataformas */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: '20px' }}>
               {/* Desglose Ejecutivo de Cumplimiento */}
-              <div className="glass-panel" style={{ padding: '28px' }}>
+              <div className="glass-panel" style={{ padding: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                   <div>
                     <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: '#fff', marginBottom: '4px' }}>
@@ -953,13 +911,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                         según el Principio XXIV para garantizar inalterabilidad ante auditorías gubernamentales.
                       </p>
                     </div>
-                  </div>
                 </div>
               </div>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
+      </div>
 
       {/* MODAL FICHA TÉCNICA (Principio XXVI) */}
       {selectedIndicator && (

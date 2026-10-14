@@ -906,7 +906,7 @@ export const InteractionsPage: React.FC = () => {
         </div>
 
         {/* Botones de Acción Global */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
             onClick={handleSyncWithSocial}
             disabled={syncing}

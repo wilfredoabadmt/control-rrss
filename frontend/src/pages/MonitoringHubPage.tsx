@@ -459,7 +459,7 @@ export const MonitoringHubPage: React.FC = () => {
   ).sort();
 
   return (
-    <div style={{ padding: '28px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
       {/* --------------------------------------------------------------------- */}
       {/* Encabezado Institucional y Acciones Principales                       */}
       {/* --------------------------------------------------------------------- */}
@@ -1417,7 +1417,7 @@ export const MonitoringHubPage: React.FC = () => {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: '24px' }}>
             {/* Tarjeta Facebook */}
             {connectorConfigs
               .filter((c) => c.platform_name === 'FACEBOOK')
