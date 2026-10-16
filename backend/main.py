@@ -111,6 +111,7 @@ async def lifespan(app: FastAPI):
                     # Métricas agregadas de Meta en publications (create_all no agrega columnas a tablas existentes)
                     await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_total INTEGER NOT NULL DEFAULT 0;"))
                     await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_by_type JSON NOT NULL DEFAULT '{}';"))
+                    await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_comments_total INTEGER NOT NULL DEFAULT 0;"))
                     await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_metrics_synced_at TIMESTAMPTZ;"))
                 else:
                     for _sql_col in (
@@ -121,6 +122,7 @@ async def lifespan(app: FastAPI):
                         "ALTER TABLE employees ADD COLUMN direction_name VARCHAR(200)",
                         "ALTER TABLE publications ADD COLUMN meta_reactions_total INTEGER NOT NULL DEFAULT 0",
                         "ALTER TABLE publications ADD COLUMN meta_reactions_by_type JSON NOT NULL DEFAULT '{}'",
+                        "ALTER TABLE publications ADD COLUMN meta_comments_total INTEGER NOT NULL DEFAULT 0",
                         "ALTER TABLE publications ADD COLUMN meta_metrics_synced_at TIMESTAMP",
                     ):
                         with suppress(Exception):
