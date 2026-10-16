@@ -1,4 +1,14 @@
 # syntax=docker/dockerfile:1
+
+# 1. Compilación del Frontend (React + Vite)
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend ./
+RUN npm run build
+
+# 2. Base Python
 FROM python:3.12-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
@@ -7,7 +17,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Instalar únicamente dependencias mínimas de ejecución (curl y wget para probe de salud)
+# Instalar dependencias mínimas de ejecución (curl y wget para probe de salud)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
@@ -34,6 +44,8 @@ COPY backend /app/backend
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 COPY extras /app/extras
+# Inyectar artefactos compilados del frontend en static
+COPY --from=frontend-builder /app/frontend/dist /app/backend/static
 WORKDIR /app/backend
 
 # Crear usuario no root y asignar permisos
