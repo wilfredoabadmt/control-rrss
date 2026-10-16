@@ -32,6 +32,8 @@ import {
   PublicationItem,
   FacebookRecentPostItem,
 } from '../api/publications';
+import { analyticsApi, PostCommentItem } from '../api/analytics';
+import { ActivePage } from '../components/Sidebar';
 import { LISTA_DIRECCIONES } from '../data/organigrama';
 import { ActivityMatrixResponse, ActivityMatrixRow } from '../types';
 
@@ -46,12 +48,23 @@ type PublicationOption = {
   metaSyncedAt?: string | null;
 };
 
-export const InteractionsPage: React.FC = () => {
+interface InteractionsPageProps {
+  onNavigate?: (page: ActivePage) => void;
+}
+
+export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }) => {
   // Estado principal de la matriz de actividad
   const [matrixData, setMatrixData] = useState<ActivityMatrixResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
+
+  // Pestaña de vista activa: Nómina de Funcionarios vs Comentarios Extraídos de Meta
+  const [activeViewTab, setActiveViewTab] = useState<'employees' | 'comments'>('employees');
+  const [postComments, setPostComments] = useState<PostCommentItem[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentsFilterType, setCommentsFilterType] = useState<'ALL' | 'EMPLOYEES' | 'CITIZENS'>('ALL');
+  const [commentsSearchQuery, setCommentsSearchQuery] = useState('');
 
   // Publicaciones de la BD
   const [dbPublications, setDbPublications] = useState<PublicationItem[]>([]);
@@ -170,6 +183,28 @@ export const InteractionsPage: React.FC = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Cargar comentarios extraídos de Meta para la publicación seleccionada
+  const fetchPostComments = async (pubId?: string) => {
+    const targetId = pubId || (selectedPublicationId && selectedPublicationId !== 'ALL' ? selectedPublicationId : undefined);
+    if (!targetId || targetId === 'ALL') {
+      setPostComments([]);
+      return;
+    }
+    setLoadingComments(true);
+    try {
+      const res = await analyticsApi.getComments({
+        publication_id: targetId,
+        page_size: 100,
+      });
+      setPostComments(res.items || []);
+    } catch (e) {
+      console.error('Error al cargar comentarios del post:', e);
+      setPostComments([]);
+    } finally {
+      setLoadingComments(false);
     }
   };
 
@@ -292,6 +327,32 @@ export const InteractionsPage: React.FC = () => {
     return availablePublications.find((p) => p.id === selectedPublicationId) || availablePublications[0];
   }, [availablePublications, selectedPublicationId]);
 
+  // Sincronizar comentarios del post seleccionado
+  useEffect(() => {
+    if (selectedPublicationId && selectedPublicationId !== 'ALL') {
+      fetchPostComments(selectedPublicationId);
+    } else if (availablePublications.length > 0) {
+      fetchPostComments(availablePublications[0].id);
+    }
+  }, [selectedPublicationId, availablePublications]);
+
+  // Filtrado de comentarios por tipo y búsqueda
+  const filteredComments = useMemo(() => {
+    return postComments.filter((c) => {
+      const isEmp = c.author?.is_employee;
+      if (commentsFilterType === 'EMPLOYEES' && !isEmp) return false;
+      if (commentsFilterType === 'CITIZENS' && isEmp) return false;
+      if (commentsSearchQuery.trim()) {
+        const q = commentsSearchQuery.toLowerCase();
+        const matchesAuthor = c.author?.author_name?.toLowerCase().includes(q);
+        const matchesText = c.content_text?.toLowerCase().includes(q);
+        const matchesEmpName = c.author?.full_name?.toLowerCase().includes(q);
+        if (!matchesAuthor && !matchesText && !matchesEmpName) return false;
+      }
+      return true;
+    });
+  }, [postComments, commentsFilterType, commentsSearchQuery]);
+
   // Disparar sincronización con las redes en vivo
   const handleSyncWithSocial = async () => {
     setSyncing(true);
@@ -304,17 +365,22 @@ export const InteractionsPage: React.FC = () => {
         fetch_new_posts: !activePubId,
         max_posts: 10,
       });
+      const extraMsg = res.matched_interactions > 0
+        ? `Se verificaron y confirmaron ${res.matched_interactions} interacciones de funcionarios.`
+        : `Los comentarios extraídos (${res.interactions_extracted}) son de ciudadanos del público general (visibles en la pestaña Comentarios). Ningún funcionario ha comentado aún.`;
       setSyncSuccessMsg(
-        `¡Sincronización completada! Se procesaron ${res.posts_processed} publicaciones y se verificaron ${res.matched_interactions} interacciones de funcionarios.`
+        `¡Sincronización con Meta Graph API exitosa! Publicaciones: ${res.posts_processed}. Comentarios extraídos: ${res.interactions_extracted}. ${extraMsg}`
       );
       await fetchActivityMatrix(activePubId);
+      await fetchPostComments(activePubId);
     } catch (err: any) {
       const detailMsg = err.response?.data?.detail;
       setSyncSuccessMsg(detailMsg || 'Se ha ejecutado la verificación y cotejo en tiempo real de interacciones con Meta Graph API.');
       await fetchActivityMatrix();
+      await fetchPostComments();
     } finally {
       setSyncing(false);
-      setTimeout(() => setSyncSuccessMsg(null), 8000);
+      setTimeout(() => setSyncSuccessMsg(null), 10000);
     }
   };
 
@@ -953,6 +1019,30 @@ export const InteractionsPage: React.FC = () => {
             <Download size={15} color="#10b981" />
             <span>{exportingExcel ? 'Exportando Excel...' : 'Descargar Excel (.xlsx)'}</span>
           </button>
+
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate('analytics')}
+              style={{
+                background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(59, 130, 246, 0.25))',
+                border: '1px solid rgba(6, 182, 212, 0.5)',
+                color: '#38bdf8',
+                padding: '9px 16px',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(6, 182, 212, 0.2)',
+              }}
+              title="Ir al Dashboard Estadístico y Auditoría de Comentarios"
+            >
+              <Award size={15} color="#38bdf8" />
+              <span>Dashboard Analítica & Comentarios</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -999,16 +1089,23 @@ export const InteractionsPage: React.FC = () => {
         >
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
             <Info size={22} color="#06b6d4" style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.92rem', marginBottom: '4px' }}>
-                ¿Cómo funciona esta sección de fiscalización?
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.94rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>¿Cómo funciona la fiscalización e interacción por publicación en GAMEA?</span>
               </div>
-              <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.5' }}>
-                <span style={{ color: '#06b6d4', fontWeight: 600 }}>1. Selecciona la publicación</span> institucional en el selector de abajo. <br />
-                <span style={{ color: '#06b6d4', fontWeight: 600 }}>2. El sistema cruza</span> automáticamente la nómina completa de funcionarios de El Alto contra esa publicación en Meta Graph API. <br />
-                <span style={{ color: '#06b6d4', fontWeight: 600 }}>3. Sabrás con exactitud</span> quién reaccionó con <strong>Like/Me Gusta</strong> 👍, quién <strong>compartió</strong> 🔄, quién <strong>comentó</strong> 💬 (con el texto exacto escrito), o quién está <strong>Sin Interacción</strong> ⏳.
+              <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.6' }}>
+                <div style={{ marginBottom: '5px' }}>
+                  <span style={{ color: '#06b6d4', fontWeight: 700 }}>1. Selección de Publicación:</span> Elige la publicación institucional en el menú inferior para cargar su estado actual.
+                </div>
+                <div style={{ marginBottom: '5px' }}>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>2. Comentarios Automáticos (Meta Graph API) 💬:</span> Pulsa el botón cyan <strong>"⚡ Sincronizar Post"</strong>. El sistema consulta en vivo los servidores de Meta, descarga todos los comentarios reales con su texto exacto y los coteja contra la nómina. Si un funcionario comentó, su fila mostrará su comentario exacto y cambiará a <strong style={{ color: '#34d399' }}>CUMPLIDO</strong>.
+                </div>
+                <div style={{ marginBottom: '5px' }}>
+                  <span style={{ color: '#f472b6', fontWeight: 700 }}>3. Reacciones (Likes 👍 / Me Encanta ❤️):</span> Por normativas internacionales de privacidad de datos, Meta Graph API entrega el conteo global oficial (visible arriba) pero oculta la identidad de quién reacciona. Para identificar a los funcionarios entre esas reacciones, pulsa <strong style={{ color: '#f472b6' }}>"📥 Pegar Reacciones de Facebook"</strong> (copias los nombres del popup en Facebook y el sistema cruza los 40 funcionarios al instante).
+                </div>
+                <div>
+                  <span style={{ color: '#f87171', fontWeight: 700 }}>4. Estado Sin Interacción ⏳:</span> Todo funcionario que aún no haya registrado un comentario verificado ni una reacción confirmada permanecerá en rojo como <strong style={{ color: '#f87171' }}>"Sin Interacción"</strong> para fines de control de cumplimiento.
+                </div>
               </div>
-            </div>
             <button
               onClick={() => setShowHelpBanner(false)}
               style={{
@@ -1070,6 +1167,7 @@ export const InteractionsPage: React.FC = () => {
                 onChange={(e) => {
                   setSelectedPublicationId(e.target.value);
                   fetchActivityMatrix(e.target.value);
+                  fetchPostComments(e.target.value);
                 }}
                 style={{
                   width: '100%',
@@ -1377,9 +1475,110 @@ export const InteractionsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. Barra de Búsqueda y Filtros de Tabla */}
-      <div
-        className="glass-panel"
+      {/* Alerta Inteligente: Reacciones Oficiales Meta vs Identidades */}
+      {currentPost && (currentPost.metaReactions ?? 0) > 0 && metrics.likesCount === 0 && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '16px 20px',
+            marginBottom: '20px',
+            borderLeft: '4px solid #ec4899',
+            background: 'linear-gradient(90deg, rgba(236, 72, 153, 0.15) 0%, rgba(15, 23, 42, 0.8) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '14px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: '280px' }}>
+            <ThumbsUp size={24} color="#f472b6" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.92rem', marginBottom: '3px' }}>
+                Meta Graph API detecta {currentPost.metaReactions} reacciones oficiales en Facebook para este post
+              </div>
+              <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.45' }}>
+                Por políticas de privacidad de Meta, la API no expone los nombres de quienes dieron Me Gusta 👍. Para identificar qué funcionarios reaccionaron, pulsa el botón y pega la lista de nombres copiada desde Facebook.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handleOpenPasteReactionsModal}
+            style={{
+              background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
+              color: '#fff',
+              border: 'none',
+              padding: '10px 16px',
+              borderRadius: '8px',
+              fontSize: '0.84rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(236, 72, 153, 0.35)',
+            }}
+          >
+            <ThumbsUp size={15} />
+            <span>📥 Pegar Reacciones de Facebook Ahora</span>
+          </button>
+        </div>
+      )}
+
+      {/* Selector de Vista: Padrón de Funcionarios vs Comentarios de Facebook */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '18px', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => setActiveViewTab('employees')}
+          style={{
+            padding: '11px 20px',
+            borderRadius: '9px',
+            border: activeViewTab === 'employees' ? '1px solid #06b6d4' : '1px solid rgba(255, 255, 255, 0.1)',
+            background: activeViewTab === 'employees' ? 'rgba(6, 182, 212, 0.22)' : 'rgba(15, 23, 42, 0.65)',
+            color: activeViewTab === 'employees' ? '#fff' : '#94a3b8',
+            fontWeight: 700,
+            fontSize: '0.88rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <Users size={16} color={activeViewTab === 'employees' ? '#06b6d4' : '#94a3b8'} />
+          <span>📋 Nómina de Funcionarios Fiscalizados ({filteredRows.length})</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveViewTab('comments');
+            fetchPostComments();
+          }}
+          style={{
+            padding: '11px 20px',
+            borderRadius: '9px',
+            border: activeViewTab === 'comments' ? '1px solid #fbbf24' : '1px solid rgba(255, 255, 255, 0.1)',
+            background: activeViewTab === 'comments' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(15, 23, 42, 0.65)',
+            color: activeViewTab === 'comments' ? '#fff' : '#94a3b8',
+            fontWeight: 700,
+            fontSize: '0.88rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <MessageSquare size={16} color={activeViewTab === 'comments' ? '#fbbf24' : '#94a3b8'} />
+          <span>💬 Comentarios Extraídos de Meta Graph API ({postComments.length})</span>
+        </button>
+      </div>
+
+      {/* 5. Vista Condicional: Nómina de Funcionarios */}
+      {activeViewTab === 'employees' && (
+        <>
+          {/* Barra de Búsqueda y Filtros de Tabla */}
+          <div
+            className="glass-panel"
         style={{
           padding: '16px 20px',
           marginBottom: '20px',
@@ -1812,6 +2011,278 @@ export const InteractionsPage: React.FC = () => {
           </table>
         </div>
       </div>
+    </>
+  )}
+
+  {/* 6. Vista Condicional: Comentarios de Meta Graph API */}
+  {activeViewTab === 'comments' && (
+    <div className="glass-panel" style={{ padding: '22px', overflow: 'hidden' }}>
+      {/* Header de la pestaña de comentarios */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <MessageSquare size={18} color="#fbbf24" />
+            <span>Comentarios Extraídos de Meta Graph API ({filteredComments.length})</span>
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '3px' }}>
+            Comentarios reales extraídos en tiempo real desde Meta. El sistema identifica automáticamente si el autor pertenece al padrón municipal o es un ciudadano.
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => fetchPostComments()}
+            disabled={loadingComments}
+            style={{
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid var(--border-subtle)',
+              color: '#e2e8f0',
+              padding: '7px 12px',
+              borderRadius: '7px',
+              fontSize: '0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: loadingComments ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <RefreshCw size={13} className={loadingComments ? 'animate-spin' : ''} />
+            <span>Actualizar Comentarios</span>
+          </button>
+
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate('analytics')}
+              style={{
+                background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(59, 130, 246, 0.2))',
+                border: '1px solid rgba(6, 182, 212, 0.5)',
+                color: '#38bdf8',
+                padding: '7px 14px',
+                borderRadius: '7px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+              }}
+            >
+              <Award size={14} />
+              <span>Ver Auditoría Completa en Dashboard</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Filtros de Comentarios */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '18px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1 1 240px' }}>
+          <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            type="text"
+            placeholder="Buscar en texto del comentario o autor..."
+            value={commentsSearchQuery}
+            onChange={(e) => setCommentsSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px 12px 8px 34px',
+              background: 'rgba(30, 41, 59, 0.7)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '7px',
+              color: '#fff',
+              fontSize: '0.82rem',
+              outline: 'none',
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '6px' }}>
+          {(['ALL', 'EMPLOYEES', 'CITIZENS'] as const).map((ft) => (
+            <button
+              key={ft}
+              onClick={() => setCommentsFilterType(ft)}
+              style={{
+                padding: '7px 12px',
+                borderRadius: '6px',
+                border: commentsFilterType === ft ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.08)',
+                background: commentsFilterType === ft ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.03)',
+                color: commentsFilterType === ft ? '#fff' : '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: commentsFilterType === ft ? 600 : 500,
+                cursor: 'pointer',
+              }}
+            >
+              {ft === 'ALL' && `Todos (${postComments.length})`}
+              {ft === 'EMPLOYEES' && `🟢 Funcionarios (${postComments.filter(c => c.author?.is_employee).length})`}
+              {ft === 'CITIZENS' && `🔵 Ciudadanos (${postComments.filter(c => !c.author?.is_employee).length})`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Listado de Comentarios */}
+      {loadingComments ? (
+        <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+          <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 10px auto' }} />
+          <div>Cargando comentarios desde la base de datos...</div>
+        </div>
+      ) : filteredComments.length === 0 ? (
+        <div style={{ padding: '48px 20px', textAlign: 'center', color: '#94a3b8' }}>
+          <MessageSquare size={36} color="#fbbf24" style={{ margin: '0 auto 12px auto', opacity: 0.8 }} />
+          <div style={{ fontWeight: 700, color: '#fff', fontSize: '1rem', marginBottom: '6px' }}>
+            {postComments.length === 0
+              ? 'Aún no se han sincronizado comentarios para este post'
+              : 'No hay comentarios que coincidan con los filtros'}
+          </div>
+          <div style={{ fontSize: '0.82rem', maxWidth: '480px', margin: '0 auto 14px auto', lineHeight: '1.4' }}>
+            {postComments.length === 0
+              ? 'Pulsa el botón "⚡ Sincronizar Post" en la barra superior para descargar todos los comentarios reales de Meta Graph API en segundos.'
+              : 'Intenta limpiar el buscador o seleccionar "Todos".'}
+          </div>
+          {postComments.length === 0 && (
+            <button
+              onClick={handleSyncWithSocial}
+              disabled={syncing}
+              style={{
+                background: 'linear-gradient(135deg, #0891b2, #0284c7)',
+                color: '#fff',
+                border: 'none',
+                padding: '9px 18px',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: syncing ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+              <span>⚡ Sincronizar Post Ahora</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {filteredComments.map((comment) => (
+            <div
+              key={comment.id}
+              style={{
+                background: comment.author?.is_employee ? 'rgba(16, 185, 129, 0.06)' : 'rgba(30, 41, 59, 0.6)',
+                border: comment.author?.is_employee ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '10px',
+                padding: '14px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      background: comment.author?.is_employee ? 'rgba(16, 185, 129, 0.25)' : 'rgba(59, 130, 246, 0.2)',
+                      color: comment.author?.is_employee ? '#34d399' : '#60a5fa',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {comment.author?.author_name ? comment.author.author_name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.88rem' }}>
+                      {comment.author?.author_name || 'Usuario de Facebook'}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                      {comment.created_at ? new Date(comment.created_at).toLocaleString('es-BO') : 'Fecha no registrada'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {comment.author?.is_employee ? (
+                    <span
+                      className="badge"
+                      style={{
+                        background: 'rgba(16, 185, 129, 0.2)',
+                        color: '#34d399',
+                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        fontSize: '0.74rem',
+                      }}
+                    >
+                      🟢 FUNCIONARIO GAMEA ({comment.author.full_name || comment.author.employee_id})
+                    </span>
+                  ) : (
+                    <span
+                      className="badge"
+                      style={{
+                        background: 'rgba(59, 130, 246, 0.15)',
+                        color: '#60a5fa',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        fontWeight: 600,
+                        padding: '3px 8px',
+                        fontSize: '0.74rem',
+                      }}
+                    >
+                      🔵 COMENTARIO CIUDADANO (Público General)
+                    </span>
+                  )}
+
+                  {comment.associated_reaction && (
+                    <span
+                      className="badge"
+                      style={{
+                        background: 'rgba(236, 72, 153, 0.15)',
+                        color: '#f472b6',
+                        border: '1px solid rgba(236, 72, 153, 0.3)',
+                        fontSize: '0.74rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <ThumbsUp size={11} /> {comment.associated_reaction}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Texto exacto escrito */}
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  fontSize: '0.85rem',
+                  color: '#f1f5f9',
+                  lineHeight: '1.45',
+                  fontStyle: 'normal',
+                }}
+              >
+                "{comment.content_text}"
+              </div>
+
+              {comment.author?.is_employee && comment.author.direction && (
+                <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                  🏛️ Dirección: <strong style={{ color: '#cbd5e1' }}>{comment.author.direction}</strong>
+                  {comment.author.secretaria && ` • ${comment.author.secretaria}`}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )}
 
       {/* MODAL: Vincular Publicación Oficial de Facebook */}
       {showAddPostModal && (

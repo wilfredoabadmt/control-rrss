@@ -56,7 +56,7 @@ const AppContent: React.FC = () => {
           case 'publications':
             return <PublicationsPage onNavigate={onNavigate} />;
           case 'interactions':
-            return <InteractionsPage />;
+            return <InteractionsPage onNavigate={onNavigate} />;
           case 'matrix':
             return <MatrixPage />;
           case 'analytics':
