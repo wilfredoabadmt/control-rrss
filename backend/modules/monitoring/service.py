@@ -1479,16 +1479,32 @@ class MonitoringHubService:
                         if "_" not in target_post_id and page_id:
                             target_post_id = f"{page_id}_{target_post_id}"
 
-                        # Extraer comentarios REALES de Meta
+                        # Extraer comentarios REALES de Meta con paginación completa (RF-COM-001)
                         try:
-                            comment_limit = getattr(req, "max_comments_per_post", 100) or 100
-                            comments, _ = await fb_client.fetch_comments(target_post_id, fb_token, limit=comment_limit)
+                            comment_limit = getattr(req, "max_comments_per_post", 250) or 250
+                            comments, total_c_count = await fb_client.fetch_all_comments(
+                                target_post_id, fb_token, max_total=comment_limit
+                            )
                             if not comments and target_post_id != pub.external_post_id:
                                 try:
-                                    comments, _ = await fb_client.fetch_comments(pub.external_post_id, fb_token, limit=comment_limit)
+                                    comments, total_c_count = await fb_client.fetch_all_comments(
+                                        pub.external_post_id, fb_token, max_total=comment_limit
+                                    )
                                 except Exception:
                                     pass
+
+                            if total_c_count:
+                                pub.meta_comments_total = max(getattr(pub, "meta_comments_total", 0) or 0, total_c_count)
+
                             for c in comments:
+                                c_created_at = datetime.now(UTC)
+                                raw_c_time = c.get("external_created_at")
+                                if raw_c_time:
+                                    try:
+                                        c_created_at = datetime.fromisoformat(str(raw_c_time).replace("Z", "+00:00"))
+                                    except Exception:
+                                        c_created_at = datetime.now(UTC)
+
                                 extracted_items.append({
                                     "ext_id": c.get("external_interaction_id") or f"comm_{pub.external_post_id}_{c.get('external_author_id')}",
                                     "author_id": c.get("external_author_id") or "anonimo",
@@ -1496,7 +1512,7 @@ class MonitoringHubService:
                                     "type": InteractionType.COMMENT.value,
                                     "reaction": None,
                                     "content": c.get("content_text"),
-                                    "created_at": datetime.now(UTC),
+                                    "created_at": c_created_at,
                                     "origin": DataOriginType.CITIZEN_COMMENT_ON_OFFICIAL.value,
                                 })
                         except Exception as e:
@@ -1593,6 +1609,7 @@ class MonitoringHubService:
                     match_res = await InteractionMatcher.match_interaction(db, interaction)
                     if match_res.status == MatchStatus.MATCHED:
                         matched_interactions += 1
+                        interaction.data_origin_type = DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value
 
                         # Crear o actualizar verificación canónica (DATO_CONFIRMADO)
                         stmt_ver = select(Verification).where(

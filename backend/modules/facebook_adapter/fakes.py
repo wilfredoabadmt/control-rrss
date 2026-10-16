@@ -82,6 +82,16 @@ class FakeFacebookGraphClient:
 
         return comments, None
 
+    async def fetch_all_comments(
+        self,
+        post_id: str,
+        access_token: str,
+        _max_total: int = 500,
+        _per_page: int = 100,
+    ) -> tuple[list[dict[str, Any]], int]:
+        comments, _ = await self.fetch_comments(post_id, access_token)
+        return comments, len(comments)
+
     async def fetch_reactions(
         self,
         post_id: str,

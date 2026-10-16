@@ -14,19 +14,25 @@ from modules.analytics.schemas import (
     AnalyticsOverviewResponse,
     DirectionRankingItem,
     EmployeeAnalyticsItem,
+    EmployeeCommentDetail,
     AnalyticsEmployeesPageResponse,
     PlatformComparison,
     PlatformComparisonItem,
+    PostCommentAuthorDetail,
+    PostCommentItem,
+    PostCommentsPageResponse,
     ReactionTypeCount,
     TimelinePoint,
 )
 from modules.employees.models import Employee, OrganizationalUnit
 from modules.iam.models import User
+from modules.interactions.models import Interaction
 from modules.monitoring.service import MonitoringHubService
+from modules.verification.models import Verification
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -571,6 +577,8 @@ class AnalyticsService:
 
         active_pub_ids = {p.publication_id for p in pubs}
         participating_set = set()
+        employees_with_comments_set: set[str] = set()
+        employees_with_reactions_set: set[str] = set()
         total_reactions = 0
         total_comments = 0
         total_shares = 0
@@ -613,6 +621,7 @@ class AnalyticsService:
                     row_had_activity = True
 
                 if has_reaction:
+                    employees_with_reactions_set.add(r.employee_id)
                     r_type = (p_post.reaction_type or "LIKE").upper().strip()
                     reactions_by_type_agg[r_type] = reactions_by_type_agg.get(r_type, 0) + 1
                     total_reactions += 1
@@ -627,6 +636,7 @@ class AnalyticsService:
                         timeline_agg[d_str]["reactions"] += 1
 
                 if has_comment:
+                    employees_with_comments_set.add(r.employee_id)
                     total_comments += 1
                     reactions_by_type_agg["COMMENT"] = reactions_by_type_agg.get("COMMENT", 0) + 1
                     plat_name = (p_post.platform or "FACEBOOK").upper().strip()
@@ -650,12 +660,36 @@ class AnalyticsService:
         )
         avg_reactions = round((total_reactions / total_pubs) if total_pubs > 0 else 0.0, 1)
 
+        # Contabilizar comentarios totales en BD (incluyendo ciudadanos)
+        total_comments_in_db = 0
+        if active_pub_ids:
+            stmt_comments_count = select(func.count(Interaction.id)).where(
+                Interaction.publication_id.in_(active_pub_ids),
+                or_(
+                    Interaction.interaction_type.in_(["COMMENT", "REPLY"]),
+                    Interaction.content_text.isnot(None),
+                ),
+            )
+            total_comments_in_db = (await db.execute(stmt_comments_count)).scalar_one() or 0
+
+        total_citizen_comments = max(0, total_comments_in_db - total_comments)
+        employees_with_comments = len(employees_with_comments_set)
+        employees_with_both = len(employees_with_comments_set & employees_with_reactions_set)
+        comment_part_rate = round(
+            (employees_with_comments / total_employees * 100.0) if total_employees > 0 else 0.0, 1
+        )
+
         kpis = AnalyticsKPIs(
             total_employees=total_employees,
             observable_employees=observable_employees,
             total_publications=total_pubs,
             total_reactions=total_reactions,
-            total_comments=total_comments,
+            total_comments=max(total_comments_in_db, total_comments),
+            total_employee_comments=total_comments,
+            total_citizen_comments=total_citizen_comments,
+            employees_with_comments=employees_with_comments,
+            employees_with_both=employees_with_both,
+            comment_participation_rate=comment_part_rate,
             total_shares=total_shares,
             participating_employees=participating_employees,
             participation_rate=participation_rate,
@@ -844,6 +878,7 @@ class AnalyticsService:
             user_comments = 0
             user_shares = 0
             user_by_type: dict[str, int] = {}
+            user_comments_list: list[EmployeeCommentDetail] = []
             interacted_posts_count = 0
             has_part = False
 
@@ -869,14 +904,38 @@ class AnalyticsService:
                 if p_post.comment_text:
                     user_comments += 1
                     user_by_type["COMMENT"] = user_by_type.get("COMMENT", 0) + 1
+                    c_time_str = p_post.comment_created_at.isoformat() if getattr(p_post, "comment_created_at", None) else None
+                    user_comments_list.append(
+                        EmployeeCommentDetail(
+                            interaction_id=f"{p_post.publication_id}_{r.employee_id}",
+                            publication_id=str(p_post.publication_id),
+                            post_title=p_post.post_title or "Publicación Oficial",
+                            post_url=p_post.post_url,
+                            comment_text=p_post.comment_text,
+                            created_at=c_time_str,
+                            associated_reaction=p_post.reaction_type,
+                        )
+                    )
 
                 if p_post.shared:
                     user_shares += 1
                     user_by_type["SHARE"] = user_by_type.get("SHARE", 0) + 1
 
+            has_comm = user_comments > 0
+            has_both = user_reacts > 0 and user_comments > 0
+
+            # Filtros de participación ampliados (reacción, comentario, ambos)
             if participation_status == "PARTICIPATED" and not has_part:
                 continue
-            if participation_status == "NO_REACTION" and has_part:
+            if participation_status == "WITH_REACTION" and user_reacts == 0:
+                continue
+            if participation_status == "WITH_COMMENT" and not has_comm:
+                continue
+            if participation_status == "WITH_BOTH" and not has_both:
+                continue
+            if participation_status == "NO_REACTION" and user_reacts > 0:
+                continue
+            if participation_status == "NO_ACTIVITY" and has_part:
                 continue
 
             part_rate = round(
@@ -903,6 +962,9 @@ class AnalyticsService:
                     total_available_posts=total_available_posts,
                     participation_rate=part_rate,
                     has_participated=has_part,
+                    has_commented=has_comm,
+                    has_both=has_both,
+                    comments=user_comments_list,
                 )
             )
 
@@ -1133,6 +1195,213 @@ class AnalyticsService:
         out = io.BytesIO()
         wb.save(out)
         return out.getvalue()
+
+    @classmethod
+    async def get_comments_list(
+        cls,
+        db: AsyncSession,
+        current_user: User | None = None,
+        publication_id: uuid.UUID | None = None,
+        author_type: str | None = "ALL",
+        search: str | None = None,
+        secretaria: str | None = None,
+        direction: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> PostCommentsPageResponse:
+        """
+        Retorna la lista auditada y paginada de comentarios de posts evaluados,
+        con identificación unívoca del funcionario o clasificación ciudadana (RF-COM-004).
+        """
+        from modules.publications.models import Publication
+
+        # 1. Cargar mapa de empleados para resolver secretaría y dirección
+        stmt_emps = (
+            select(Employee)
+            .options(
+                selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent),
+                selectinload(Employee.position),
+            )
+        )
+        emp_records = list((await db.execute(stmt_emps)).scalars().all())
+        emp_dict: dict[str, Employee] = {e.employee_id: e for e in emp_records}
+        emp_hierarchy_map: dict[str, tuple[str, str, str]] = {}
+        for emp in emp_records:
+            u_name = emp.organizational_unit.name if emp.organizational_unit else ""
+            parent_name = emp.organizational_unit.parent.name if emp.organizational_unit and emp.organizational_unit.parent else ""
+            d_name = emp.direction_name or parent_name or u_name
+            emp_hierarchy_map[emp.employee_id] = resolve_org_hierarchy(d_name, u_name)
+
+        # 2. Consultar comentarios en Interaction
+        stmt_comments = (
+            select(Interaction)
+            .where(
+                or_(
+                    Interaction.interaction_type.in_(["COMMENT", "REPLY"]),
+                    Interaction.content_text.isnot(None),
+                )
+            )
+            .options(
+                selectinload(Interaction.publication),
+                selectinload(Interaction.verifications),
+            )
+            .order_by(
+                Interaction.external_created_at.desc(),
+                Interaction.captured_at.desc(),
+            )
+        )
+
+        if publication_id:
+            stmt_comments = stmt_comments.where(Interaction.publication_id == publication_id)
+
+        all_comments_interactions = list((await db.execute(stmt_comments)).scalars().all())
+
+        # 3. Construir mapa de reacciones por (publication_id, author_id/employee_id)
+        stmt_reacts = (
+            select(
+                Interaction.publication_id,
+                Interaction.external_author_id,
+                Interaction.reaction_type,
+            )
+            .where(
+                Interaction.reaction_type.isnot(None),
+            )
+        )
+        react_rows = (await db.execute(stmt_reacts)).all()
+        react_map: dict[tuple[uuid.UUID, str], str] = {}
+        for p_id, auth_id, r_type in react_rows:
+            if auth_id and p_id:
+                react_map[(p_id, auth_id.strip().lower())] = r_type
+                react_map[(p_id, auth_id.strip().lstrip("@").lower())] = r_type
+
+        # 4. Procesar y filtrar cada comentario
+        processed_items: list[PostCommentItem] = []
+        total_emp_comments = 0
+        total_cit_comments = 0
+
+        search_q = search.strip().lower() if search and search.strip() else None
+
+        for it in all_comments_interactions:
+            matched_emp_id: str | None = None
+            if it.verifications:
+                for v in it.verifications:
+                    if v.employee_id:
+                        matched_emp_id = v.employee_id.strip()
+                        break
+
+            emp = emp_dict.get(matched_emp_id) if matched_emp_id else None
+            is_emp = emp is not None
+
+            sec_val, dir_val, unit_val = ("", "", "")
+            if matched_emp_id and matched_emp_id in emp_hierarchy_map:
+                sec_val, dir_val, unit_val = emp_hierarchy_map[matched_emp_id]
+            elif emp:
+                sec_val, dir_val, unit_val = resolve_org_hierarchy(emp.direction_name, "")
+
+            if is_emp:
+                total_emp_comments += 1
+            else:
+                total_cit_comments += 1
+
+            # Filtrar por tipo de autor
+            if author_type == "EMPLOYEES_ONLY" and not is_emp:
+                continue
+            if author_type == "CITIZENS_ONLY" and is_emp:
+                continue
+
+            # Filtrar por secretaría
+            if secretaria and secretaria != "ALL":
+                sec_target = secretaria.strip().lower()
+                matches_sec = (sec_val.lower() == sec_target) or ("subalcal" in sec_val.lower() and "subalcal" in sec_target)
+                if not matches_sec:
+                    continue
+
+            # Filtrar por dirección
+            if direction and direction != "ALL":
+                d_target = direction.strip().lower()
+                matches_dir = (dir_val.lower() == d_target) or (
+                    ("subalcal" in dir_val.lower() or "distrito" in dir_val.lower())
+                    and ("subalcal" in d_target or "distrito" in d_target)
+                )
+                if not matches_dir:
+                    continue
+
+            # Filtrar por término de búsqueda
+            c_text = it.content_text or ""
+            author_disp_name = it.external_author_name or (f"{emp.first_name} {emp.last_name}" if emp else "Usuario en Red Social")
+            if search_q:
+                text_matches = (
+                    search_q in c_text.lower()
+                    or search_q in author_disp_name.lower()
+                    or (matched_emp_id and search_q in matched_emp_id.lower())
+                    or (emp and search_q in f"{emp.first_name} {emp.last_name}".lower())
+                )
+                if not text_matches:
+                    continue
+
+            # Reacción complementaria asociada
+            associated_react = None
+            if it.publication_id:
+                if matched_emp_id and (it.publication_id, matched_emp_id.lower()) in react_map:
+                    associated_react = react_map[(it.publication_id, matched_emp_id.lower())]
+                elif it.external_author_id and (it.publication_id, it.external_author_id.strip().lower()) in react_map:
+                    associated_react = react_map[(it.publication_id, it.external_author_id.strip().lower())]
+
+            pub_title = None
+            pub_url = None
+            if it.publication:
+                pub_title = (it.publication.content_text[:90] + "...") if it.publication.content_text and len(it.publication.content_text) > 90 else it.publication.content_text
+                pub_url = it.publication.post_url
+
+            dt_created = it.external_created_at or it.captured_at
+            created_str = dt_created.isoformat() if dt_created else None
+
+            epistemic_st = "CONFIRMED" if is_emp else "OBSERVED"
+            epistemic_lbl = "Dato Confirmado" if is_emp else "Comentario Ciudadano"
+
+            author_detail = PostCommentAuthorDetail(
+                author_id=it.external_author_id,
+                author_name=author_disp_name,
+                is_employee=is_emp,
+                employee_id=emp.employee_id if emp else None,
+                full_name=f"{emp.first_name} {emp.last_name}".strip() if emp else None,
+                document_number=emp.employee_id if emp else None,
+                secretaria=sec_val if is_emp else None,
+                direction=dir_val if is_emp else None,
+                unit=unit_val if is_emp else None,
+                position=emp.position.title if emp and emp.position else None,
+            )
+
+            processed_items.append(
+                PostCommentItem(
+                    id=str(it.id),
+                    publication_id=str(it.publication_id),
+                    post_title=pub_title,
+                    post_url=pub_url,
+                    content_text=c_text,
+                    created_at=created_str,
+                    author=author_detail,
+                    associated_reaction=associated_react,
+                    epistemic_status=epistemic_st,
+                    epistemic_display=epistemic_lbl,
+                )
+            )
+
+        total_matched_comments = len(processed_items)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated = processed_items[start_idx:end_idx]
+        total_p = max(1, (total_matched_comments + page_size - 1) // page_size)
+
+        return PostCommentsPageResponse(
+            items=paginated,
+            total=total_matched_comments,
+            total_employee_comments=total_emp_comments,
+            total_citizen_comments=total_cit_comments,
+            page=page,
+            page_size=page_size,
+            total_pages=total_p,
+        )
 
     @classmethod
     async def purge_test_data(cls, db: AsyncSession) -> dict[str, Any]:

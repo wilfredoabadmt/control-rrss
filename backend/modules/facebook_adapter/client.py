@@ -115,6 +115,72 @@ class FacebookGraphClient:
 
         return normalized_comments, next_cursor
 
+    async def fetch_comment_summary(
+        self,
+        post_id: str,
+        access_token: str,
+    ) -> int:
+        """
+        Obtiene el conteo total agregado oficial de comentarios reportado por Meta Graph API.
+        """
+        try:
+            client = await self._get_client()
+            url = f"{self.base_url}/{post_id}/comments"
+            params: dict[str, str | int] = {
+                "summary": "total_count",
+                "limit": 0,
+                "access_token": access_token,
+            }
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                summary = resp.json().get("summary") or {}
+                return int(summary.get("total_count") or 0)
+        except Exception:
+            pass
+        return 0
+
+    async def fetch_all_comments(
+        self,
+        post_id: str,
+        access_token: str,
+        max_total: int = 500,
+        per_page: int = 100,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """
+        Obtiene TODOS los comentarios de una publicación navegando automáticamente
+        por la paginación de cursores de Meta Graph API (REQ-FBI-002, RF-COM-001).
+        Retorna la lista completa de comentarios y el conteo oficial total de Meta.
+        """
+        all_comments: list[dict[str, Any]] = []
+        cursor: str | None = None
+        official_total_count = await self.fetch_comment_summary(post_id, access_token)
+
+        while len(all_comments) < max_total:
+            batch_limit = min(per_page, max_total - len(all_comments))
+            try:
+                batch_comments, next_cursor = await self.fetch_comments(
+                    post_id=post_id,
+                    access_token=access_token,
+                    cursor=cursor,
+                    limit=batch_limit,
+                )
+            except Exception:
+                break
+
+            if not batch_comments:
+                break
+
+            all_comments.extend(batch_comments)
+
+            if not next_cursor or next_cursor == cursor:
+                break
+            cursor = next_cursor
+
+        if not official_total_count:
+            official_total_count = len(all_comments)
+
+        return all_comments, official_total_count
+
     async def fetch_reactions(
         self,
         post_id: str,

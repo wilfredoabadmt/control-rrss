@@ -59,6 +59,7 @@ def _publication_response(pub: Publication, m: dict[str, int] | None = None) -> 
         total_shares=counts.get("shares", 0),
         meta_reactions_total=pub.meta_reactions_total or 0,
         meta_reactions_by_type=dict(pub.meta_reactions_by_type or {}),
+        meta_comments_total=getattr(pub, "meta_comments_total", 0) or 0,
         meta_metrics_synced_at=pub.meta_metrics_synced_at,
     )
 

@@ -15,6 +15,11 @@ class AnalyticsKPIs(BaseModel):
     total_publications: int = Field(description="Total de publicaciones evaluadas en el período")
     total_reactions: int = Field(description="Total acumulado de reacciones detectadas")
     total_comments: int = Field(description="Total acumulado de comentarios detectados")
+    total_employee_comments: int = Field(default=0, description="Comentarios de servidores públicos confirmados")
+    total_citizen_comments: int = Field(default=0, description="Comentarios de ciudadanos externos")
+    employees_with_comments: int = Field(default=0, description="Funcionarios que comentaron al menos una vez")
+    employees_with_both: int = Field(default=0, description="Funcionarios que reaccionaron y comentaron")
+    comment_participation_rate: float = Field(default=0.0, description="Porcentaje de funcionarios que comentaron (0 - 100)")
     total_shares: int = Field(description="Total acumulado de compartidos detectados")
     participating_employees: int = Field(description="Funcionarios que registraron al menos una interacción")
     participation_rate: float = Field(description="Porcentaje de funcionarios que interactuaron (0 - 100)")
@@ -74,6 +79,17 @@ class AnalyticsOverviewResponse(BaseModel):
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class EmployeeCommentDetail(BaseModel):
+    """Detalle de un comentario emitido por un funcionario en un post evaluado."""
+    interaction_id: str
+    publication_id: str
+    post_title: str
+    post_url: str | None = None
+    comment_text: str
+    created_at: str | None = None
+    associated_reaction: str | None = None
+
+
 class EmployeeAnalyticsItem(BaseModel):
     """Detalle analítico individual por funcionario."""
     employee_id: str
@@ -93,6 +109,9 @@ class EmployeeAnalyticsItem(BaseModel):
     total_available_posts: int = Field(default=0)
     participation_rate: float = Field(default=0.0)
     has_participated: bool = Field(default=False)
+    has_commented: bool = Field(default=False)
+    has_both: bool = Field(default=False, description="Registró reacción y comentario en publicaciones evaluadas")
+    comments: list[EmployeeCommentDetail] = Field(default_factory=list, description="Lista de comentarios emitidos por el funcionario")
     last_interaction_at: str | None = None
 
 
@@ -100,6 +119,45 @@ class AnalyticsEmployeesPageResponse(BaseModel):
     """Respuesta paginada del detalle de funcionarios."""
     items: list[EmployeeAnalyticsItem]
     total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class PostCommentAuthorDetail(BaseModel):
+    """Detalle de autoría del comentario (cruce institucional)."""
+    author_id: str | None = None
+    author_name: str
+    is_employee: bool = False
+    employee_id: str | None = None
+    full_name: str | None = None
+    document_number: str | None = None
+    secretaria: str | None = None
+    direction: str | None = None
+    unit: str | None = None
+    position: str | None = None
+
+
+class PostCommentItem(BaseModel):
+    """Comentario individual auditado con contexto del post y cruce."""
+    id: str
+    publication_id: str
+    post_title: str | None = None
+    post_url: str | None = None
+    content_text: str
+    created_at: str | None = None
+    author: PostCommentAuthorDetail
+    associated_reaction: str | None = None
+    epistemic_status: str = "CONFIRMED"
+    epistemic_display: str = "Dato Confirmado"
+
+
+class PostCommentsPageResponse(BaseModel):
+    """Respuesta paginada para la auditoría de comentarios de posts evaluados."""
+    items: list[PostCommentItem]
+    total: int
+    total_employee_comments: int
+    total_citizen_comments: int
     page: int
     page_size: int
     total_pages: int

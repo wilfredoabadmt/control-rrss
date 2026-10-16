@@ -459,3 +459,148 @@ async def test_analytics_subalcaldias_filtering(async_db: AsyncSession, super_ad
     assert table_res.items[0].secretaria == "Subalcaldías"
     assert table_res.items[0].direction == "Subalcaldía Distrito Municipal 3"
 
+
+@pytest.mark.asyncio
+async def test_analytics_comments_audit_and_kpis(async_db: AsyncSession, super_admin: User):
+    """Verifica la contabilización y auditoría de quiénes comentaron junto a reacciones (RF-COM-001 a RF-COM-004)."""
+    # 1. Crear unidad y empleado
+    unit = OrganizationalUnit(id=uuid.uuid4(), name="Unidad de Comunicación Digital", code="UCD-01")
+    async_db.add(unit)
+    await async_db.flush()
+
+    emp = Employee(
+        employee_id="EMP-COMM-99",
+        first_name="Gonzalo",
+        last_name="Quispe",
+        document_number_encrypted="enc_gq",
+        document_hash="hash_gq",
+        organizational_unit_id=unit.id,
+        direction_name="Dirección de Comunicación",
+        status="ACTIVE",
+    )
+    async_db.add(emp)
+
+    # 2. Crear publicación evaluada
+    stmt_p = select(SocialPlatform).where(SocialPlatform.name == "FACEBOOK")
+    plat = (await async_db.execute(stmt_p)).scalar_one()
+
+    pub = Publication(
+        id=uuid.uuid4(),
+        platform_id=plat.id,
+        external_post_id="post_fb_eval_99",
+        post_url="https://facebook.com/gamea/posts/99",
+        content_text="Entrega de Luminarias en Distrito 8",
+        published_at=datetime.now(UTC),
+        is_monitored=True,
+        meta_reactions_total=10,
+        meta_comments_total=5,
+    )
+    async_db.add(pub)
+    await async_db.flush()
+
+    # 3. Comentario 1: Emitido por el funcionario (con verificación)
+    comm_emp = Interaction(
+        id=uuid.uuid4(),
+        publication_id=pub.id,
+        platform_id=plat.id,
+        interaction_type="COMMENT",
+        external_interaction_id="comm_emp_01",
+        external_author_id=emp.employee_id,
+        external_author_name=f"{emp.first_name} {emp.last_name}",
+        content_text="Excelente gestión por el Distrito 8, felicidades!",
+        captured_at=datetime.now(UTC),
+        data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
+    )
+    async_db.add(comm_emp)
+    await async_db.flush()
+
+    ver_comm = Verification(
+        interaction_id=comm_emp.id,
+        employee_id=emp.employee_id,
+        verification_status=VerificationStatus.CONFIRMED.value,
+        verification_method="AUTOMATIC_SYNC_MATCHER",
+        explanation="Cotejo automático de comentario",
+    )
+    async_db.add(ver_comm)
+
+    # 4. Reacción del mismo funcionario (participación integral: reaccionó + comentó)
+    react_emp = Interaction(
+        id=uuid.uuid4(),
+        publication_id=pub.id,
+        platform_id=plat.id,
+        interaction_type="LIKE",
+        reaction_type="LOVE",
+        external_interaction_id="react_emp_01",
+        external_author_id=emp.employee_id,
+        external_author_name=f"{emp.first_name} {emp.last_name}",
+        captured_at=datetime.now(UTC),
+        data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
+    )
+    async_db.add(react_emp)
+    await async_db.flush()
+
+    ver_react = Verification(
+        interaction_id=react_emp.id,
+        employee_id=emp.employee_id,
+        verification_status=VerificationStatus.CONFIRMED.value,
+        verification_method="AUTOMATIC_SYNC_MATCHER",
+        explanation="Cotejo automático de reacción",
+    )
+    async_db.add(ver_react)
+
+    # 5. Comentario 2: Emitido por un ciudadano externo (sin verificación)
+    comm_cit = Interaction(
+        id=uuid.uuid4(),
+        publication_id=pub.id,
+        platform_id=plat.id,
+        interaction_type="COMMENT",
+        external_interaction_id="comm_citizen_01",
+        external_author_id="fb_citizen_44",
+        external_author_name="Vecino Alteño",
+        content_text="Por favor también atiendan la avenida principal.",
+        captured_at=datetime.now(UTC),
+        data_origin_type=DataOriginType.CITIZEN_COMMENT_ON_OFFICIAL.value,
+    )
+    async_db.add(comm_cit)
+    await async_db.commit()
+
+    # 6. Comprobar Overview KPIs
+    overview = await AnalyticsService.get_overview(db=async_db, current_user=super_admin)
+    assert overview.kpis.total_comments == 2
+    assert overview.kpis.total_employee_comments == 1
+    assert overview.kpis.total_citizen_comments == 1
+    assert overview.kpis.employees_with_comments == 1
+    assert overview.kpis.employees_with_both == 1
+    assert overview.kpis.comment_participation_rate == 100.0
+
+    # 7. Comprobar Lista Auditada de Comentarios (GET /analytics/comments)
+    # 7a. Todos los comentarios
+    all_comms = await AnalyticsService.get_comments_list(db=async_db, current_user=super_admin)
+    assert all_comms.total == 2
+    assert all_comms.total_employee_comments == 1
+    assert all_comms.total_citizen_comments == 1
+
+    # 7b. Filtrar solo funcionarios
+    emp_comms = await AnalyticsService.get_comments_list(db=async_db, current_user=super_admin, author_type="EMPLOYEES_ONLY")
+    assert emp_comms.total == 1
+    first_item = emp_comms.items[0]
+    assert first_item.author.is_employee is True
+    assert first_item.author.employee_id == emp.employee_id
+    assert first_item.associated_reaction == "LOVE"  # Cruzado con su reacción LOVE
+    assert first_item.epistemic_status == "CONFIRMED"
+
+    # 7c. Filtrar solo ciudadanos
+    cit_comms = await AnalyticsService.get_comments_list(db=async_db, current_user=super_admin, author_type="CITIZENS_ONLY")
+    assert cit_comms.total == 1
+    assert cit_comms.items[0].author.is_employee is False
+    assert cit_comms.items[0].epistemic_status == "OBSERVED"
+
+    # 8. Comprobar Tabla de Funcionarios (get_employees_table)
+    table = await AnalyticsService.get_employees_table(db=async_db, current_user=super_admin)
+    emp_row = next(i for i in table.items if i.employee_id == emp.employee_id)
+    assert emp_row.has_commented is True
+    assert emp_row.has_both is True
+    assert emp_row.total_comments == 1
+    assert len(emp_row.comments) == 1
+    assert "Excelente gestión" in emp_row.comments[0].comment_text
+

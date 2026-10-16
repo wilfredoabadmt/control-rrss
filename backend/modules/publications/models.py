@@ -105,6 +105,12 @@ class Publication(Base, TimestampMixin, UUIDPrimaryKeyMixin):
         nullable=False,
         comment="Desglose por tipo (like, love, wow, haha, sad, angry) según insights de Meta",
     )
+    meta_comments_total: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="Total oficial de comentarios reportado por Meta Graph API",
+    )
     meta_metrics_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

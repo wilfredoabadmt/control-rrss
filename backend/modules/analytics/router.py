@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from modules.analytics.schemas import (
     AnalyticsEmployeesPageResponse,
     AnalyticsOverviewResponse,
+    PostCommentsPageResponse,
 )
 from modules.analytics.service import AnalyticsService
 from modules.iam.models import User
@@ -85,6 +86,37 @@ async def get_analytics_employees(
         publication_id=publication_id,
         platform_name=platform_name,
         participation_status=participation_status,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@analytics_router.get(
+    "/comments",
+    response_model=PostCommentsPageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Auditoría de comentarios y quiénes comentaron en publicaciones evaluadas (RF-COM-004)",
+    description="Retorna la lista de comentarios desglosada por funcionario identificado o ciudadano externo, con metadata institucional.",
+)
+async def get_analytics_comments(
+    publication_id: uuid.UUID | None = Query(None, description="Filtrar por publicación evaluada específica"),
+    author_type: str | None = Query("ALL", description="ALL, EMPLOYEES_ONLY, o CITIZENS_ONLY"),
+    search: str | None = Query(None, description="Búsqueda por autor, CI o texto del comentario"),
+    secretaria: str | None = Query(None, description="Filtrar por Secretaría"),
+    direction: str | None = Query(None, description="Filtrar por Dirección"),
+    page: int = Query(1, ge=1, description="Número de página"),
+    page_size: int = Query(20, ge=1, le=100, description="Tamaño de página"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> PostCommentsPageResponse:
+    return await AnalyticsService.get_comments_list(
+        db=db,
+        current_user=current_user,
+        publication_id=publication_id,
+        author_type=author_type,
+        search=search,
+        secretaria=secretaria,
+        direction=direction,
         page=page,
         page_size=page_size,
     )

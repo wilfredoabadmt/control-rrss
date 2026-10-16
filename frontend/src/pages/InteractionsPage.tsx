@@ -346,8 +346,8 @@ export const InteractionsPage: React.FC = () => {
           const json = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1 });
           // Extract text from the first column of each row
           const names = json
-            .map((row) => row[0])
-            .filter((name) => typeof name === 'string' && name.trim().length > 0)
+            .map((row: any) => row[0])
+            .filter((name: any) => typeof name === 'string' && name.trim().length > 0)
             .join('\n');
           
           setPasteRawText((prev) => prev ? prev + '\n' + names : names);

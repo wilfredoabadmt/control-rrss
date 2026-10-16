@@ -168,6 +168,21 @@ class PublicationService:
             correlation_id=cid,
         )
         await db.commit()
+
+        # Intentar extracción automática inicial de comentarios y reacciones (RF-COM-001)
+        try:
+            from modules.monitoring.schemas import RunSyncRequest
+            from modules.monitoring.service import MonitoringHubService
+            sync_req = RunSyncRequest(
+                platform=plat.name.upper(),
+                publication_ids=[pub.id],
+                fetch_new_posts=False,
+                max_posts=1,
+            )
+            await MonitoringHubService.run_social_sync(db=db, req=sync_req, current_user=current_user)
+        except Exception as e:
+            logger.info(f"Sincronización inicial omitida o diferida para post {pub.external_post_id}: {str(e)}")
+
         stmt_reload = select(Publication).where(Publication.id == pub.id).options(selectinload(Publication.platform))
         return (await db.execute(stmt_reload)).scalar_one()
 

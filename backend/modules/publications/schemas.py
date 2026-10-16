@@ -51,6 +51,10 @@ class PublicationResponse(PublicationBase):
         default_factory=dict,
         description="Desglose por tipo (like, love, wow, haha, sad, angry) reportado por Meta",
     )
+    meta_comments_total: int = Field(
+        default=0,
+        description="Total oficial de comentarios reportado por Meta Graph API",
+    )
     meta_metrics_synced_at: datetime | None = Field(
         default=None,
         description="UTC de la última lectura de métricas agregadas de Meta",
