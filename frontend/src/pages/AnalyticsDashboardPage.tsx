@@ -373,7 +373,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
             }}
           >
             <BarChart3 size={16} />
-            <span>Fiscalización Institucional de Redes Sociales — GAMEA SDD</span>
+            <span>Seguimiento Institucional de Redes Sociales — GAMEA</span>
           </div>
           <h1
             style={{
@@ -384,10 +384,10 @@ export const AnalyticsDashboardPage: React.FC = () => {
               margin: '4px 0',
             }}
           >
-            Analítica de Reacciones, Comentarios y Acompañamiento
+            Analítica y Cumplimiento de Acompañamiento
           </h1>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-            Conteo y auditoría automatizada de comentarios, identificación epistémica de autores (funcionarios vs. ciudadanos) y cruce con reacciones oficiales.
+            Estadísticas de reacciones, comentarios y cumplimiento del personal municipal por Secretaría, Dirección y Unidad.
           </p>
         </div>
 
@@ -851,7 +851,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                   color: isAreaFiltered ? '#38bdf8' : 'var(--text-muted)',
                 }}
               >
-                {isAreaFiltered ? 'Ámbito Aislado de Fiscalización' : 'Consolidado Municipal Global'}
+                {isAreaFiltered ? 'Área Municipal Seleccionada' : 'Consolidado Municipal Global'}
               </span>
               {isAreaFiltered && (
                 <span
@@ -865,7 +865,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                     border: '1px solid rgba(16, 185, 129, 0.4)',
                   }}
                 >
-                  ✓ Métricas 100% aisladas al área (Sin totales generales ajenos)
+                  ✓ Métricas exclusivas del área seleccionada
                 </span>
               )}
             </div>

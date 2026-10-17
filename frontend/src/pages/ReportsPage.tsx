@@ -85,10 +85,10 @@ export const ReportsPage: React.FC = () => {
       >
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#fff' }}>
-            Generación & Custodia de Reportes Oficiales
+            Reportes Oficiales de Acompañamiento
           </h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Principio XXIV: Reportes Oficiales Reproducibles con Hash SHA-256 Inmutable
+            Descarga de informes consolidados de participación y verificación en formato Excel oficial.
           </p>
         </div>
 
@@ -111,7 +111,7 @@ export const ReportsPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Banner Principio XXVII */}
+      {/* Banner Informativo */}
       <div
         className="glass-panel"
         style={{
@@ -125,9 +125,8 @@ export const ReportsPage: React.FC = () => {
       >
         <Shield size={24} color="#06b6d4" style={{ flexShrink: 0 }} />
         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          <strong style={{ color: '#fff' }}>Garantía Constitucional en Reportes:</strong> Todo reporte generado incluye
-          automáticamente la hoja de metadatos metodológicos y el descargo formal de prohibición de rankings de
-          funcionarios (Principio XXVII).
+          <strong style={{ color: '#fff' }}>Reportes Institucionales:</strong> Todo reporte generado incluye
+          la información consolidada por áreas, estadísticas de participación y código de verificación digital para respaldar su autenticidad.
         </div>
       </div>
 

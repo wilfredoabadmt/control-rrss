@@ -11,8 +11,6 @@ import {
   ShieldAlert,
   Users,
   X,
-  Zap,
-  TableProperties,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
@@ -54,44 +52,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems: NavItem[] = [
     {
       id: 'dashboard',
-      label: 'Panel Principal',
+      label: 'Panel General',
       icon: Activity,
     },
     {
-      id: 'monitoring-hub',
-      label: 'Auditoría RRSS & Scraper',
-      icon: Zap,
-      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
-    },
-    {
-      id: 'employees',
-      label: 'Funcionarios',
-      icon: Users,
-      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
-    },
-    {
-      id: 'publications',
-      label: 'Publicaciones & Campañas',
-      icon: Radio,
-      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR, UserRole.VIEWER],
+      id: 'analytics',
+      label: 'Analítica y Cumplimiento',
+      icon: BarChart3,
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR, UserRole.AUDITOR],
     },
     {
       id: 'interactions',
-      label: 'Control de Reacciones',
+      label: 'Registro de Reacciones',
       icon: MessageSquare,
       roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
     },
     {
-      id: 'matrix',
-      label: 'Matriz de Control',
-      icon: TableProperties,
-      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
+      id: 'publications',
+      label: 'Publicaciones Oficiales',
+      icon: Radio,
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR, UserRole.VIEWER],
     },
     {
-      id: 'analytics',
-      label: 'Analítica de Reacciones',
-      icon: BarChart3,
-      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR, UserRole.AUDITOR],
+      id: 'employees',
+      label: 'Padrón de Personal',
+      icon: Users,
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
     },
     {
       id: 'reports',
@@ -100,16 +86,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       roles: [UserRole.SUPER_ADMIN, UserRole.AUDITOR, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.VIEWER],
     },
     {
-      id: 'audit',
-      label: 'Auditoría Inmutable',
-      icon: ShieldAlert,
-      roles: [UserRole.SUPER_ADMIN, UserRole.AUDITOR],
-    },
-    {
       id: 'admin',
-      label: 'Administración',
+      label: 'Configuración y Usuarios',
       icon: Settings,
       roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD],
+    },
+    {
+      id: 'audit',
+      label: 'Historial de Actividad',
+      icon: ShieldAlert,
+      roles: [UserRole.SUPER_ADMIN, UserRole.AUDITOR],
     },
   ];
 

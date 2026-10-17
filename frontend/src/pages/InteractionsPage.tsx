@@ -963,11 +963,11 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
               <ThumbsUp size={20} color="#06b6d4" />
             </div>
             <h1 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#fff', margin: 0 }}>
-              Control de Reacciones & Fiscalización por Publicación
+              Registro y Verificación de Reacciones
             </h1>
           </div>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
-            Auditoría de cumplimiento de funcionarios en publicaciones oficiales: Likes, Compartidos y Comentarios.
+            Verificación del acompañamiento del personal municipal en publicaciones oficiales: Reacciones, Comentarios y Compartidos.
           </p>
         </div>
 

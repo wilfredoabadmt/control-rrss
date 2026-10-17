@@ -10,8 +10,6 @@ import { InteractionsPage } from './pages/InteractionsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { AuditPage } from './pages/AuditPage';
 import { AdminPage } from './pages/AdminPage';
-import { MonitoringHubPage } from './pages/MonitoringHubPage';
-import { MatrixPage } from './pages/MatrixPage';
 import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
 import { Activity } from 'lucide-react';
 
@@ -49,16 +47,15 @@ const AppContent: React.FC = () => {
           case 'dashboard':
             return <DashboardPage onLogout={logout} />;
           case 'monitoring-hub':
-            return <MonitoringHubPage />;
+            return <InteractionsPage onNavigate={onNavigate} />;
           case 'employees':
             return <EmployeesPage onNavigate={onNavigate} />;
-
           case 'publications':
             return <PublicationsPage onNavigate={onNavigate} />;
           case 'interactions':
             return <InteractionsPage onNavigate={onNavigate} />;
           case 'matrix':
-            return <MatrixPage />;
+            return <AnalyticsDashboardPage />;
           case 'analytics':
             return <AnalyticsDashboardPage />;
           case 'reports':

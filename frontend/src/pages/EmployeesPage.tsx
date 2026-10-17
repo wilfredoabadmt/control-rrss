@@ -614,7 +614,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fff', letterSpacing: '-0.02em', margin: 0 }}>
-              Directorio de Funcionarios & Gestión CRUD
+              Padrón de Personal Municipal
             </h2>
             <span
               className="badge badge-success"
@@ -714,7 +714,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
             )}
           </div>
           <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: '4px', marginBottom: 0 }}>
-            Administración completa (Altas, Modificaciones, Bajas y Cuentas Sociales) para interacción con posts enviados
+            Directorio del personal municipal, registro de cuentas de redes sociales y asignación por área.
           </p>
         </div>
 

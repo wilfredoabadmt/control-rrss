@@ -397,11 +397,11 @@ export const AdminPage: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Shield size={24} color="#06b6d4" />
             <h2 style={{ fontSize: '1.35rem', fontWeight: '800', color: '#fff', letterSpacing: '-0.02em' }}>
-              Administración del Sistema & Control de Acceso
+              Configuración y Control de Acceso
             </h2>
           </div>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-            Control de usuarios constitucionales, matriz de roles RBAC, conectores API y políticas de seguridad
+            Gestión de cuentas de usuario, permisos de acceso y conexión con redes sociales oficiales.
           </p>
         </div>
 

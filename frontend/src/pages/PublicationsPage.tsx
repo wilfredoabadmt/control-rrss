@@ -332,11 +332,11 @@ export const PublicationsPage: React.FC<PublicationsPageProps> = ({ onNavigate }
               <Radio size={20} color="#06b6d4" />
             </div>
             <h1 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#fff', margin: 0 }}>
-              Publicaciones Oficiales & Campañas
+              Publicaciones Oficiales
             </h1>
           </div>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
-            Agrega posts institucionales de Facebook y TikTok para que interactúen los funcionarios y fiscaliza su cumplimiento.
+            Listado de publicaciones institucionales de Facebook y TikTok del GAMEA evaluadas en el seguimiento.
           </p>
         </div>
 

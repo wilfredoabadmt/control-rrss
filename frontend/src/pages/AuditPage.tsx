@@ -106,10 +106,10 @@ export const AuditPage: React.FC = () => {
       >
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#fff' }}>
-            Pistas de Auditoría Inmutable
+            Historial de Actividad del Sistema
           </h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Principio X: Registro inmutable en base de datos. Ningún registro puede ser modificado ni eliminado.
+            Registro cronológico y transparente de todas las acciones realizadas por los administradores y operadores.
           </p>
         </div>
 

@@ -51,27 +51,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = () => {
   const [execData, setExecData] = useState<ExecutiveDashboardResponse>({
     observable_coverage_rate: {
       code: 'IND-COV-01',
-      name: 'Tasa de Cobertura Observable',
+      name: 'Personal con Redes Registradas',
       value: 0,
       unit: '%',
       numerator: 0,
       denominator: 0,
       exclusions: 0,
-      formula: '(Funcionarios_Con_Cuenta_Observable / Funcionarios_Activos_Elegibles) * 100',
-      description: 'Porcentaje de funcionarios cuya actividad en plataformas oficiales es técnicamente observable.',
-      methodology_notes: 'Excluye funcionarios en comisión, suspendidos y plataformas con restricciones de API (Principio V y XXVI).'
+      formula: '(Personal_Con_Cuenta / Total_Personal) * 100',
+      description: 'Porcentaje de funcionarios que cuentan con cuenta de Facebook o TikTok registrada en el padrón.',
+      methodology_notes: 'Calculado sobre el total de servidores públicos activos del municipio.'
     },
     verification_rate: {
       code: 'IND-VER-01',
-      name: 'Tasa de Verificación Institucional',
+      name: 'Tasa de Acompañamiento Verificado',
       value: 0,
       unit: '%',
       numerator: 0,
       denominator: 0,
       exclusions: 0,
-      formula: '(Interacciones_Confirmadas / Total_Interacciones_Exigibles) * 100',
-      description: 'Nivel de verificación epistémica de interacciones en campañas oficiales monitoreadas.',
-      methodology_notes: 'Calculado sobre interacciones de funcionarios públicos en horario de publicación oficial sin inventar identidades.'
+      formula: '(Interacciones_Confirmadas / Total_Interacciones) * 100',
+      description: 'Porcentaje de interacciones verificadas y cruzadas con el padrón de personal.',
+      methodology_notes: 'Calculado sobre publicaciones institucionales evaluadas.'
     },
     verification_distribution: {},
     platform_breakdown: {
@@ -80,7 +80,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = () => {
     },
     total_active_employees: 0,
     constitutional_disclaimer:
-      'PRINCIPIO XXVII: Prohibición absoluta de rankings de funcionarios, puntajes individuales o evaluaciones punitivas de desempeño. Todos los indicadores son de carácter técnico y de alcance exclusivamente agregado.'
+      'El sistema evalúa el acompañamiento institucional en redes sociales oficiales con alcance exclusivamente estadístico y organizativo por áreas.'
   });
 
   const fetchData = async () => {
@@ -473,7 +473,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = () => {
                 <Shield size={24} color="#06b6d4" style={{ flexShrink: 0, marginTop: '2px' }} />
                 <div>
                   <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#fff' }}>
-                    Garantía Constitucional GAMEA — Principio XXVII
+                    Seguimiento Institucional GAMEA
                   </h3>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.5 }}>
                     {execData.constitutional_disclaimer}
