@@ -10,6 +10,26 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [chartMode, setChartMode] = useState<'line' | 'bar'>('line');
 
+  const height = 220;
+  const paddingX = 40;
+  const paddingY = 25;
+  const viewBoxWidth = 600;
+  const innerWidth = viewBoxWidth - paddingX * 2;
+  const innerHeight = height - paddingY * 2;
+
+  const safeData = data || [];
+  const maxVal = Math.max(1, ...safeData.map((d) => Math.max(d.reactions, d.comments)));
+
+  const points = useMemo(() => {
+    if (!safeData || safeData.length === 0) return [];
+    return safeData.map((d, i) => {
+      const x = paddingX + (safeData.length > 1 ? (i / (safeData.length - 1)) * innerWidth : innerWidth / 2);
+      const yReactions = paddingY + innerHeight - (d.reactions / maxVal) * innerHeight;
+      const yComments = paddingY + innerHeight - (d.comments / maxVal) * innerHeight;
+      return { ...d, x, yReactions, yComments };
+    });
+  }, [safeData, maxVal, innerWidth, innerHeight]);
+
   if (!data || data.length === 0) {
     return (
       <div
@@ -36,24 +56,6 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({ data }) => {
       </div>
     );
   }
-
-  const height = 220;
-  const paddingX = 40;
-  const paddingY = 25;
-  const viewBoxWidth = 600;
-  const innerWidth = viewBoxWidth - paddingX * 2;
-  const innerHeight = height - paddingY * 2;
-
-  const maxVal = Math.max(1, ...data.map((d) => Math.max(d.reactions, d.comments)));
-
-  const points = useMemo(() => {
-    return data.map((d, i) => {
-      const x = paddingX + (data.length > 1 ? (i / (data.length - 1)) * innerWidth : innerWidth / 2);
-      const yReactions = paddingY + innerHeight - (d.reactions / maxVal) * innerHeight;
-      const yComments = paddingY + innerHeight - (d.comments / maxVal) * innerHeight;
-      return { ...d, x, yReactions, yComments };
-    });
-  }, [data, maxVal, innerWidth, innerHeight]);
 
   // Rutas SVG para Reacciones
   const reactionsLinePath = points.reduce(
