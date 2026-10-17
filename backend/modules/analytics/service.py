@@ -559,15 +559,17 @@ class AnalyticsService:
         if date_from or date_to:
             filtered_pub_ids = set()
             for p in pubs:
-                p_dt = p.published_at
-                if p_dt:
-                    if p_dt.tzinfo is None:
-                        p_dt = p_dt.replace(tzinfo=UTC)
-                    if date_from and p_dt < date_from:
-                        continue
-                    if date_to and p_dt > date_to:
-                        continue
+                p_dt = p.published_at or getattr(p, "created_at", None)
+                if not p_dt:
                     filtered_pub_ids.add(p.publication_id)
+                    continue
+                if p_dt.tzinfo is None:
+                    p_dt = p_dt.replace(tzinfo=UTC)
+                if date_from and p_dt < date_from:
+                    continue
+                if date_to and p_dt > date_to:
+                    continue
+                filtered_pub_ids.add(p.publication_id)
             if filtered_pub_ids:
                 pubs = [p for p in pubs if p.publication_id in filtered_pub_ids]
 
@@ -645,6 +647,12 @@ class AnalyticsService:
                 has_verified = p_post.verification_status in [
                     "CONFIRMED", "DECLARED_CONFIRMED", "VERIFIED_AUTOMATIC", "VERIFIED_MANUAL"
                 ]
+
+                # Si está confirmado formalmente y no es comentario ni compartido, es una reacción confirmada
+                if not has_reaction and has_verified and not has_comment and not has_shared:
+                    has_reaction = True
+                    p_post.reaction_type = "LIKE"
+
                 is_active_interaction = has_reaction or has_comment or has_shared or has_verified
 
                 if is_active_interaction:
@@ -928,17 +936,23 @@ class AnalyticsService:
                 if active_pub_ids and p_post.publication_id not in active_pub_ids:
                     continue
 
-                is_active_interaction = bool(
-                    p_post.reaction_type
-                    or p_post.comment_text
-                    or p_post.shared
-                    or (p_post.verification_status in ["CONFIRMED", "DECLARED_CONFIRMED", "VERIFIED_AUTOMATIC", "VERIFIED_MANUAL"])
-                )
+                has_reaction = bool(p_post.reaction_type)
+                has_comment = bool(p_post.comment_text)
+                has_shared = bool(p_post.shared)
+                has_verified = p_post.verification_status in [
+                    "CONFIRMED", "DECLARED_CONFIRMED", "VERIFIED_AUTOMATIC", "VERIFIED_MANUAL"
+                ]
+
+                if not has_reaction and has_verified and not has_comment and not has_shared:
+                    has_reaction = True
+                    p_post.reaction_type = "LIKE"
+
+                is_active_interaction = has_reaction or has_comment or has_shared or has_verified
                 if is_active_interaction:
                     has_part = True
                     interacted_posts_count += 1
 
-                if p_post.reaction_type:
+                if has_reaction or p_post.reaction_type:
                     r_type = (p_post.reaction_type or "LIKE").upper().strip()
                     user_by_type[r_type] = user_by_type.get(r_type, 0) + 1
                     user_reacts += 1

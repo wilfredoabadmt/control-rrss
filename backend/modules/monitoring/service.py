@@ -61,6 +61,7 @@ from modules.monitoring.schemas import (
     TestConnectionResponse,
 )
 from modules.publications.models import Publication
+from modules.publications.service import PublicationService
 from modules.shared.enums import (
     AuditAction,
     BindingStatus,
@@ -73,7 +74,13 @@ from modules.shared.enums import (
     UserRole,
     VerificationStatus,
 )
-from modules.shared.name_matching import best_employee_match, normalize_name
+from modules.shared.name_matching import (
+    _employee_variants,
+    best_employee_match,
+    extract_social_handle,
+    normalize_name,
+    score_candidate,
+)
 from modules.social_accounts.models import SocialAccount, SocialPlatform
 from modules.verification.models import Verification
 from openpyxl import Workbook
@@ -1295,8 +1302,9 @@ class MonitoringHubService:
                                     f_id = fp.get("id")
                                     if not f_id:
                                         continue
-                                    stmt_check = select(Publication).where(Publication.external_post_id == f_id)
-                                    existing_p = (await db.execute(stmt_check)).scalar_one_or_none()
+                                    existing_p = await PublicationService.find_existing_publication(
+                                        db, fb_plat_obj.id, f_id
+                                    )
                                     if not existing_p:
                                         created_time_str = fp.get("created_time")
                                         pub_dt = datetime.now(UTC)
@@ -1314,6 +1322,11 @@ class MonitoringHubService:
                                         )
                                         db.add(new_p)
                                         await db.flush()
+                                    else:
+                                        # Si ya existía con un id corto numérico y ahora tenemos el canónico con page_id, actualizarlo
+                                        if "_" in f_id and "_" not in (existing_p.external_post_id or ""):
+                                            existing_p.external_post_id = f_id
+                                            await db.flush()
                 except Exception:
                     pass
 
@@ -1734,18 +1747,17 @@ class MonitoringHubService:
                 dt = dt.replace(tzinfo=UTC)
             return str(dt.isoformat())
 
-        # 2b. Toda publicación con actividad verificada queda en la matriz aunque
+        # 2b. Toda publicación con actividad verificada o interacciones queda en la matriz aunque
         #     quede fuera de la ventana reciente (evita ocultar reacciones auditadas).
         if not publication_id:
-            stmt_verified = (
+            stmt_active_pubs = (
                 select(Interaction.publication_id)
-                .join(Verification, Verification.interaction_id == Interaction.id)
                 .where(Interaction.publication_id.isnot(None))
                 .distinct()
             )
-            verified_ids = [row[0] for row in (await db.execute(stmt_verified)).all()]
+            active_pub_ids = [row[0] for row in (await db.execute(stmt_active_pubs)).all()]
             known_ids = {p.id for p in publications}
-            extra_ids = [pid for pid in verified_ids if pid is not None and pid not in known_ids]
+            extra_ids = [pid for pid in active_pub_ids if pid is not None and pid not in known_ids]
             if extra_ids:
                 stmt_extra = (
                     select(Publication)
@@ -1781,12 +1793,13 @@ class MonitoringHubService:
         deduped.sort(key=_pub_sort_key, reverse=True)
         publications = deduped
 
-        pub_ids = [p.id for p in publications]
+        # Obtener todas las IDs posibles: las publicaciones conservadas y los duplicados fusionados
+        all_query_pub_ids = list({p.id for p in publications} | set(canonical_id_map.keys()))
 
         # 3. Obtener interacciones de estas publicaciones
         stmt_ints = (
             select(Interaction)
-            .where(Interaction.publication_id.in_(pub_ids))
+            .where(Interaction.publication_id.in_(all_query_pub_ids))
             .options(
                 selectinload(Interaction.platform),
                 selectinload(Interaction.verifications),
@@ -1822,8 +1835,11 @@ class MonitoringHubService:
             if it.external_author_id:
                 raw_auth = it.external_author_id.strip().lower()
                 clean_auth = raw_auth.lstrip("@")
+                handle_auth = extract_social_handle(raw_auth).lower()
                 ints_by_pub_and_author_id.setdefault((pub_key, raw_auth), []).append(it)
                 ints_by_pub_and_author_id.setdefault((pub_key, clean_auth), []).append(it)
+                if handle_auth and handle_auth != clean_auth:
+                    ints_by_pub_and_author_id.setdefault((pub_key, handle_auth), []).append(it)
 
             # 3. Por external_author_name normalizado
             if it.external_author_name:
@@ -1852,8 +1868,16 @@ class MonitoringHubService:
             norm_first_last = _clean_n(f"{first_name_clean} {last_name_clean}")
 
             clean_fb = aud.facebook_account.lstrip("@").lower().strip() if aud.facebook_account else ""
+            handle_fb = extract_social_handle(aud.facebook_account).lower().strip() if aud.facebook_account else ""
             clean_tt = aud.tiktok_account.lstrip("@").lower().strip() if aud.tiktok_account else ""
+            handle_tt = extract_social_handle(aud.tiktok_account).lower().strip() if aud.tiktok_account else ""
             emp_ci_clean = aud.ci.strip().lower()
+
+            emp_dict = {
+                "first_name": aud.first_name,
+                "last_name": aud.last_name,
+            }
+            aud_name_variants = ["".join(v) for v in _employee_variants(emp_dict)]
 
             for pub in publications:
                 matched_for_pub: list[Interaction] = []
@@ -1869,26 +1893,38 @@ class MonitoringHubService:
                 _add(ints_by_pub_and_emp_id.get((pub.id, emp_ci_clean), []))
                 _add(ints_by_pub_and_author_id.get((pub.id, emp_ci_clean), []))
 
-                # B. Coincidencia por Cuenta de Facebook / TikTok
+                # B. Coincidencia por Cuenta de Facebook / TikTok (raw y handle extraído)
                 if clean_fb:
                     _add(ints_by_pub_and_author_id.get((pub.id, clean_fb), []))
                     _add(ints_by_pub_and_name.get((pub.id, _clean_n(clean_fb)), []))
+                if handle_fb and handle_fb != clean_fb:
+                    _add(ints_by_pub_and_author_id.get((pub.id, handle_fb), []))
+                    _add(ints_by_pub_and_name.get((pub.id, _clean_n(handle_fb)), []))
+
                 if clean_tt:
                     _add(ints_by_pub_and_author_id.get((pub.id, clean_tt), []))
                     _add(ints_by_pub_and_name.get((pub.id, _clean_n(clean_tt)), []))
+                if handle_tt and handle_tt != clean_tt:
+                    _add(ints_by_pub_and_author_id.get((pub.id, handle_tt), []))
+                    _add(ints_by_pub_and_name.get((pub.id, _clean_n(handle_tt)), []))
 
-                # C. Coincidencia por Nombre Completo y Primer Nombre + Apellido
+                # C. Coincidencia por Variantes de Nombres Bolivianos (Nombre Completo, 1er o 2do Nombre + Apellidos)
                 if norm_full_name:
                     _add(ints_by_pub_and_name.get((pub.id, norm_full_name), []))
                 if norm_first_last and norm_first_last != norm_full_name:
                     _add(ints_by_pub_and_name.get((pub.id, norm_first_last), []))
+                for v_norm in aud_name_variants:
+                    if v_norm and v_norm not in (norm_full_name, norm_first_last):
+                        _add(ints_by_pub_and_name.get((pub.id, v_norm), []))
 
-                # D. Coincidencia Parcial de Autor si no se encontró coincidencia directa
-                if not matched_for_pub and norm_full_name and pub.id in ints_by_pub:
+                # D. Coincidencia Parcial o Difusa de Autor si no se encontró coincidencia directa
+                if not matched_for_pub and pub.id in ints_by_pub:
                     for pub_it in ints_by_pub[pub.id]:
                         if pub_it.external_author_name:
                             c_norm = _clean_n(pub_it.external_author_name)
                             if c_norm and len(c_norm) >= 6 and (c_norm in norm_full_name or norm_full_name in c_norm):
+                                _add([pub_it])
+                            elif score_candidate(pub_it.external_author_name, emp_dict) >= 0.85:
                                 _add([pub_it])
 
                 reaction_found: str | None = None
@@ -1926,6 +1962,11 @@ class MonitoringHubService:
                         # Hay interacción observada en la API pero sin verificación formal:
                         # se tipifica como OBSERVADO (nunca como "Confirmado" — Principio V).
                         verif_status = "OBSERVED"
+
+                # Si está confirmado formalmente y no es comentario ni compartido, es una reacción confirmada
+                if not reaction_found and not comment_found and not shared_found:
+                    if verif_status in ["CONFIRMED", "DECLARED_CONFIRMED", "VERIFIED_AUTOMATIC", "VERIFIED_MANUAL"]:
+                        reaction_found = "LIKE"
 
                 if reaction_found:
                     person_reactions += 1
@@ -2579,9 +2620,15 @@ class MonitoringHubService:
 
         for sa in social_accounts:
             if sa.current_username and sa.employee_id in emp_by_id:
-                fb_clean = normalize_name(sa.current_username.lstrip("@"))
-                if fb_clean:
-                    emp_by_fb[fb_clean] = emp_by_id[sa.employee_id]
+                # 1. Handle extraído de URL o username crudo
+                h = extract_social_handle(sa.current_username)
+                h_norm = normalize_name(h)
+                if h_norm:
+                    emp_by_fb[h_norm] = emp_by_id[sa.employee_id]
+                # 2. Normalización directa por si viene sólo el nombre de usuario
+                raw_norm = normalize_name(sa.current_username.lstrip("@"))
+                if raw_norm:
+                    emp_by_fb[raw_norm] = emp_by_id[sa.employee_id]
 
 
         matched_results: list[MatchedEmployeeItem] = []

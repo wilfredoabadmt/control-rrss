@@ -84,8 +84,13 @@ class InteractionMatcher:
                 .options(selectinload(SocialAccount.employee))
             )
             candidates = list((await db.execute(stmt_user)).scalars().all())
+            from modules.shared.name_matching import extract_social_handle
             for cand in candidates:
                 cand_handle = (cand.current_username or "").lstrip("@").lower()
+                clean_cand_h = extract_social_handle(cand.current_username).lower()
+                if clean_cand_h and (clean_cand_h == clean_author or (author_name and clean_cand_h == author_name)):
+                    account = cand
+                    break
                 if cand_handle and (cand_handle == clean_author or (author_name and cand_handle == author_name)):
                     account = cand
                     break

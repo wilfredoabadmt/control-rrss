@@ -4,9 +4,10 @@ Principio VII (Cotejo Robusto de Identidades), REQ-INT-003, BR-INT-006..009
 
 Los nombres copiados del diálogo de reacciones de Facebook no coinciden literalmente
 con el padrón municipal (nombres compuestos, un solo apellido, acentos, mayúsculas,
-apellidos invertidos). Este módulo puntúa cada candidato contra el padrón y devuelve
-siempre una decisión conservadora: si dos funcionarios empatan prácticamente igual,
-prefiere reportar AMBIGUOUS antes que atribuir la actividad a la persona equivocada.
+apellidos invertidos, uso del segundo nombre o títulos profesionales).
+Este módulo puntúa cada candidato contra el padrón con rigor epistémico:
+exige coincidencia en nombre de pila y apellido, reconociendo variantes válidas
+sin imputar actividad a funcionarios homónimos o ambiguos.
 """
 
 from __future__ import annotations
@@ -21,6 +22,11 @@ MATCH_THRESHOLD = 0.75
 AMBIGUITY_MARGIN = 0.05
 FUZZY_MARGIN = 0.02
 
+NOISE_TITLES = {
+    "lic", "licda", "licdo", "ing", "dr", "dra", "abg", "abog", "prof",
+    "msc", "phd", "sr", "sra", "univ", "tec", "tecnico", "don", "dona",
+}
+
 
 def normalize_name(text: str | None) -> str:
     """Normaliza un nombre sin acentos, en minúsculas y sin separadores."""
@@ -30,12 +36,32 @@ def normalize_name(text: str | None) -> str:
     return re.sub(r"[^a-z0-9]", "", norm.lower().strip())
 
 
-def name_tokens(text: str | None) -> list[str]:
+def extract_social_handle(account_str: str | None) -> str:
+    """Extrae el handle o identificador limpio de una cuenta social (incluso si es URL completa)."""
+    if not account_str:
+        return ""
+    raw = str(account_str).strip()
+    if "facebook.com" in raw.lower() or "fb.me" in raw.lower() or "tiktok.com" in raw.lower():
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+        qs = parse_qs(parsed.query)
+        if "id" in qs and qs["id"]:
+            return qs["id"][0].strip()
+        path_parts = [p for p in parsed.path.split("/") if p and p.lower() not in ("profile.php", "people", "pages")]
+        if path_parts:
+            return path_parts[-1].strip().lstrip("@")
+    return raw.lstrip("@").strip()
+
+
+def name_tokens(text: str | None, strip_titles: bool = True) -> list[str]:
     """Extrae los tokens alfanuméricos de un nombre en minúsculas y sin acentos."""
     if not text:
         return []
     norm = unicodedata.normalize("NFKD", str(text)).encode("ASCII", "ignore").decode("utf-8")
-    return [t for t in re.split(r"[^a-z0-9]+", norm.lower()) if t]
+    tokens = [t for t in re.split(r"[^a-z0-9]+", norm.lower()) if t]
+    if strip_titles:
+        tokens = [t for t in tokens if t not in NOISE_TITLES]
+    return tokens
 
 
 @dataclass(frozen=True)
@@ -61,53 +87,112 @@ def _full_name(employee: Any) -> str:
 
 
 def _employee_variants(employee: Any) -> list[list[str]]:
-    """Formas válidas de un funcionario: nombre completo, nombre+1er apellido, nombre+último apellido."""
-    first = _field(employee, "first_name").strip()
-    last = _field(employee, "last_name").strip()
-    raw = [f"{first} {last}".strip()]
-    parts = last.split()
-    if first and parts:
-        raw.append(f"{first} {parts[0]}")
-        raw.append(f"{first} {parts[-1]}")
-    return [name_tokens(v) for v in raw if v.strip()]
+    """
+    Formas válidas de un funcionario:
+    - Nombre completo
+    - Primer nombre + primer apellido
+    - Primer nombre + segundo apellido
+    - Segundo nombre + primer apellido
+    - Segundo nombre + segundo apellido
+    - Nombres + primer apellido
+    - Formas invertidas (apellidos primero)
+    """
+    first_tokens = name_tokens(_field(employee, "first_name"))
+    last_tokens = name_tokens(_field(employee, "last_name"))
 
+    variants: list[list[str]] = []
+    if not first_tokens or not last_tokens:
+        raw_full = name_tokens(_full_name(employee))
+        return [raw_full] if raw_full else []
 
-def _score_tokens(candidate: list[str], variant: list[str]) -> float:
-    if not candidate or not variant:
-        return 0.0
-    if candidate == variant:
-        return 1.0
-    if candidate[0] != variant[0]:
-        return 0.0
-    cand_rest = set(candidate[1:])
-    var_rest = set(variant[1:])
-    if not cand_rest or not var_rest:
-        return 0.0
-    if cand_rest <= var_rest or var_rest <= cand_rest:
-        return 0.92
-    intersection = cand_rest & var_rest
-    if intersection:
-        overlap = len(intersection) / min(len(cand_rest), len(var_rest))
-        if overlap >= 0.5:
-            return round(0.75 + 0.15 * overlap, 3)
-    return 0.0
+    # 1. Nombre completo
+    variants.append(first_tokens + last_tokens)
+    variants.append(last_tokens + first_tokens)
+
+    # 2. Primer nombre + apellidos
+    variants.append([first_tokens[0], last_tokens[0]])
+    variants.append([last_tokens[0], first_tokens[0]])
+    if len(last_tokens) > 1:
+        variants.append([first_tokens[0], last_tokens[-1]])
+        variants.append(first_tokens + [last_tokens[0]])
+        variants.append(first_tokens + [last_tokens[-1]])
+
+    # 3. Segundo nombre + apellidos (muy frecuente en Bolivia)
+    if len(first_tokens) > 1:
+        variants.append([first_tokens[1], last_tokens[0]])
+        variants.append([last_tokens[0], first_tokens[1]])
+        if len(last_tokens) > 1:
+            variants.append([first_tokens[1], last_tokens[-1]])
+            variants.append([last_tokens[-1], first_tokens[1]])
+
+    # Eliminar duplicados preservando orden
+    seen = set()
+    deduped = []
+    for v in variants:
+        t = tuple(v)
+        if t not in seen and v:
+            seen.add(t)
+            deduped.append(v)
+    return deduped
 
 
 def score_candidate(candidate: str, employee: Any) -> float:
     """Puntúa (0..1) qué tan probable es que `candidate` corresponda a `employee`."""
-    cand_tokens = name_tokens(candidate)
+    cand_tokens = name_tokens(candidate, strip_titles=True)
     if not cand_tokens:
         return 0.0
+
+    first_tokens = set(name_tokens(_field(employee, "first_name"), strip_titles=True))
+    last_tokens = set(name_tokens(_field(employee, "last_name"), strip_titles=True))
+
+    cand_set = set(cand_tokens)
+
+    # Regla epistémica fundamental: Si el candidato tiene 2 o más tokens,
+    # DEBE coincidir al menos en un nombre de pila Y en un apellido del funcionario.
+    # Evita que 'María Flores Callisaya' empate con 'Patricia Flores Callisaya'.
+    has_first_match = bool(cand_set & first_tokens)
+    has_last_match = bool(cand_set & last_tokens)
+
+    if not has_first_match and not has_last_match:
+        # Podría ser coincidencia difusa alta sobre el nombre completo
+        emp_full = _full_name(employee)
+        ratio = SequenceMatcher(None, normalize_name(candidate), normalize_name(emp_full)).ratio()
+        if ratio >= 0.88:
+            return round(0.7 + 0.2 * ratio, 3)
+        return 0.0
+
+    if not has_first_match:
+        # Tiene coincidencia en apellido pero NO en nombre de pila -> No es el mismo funcionario
+        return 0.0
+
+    if not has_last_match and len(cand_tokens) >= 2:
+        # Tiene coincidencia en nombre de pila pero NO en apellido -> No es el mismo funcionario
+        return 0.0
+
     best = 0.0
     for variant in _employee_variants(employee):
-        best = max(best, _score_tokens(cand_tokens, variant))
+        if cand_tokens == variant:
+            best = max(best, 1.0)
+            break
+        var_set = set(variant)
+        if cand_set == var_set:
+            best = max(best, 0.98)
+            continue
+        if cand_set <= var_set or var_set <= cand_set:
+            best = max(best, 0.92)
+            continue
+        intersection = cand_set & var_set
+        if intersection:
+            overlap = len(intersection) / max(len(cand_set), len(var_set))
+            if overlap >= 0.5:
+                best = max(best, round(0.75 + 0.15 * overlap, 3))
+
     if best < 1.0:
         emp_full = _full_name(employee)
-        emp_tokens = name_tokens(emp_full)
-        if emp_tokens and cand_tokens[0] == emp_tokens[0]:
-            ratio = SequenceMatcher(None, normalize_name(candidate), normalize_name(emp_full)).ratio()
-            if ratio >= 0.88:
-                best = max(best, round(0.7 + 0.2 * ratio, 3))
+        ratio = SequenceMatcher(None, normalize_name(candidate), normalize_name(emp_full)).ratio()
+        if ratio >= 0.88:
+            best = max(best, round(0.7 + 0.2 * ratio, 3))
+
     return best
 
 
