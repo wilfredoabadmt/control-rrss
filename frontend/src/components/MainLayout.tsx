@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar, ActivePage } from './Sidebar';
 import { Header } from './Header';
+import { SectionManualModal } from './SectionManualModal';
+import { SectionGuideBanner } from './SectionGuideBanner';
 import { Activity, Zap, Users, Menu } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -10,6 +12,7 @@ interface MainLayoutProps {
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [activePage, setActivePage] = useState<ActivePage>('dashboard');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const [isManualOpen, setIsManualOpen] = useState<boolean>(false);
 
   // Cerrar el drawer móvil si el usuario redimensiona a pantalla de escritorio
   useEffect(() => {
@@ -50,11 +53,25 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         <Header
           title={pageTitles[activePage] || 'GAMEA Social Monitor'}
           onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
+          onOpenManual={() => setIsManualOpen(true)}
         />
         <main className="main-content-layout">
+          {/* Banner de Guía Rápida Contextual de la Sección */}
+          <SectionGuideBanner
+            activePage={activePage}
+            onOpenManual={() => setIsManualOpen(true)}
+          />
+
           {children(activePage, setActivePage)}
         </main>
       </div>
+
+      {/* Modal Interactivo de Manual y Guía de Uso del Sistema */}
+      <SectionManualModal
+        isOpen={isManualOpen}
+        onClose={() => setIsManualOpen(false)}
+        initialSection={activePage}
+      />
 
       {/* Barra de navegación inferior móvil (< 768px) */}
       <nav className="mobile-bottom-nav">
