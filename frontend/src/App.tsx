@@ -11,6 +11,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { AuditPage } from './pages/AuditPage';
 import { AdminPage } from './pages/AdminPage';
 import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
+import { MaeExecutiveDashboardPage } from './pages/MaeExecutiveDashboardPage';
 import { Activity } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -46,6 +47,8 @@ const AppContent: React.FC = () => {
         switch (activePage) {
           case 'dashboard':
             return <DashboardPage onLogout={logout} />;
+          case 'mae-dashboard':
+            return <MaeExecutiveDashboardPage />;
           case 'monitoring-hub':
             return <InteractionsPage onNavigate={onNavigate} />;
           case 'employees':

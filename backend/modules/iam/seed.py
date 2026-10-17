@@ -16,6 +16,11 @@ CONSTITUTIONAL_ROLES = [
         "is_system": True,
     },
     {
+        "name": UserRole.MAE.value,
+        "description": "Máxima Autoridad Ejecutiva (Alcaldesa / Despacho) con acceso al Tablero de Decisiones Estratégicas",
+        "is_system": True,
+    },
+    {
         "name": UserRole.AUDITOR.value,
         "description": "Auditor Institucional independiente con acceso a trazas y registros inmutables",
         "is_system": True,

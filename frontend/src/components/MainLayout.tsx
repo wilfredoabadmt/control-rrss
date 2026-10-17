@@ -27,6 +27,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const pageTitles: Record<ActivePage, string> = {
     dashboard: 'Panel General de Monitoreo',
+    'mae-dashboard': 'Tablero de Decisiones MAE',
     analytics: 'Analítica y Cumplimiento de Personal',
     interactions: 'Registro y Verificación de Reacciones',
     publications: 'Publicaciones Oficiales Monitoreadas',

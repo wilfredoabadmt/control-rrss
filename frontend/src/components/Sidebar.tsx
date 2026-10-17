@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Activity,
   BarChart3,
+  Crown,
   FileSpreadsheet,
   Layers,
   LucideIcon,
@@ -17,6 +18,7 @@ import { UserRole } from '../types';
 
 export type ActivePage =
   | 'dashboard'
+  | 'mae-dashboard'
   | 'monitoring-hub'
   | 'employees'
   | 'publications'
@@ -54,6 +56,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'dashboard',
       label: 'Panel General',
       icon: Activity,
+    },
+    {
+      id: 'mae-dashboard',
+      label: 'Decisiones MAE',
+      icon: Crown,
+      roles: [UserRole.SUPER_ADMIN, UserRole.MAE],
     },
     {
       id: 'analytics',

@@ -117,9 +117,10 @@ class SocialPlatformType(StrEnum):
 
 class UserRole(StrEnum):
     """
-    Los 7 roles constitucionales del sistema (Principio XVII).
+    Roles del sistema (Principio XVII y Perfil Ejecutivo MAE).
     """
     SUPER_ADMIN = "SUPER_ADMIN"
+    MAE = "MAE"
     AUDITOR = "AUDITOR"
     DIRECTOR = "DIRECTOR"
     COMMUNICATIONS_LEAD = "COMMUNICATIONS_LEAD"

@@ -61,6 +61,7 @@ export enum InteractionType {
 
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
+  MAE = 'MAE',
   AUDITOR = 'AUDITOR',
   DIRECTOR = 'DIRECTOR',
   COMMUNICATIONS_LEAD = 'COMMUNICATIONS_LEAD',

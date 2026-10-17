@@ -5,6 +5,7 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
+  Crown,
   FileSpreadsheet,
   Info,
   MessageSquare,
@@ -79,6 +80,50 @@ const SECTIONS_DATA: SectionInfo[] = [
     tips: [
       'En esta sección no necesitas registrar ni editar información; es exclusivamente un tablero de control e información en tiempo real.',
       'Si notas que los datos no se actualizan, comprueba primero el estado de los conectores de Facebook y TikTok.',
+    ],
+  },
+  {
+    id: 'mae-dashboard',
+    title: 'Tablero de Decisiones MAE',
+    badge: 'Exclusivo MAE y Despacho',
+    icon: Crown,
+    purpose:
+      'Tablero de decisiones de alto nivel reservado para la Máxima Autoridad Ejecutiva (Alcaldesa / Despacho) y el Super Administrador. Evalúa el semáforo institucional de Secretarías y Direcciones para orientar decisiones de gabinete y emitir instrucciones formales.',
+    steps: [
+      {
+        title: '1. Evaluar el Compromiso Global Municipal',
+        description:
+          'Comprueba la tasa general de cumplimiento de todo el municipio (Meta institucional: 80%). Si el porcentaje está en amarillo o rojo, requiere atención en gabinete.',
+      },
+      {
+        title: '2. Consultar el Semáforo de Secretarías y Direcciones',
+        description:
+          'Identifica las Secretarías en verde (≥ 75% de cumplimiento) y las Secretarías en rojo (< 45% de cumplimiento).',
+      },
+      {
+        title: '3. Instruir Notificaciones o Llamadas de Atención',
+        description:
+          'Para las dependencias en rojo, haz clic en "Instruir Notificación". El sistema redactará automáticamente el comunicado oficial de llamado de atención listo para copiar o remitir al Secretario.',
+      },
+      {
+        title: '4. Imprimir o Descargar el Resumen de Gabinete',
+        description:
+          'Presiona "Imprimir Resumen de Gabinete" para llevar la hoja ejecutiva a la reunión semanal de secretarios municipales.',
+      },
+    ],
+    keyActions: [
+      {
+        label: 'Botón "Instruir Notificación"',
+        description: 'Genera la directriz oficial de despacho con el porcentaje exacto y el llamado de atención formal para el Secretario.',
+      },
+      {
+        label: 'Botón "Imprimir Resumen"',
+        description: 'Compila en formato ejecutivo imprimible el ranking de todas las dependencias para la reunión de gabinete.',
+      },
+    ],
+    tips: [
+      'Este panel es invisible para operadores y personal regular; solo tienen acceso la MAE y el Super Administrador.',
+      'Sirve como instrumento de gestión y articulación, permitiendo felicitar a las secretarías comprometidas y exigir mayor trabajo a las rezagadas.',
     ],
   },
   {
