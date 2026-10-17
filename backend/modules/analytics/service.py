@@ -26,8 +26,11 @@ from modules.analytics.schemas import (
 )
 from modules.employees.models import Employee, OrganizationalUnit
 from modules.iam.models import User
+from modules.interactions.matcher import InteractionMatcher, MatchStatus
 from modules.interactions.models import Interaction
 from modules.monitoring.service import MonitoringHubService
+from modules.shared.enums import BindingStatus, DataOriginType, VerificationStatus
+from modules.social_accounts.models import SocialAccount
 from modules.verification.models import Verification
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -1190,7 +1193,7 @@ class AnalyticsService:
 
         # 2. Hoja Detalle de Funcionarios
         ws_det = wb.create_sheet(title="Detalle de Funcionarios")
-        ws_det.merge_cells("A1:J1")
+        ws_det.merge_cells("A1:K1")
         cell_det = ws_det["A1"]
         cell_det.value = "DETALLE ANALÍTICO DE PARTICIPACIÓN POR FUNCIONARIO PÚBLICO"
         cell_det.font = font_title
@@ -1207,6 +1210,7 @@ class AnalyticsService:
             "Unidad",
             "Cargo",
             "Total Reacciones",
+            "Total Comentarios",
             "Posts Participados",
             "% Participación",
         ]
@@ -1229,16 +1233,73 @@ class AnalyticsService:
             ws_det[f"F{curr_d_r}"] = emp.unit
             ws_det[f"G{curr_d_r}"] = emp.position
             ws_det[f"H{curr_d_r}"] = emp.total_reactions
-            ws_det[f"I{curr_d_r}"] = f"{emp.participated_posts_count} / {emp.total_available_posts}"
-            ws_det[f"J{curr_d_r}"] = f"{emp.participation_rate}%"
+            ws_det[f"I{curr_d_r}"] = emp.total_comments
+            ws_det[f"J{curr_d_r}"] = f"{emp.participated_posts_count} / {emp.total_available_posts}"
+            ws_det[f"K{curr_d_r}"] = f"{emp.participation_rate}%"
 
-            for col_letter in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]:
+            for col_letter in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]:
                 ws_det[f"{col_letter}{curr_d_r}"].border = thin_border
-                if col_letter in ["A", "C", "H", "I", "J"]:
+                if col_letter in ["A", "C", "H", "I", "J", "K"]:
                     ws_det[f"{col_letter}{curr_d_r}"].alignment = Alignment(horizontal="center")
             curr_d_r += 1
 
-        for ws in [ws_kpis, ws_det]:
+        # 3. Hoja Comentarios Auditados y Cruce con Funcionarios
+        comments_res = await cls.get_comments_list(
+            db=db,
+            current_user=current_user,
+            secretaria=secretaria,
+            direction=direction,
+            publication_id=publication_id,
+            page=1,
+            page_size=10000,
+        )
+
+        ws_comm = wb.create_sheet(title="Comentarios Auditados")
+        ws_comm.merge_cells("A1:I1")
+        cell_comm = ws_comm["A1"]
+        cell_comm.value = "AUDITORÍA DE COMENTARIOS EXTRAÍDOS Y CRUCE CON SERVIDORES PÚBLICOS"
+        cell_comm.font = font_title
+        cell_comm.fill = fill_header
+        cell_comm.alignment = Alignment(horizontal="center", vertical="center")
+        ws_comm.row_dimensions[1].height = 32
+
+        headers_comm = [
+            "Tipo de Autor",
+            "Funcionario GAMEA",
+            "Cédula",
+            "Secretaría Municipal",
+            "Dirección",
+            "Autor en Red Social",
+            "Publicación Evaluada",
+            "Texto del Comentario",
+            "Reacción Asociada",
+        ]
+        ws_comm.row_dimensions[3].height = 24
+        for idx, h in enumerate(headers_comm, start=1):
+            cell = ws_comm.cell(row=3, column=idx, value=h)
+            cell.font = font_header
+            cell.fill = fill_accent
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = thin_border
+
+        curr_c_r = 4
+        for c_item in comments_res.items:
+            is_e = c_item.author.is_employee
+            ws_comm[f"A{curr_c_r}"] = "FUNCIONARIO" if is_e else "CIUDADANO"
+            ws_comm[f"B{curr_c_r}"] = c_item.author.full_name or ("—" if not is_e else c_item.author.author_name)
+            ws_comm[f"C{curr_c_r}"] = c_item.author.document_number or "—"
+            ws_comm[f"D{curr_c_r}"] = c_item.author.secretaria or "—"
+            ws_comm[f"E{curr_c_r}"] = c_item.author.direction or "—"
+            ws_comm[f"F{curr_c_r}"] = c_item.author.author_name
+            ws_comm[f"G{curr_c_r}"] = c_item.post_title or "Publicación Oficial"
+            ws_comm[f"H{curr_c_r}"] = c_item.content_text
+            ws_comm[f"I{curr_c_r}"] = c_item.associated_reaction or "—"
+
+            for col_letter in ["A", "B", "C", "D", "E", "F", "G", "H", "I"]:
+                ws_comm[f"{col_letter}{curr_c_r}"].border = thin_border
+            curr_c_r += 1
+
+        for ws in [ws_kpis, ws_det, ws_comm]:
             for col in ws.columns:
                 max_len = 0
                 col_letter = get_column_letter(col[0].column)
@@ -1330,10 +1391,11 @@ class AnalyticsService:
                 react_map[(p_id, auth_id.strip().lower())] = r_type
                 react_map[(p_id, auth_id.strip().lstrip("@").lower())] = r_type
 
-        # 4. Procesar y filtrar cada comentario
+        # 4. Procesar y filtrar cada comentario con cruce canónico
         processed_items: list[PostCommentItem] = []
         total_emp_comments = 0
         total_cit_comments = 0
+        new_auto_verifications: list[Verification] = []
 
         search_q = search.strip().lower() if search and search.strip() else None
 
@@ -1344,6 +1406,25 @@ class AnalyticsService:
                     if v.employee_id:
                         matched_emp_id = v.employee_id.strip()
                         break
+
+            # Si no tiene verificación previa, cruzar con padrón municipal
+            if not matched_emp_id:
+                match_res = await InteractionMatcher.match_interaction(db, it)
+                if match_res.status == MatchStatus.MATCHED and match_res.employee:
+                    matched_emp_id = match_res.employee.employee_id
+                    it.data_origin_type = DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value
+                    new_ver = Verification(
+                        interaction_id=it.id,
+                        employee_id=matched_emp_id,
+                        verification_status=VerificationStatus.CONFIRMED.value,
+                        verification_method="AUTOMATIC_CROSS_REFERENCE",
+                        verified_by_user_id="ANALYTICS_AUTO_MATCHER",
+                        explanation=f"Comentario cruzado con {match_res.employee.first_name} {match_res.employee.last_name} ({matched_emp_id}) en el padrón municipal.",
+                    )
+                    if it.verifications is None:
+                        it.verifications = []
+                    it.verifications.append(new_ver)
+                    new_auto_verifications.append(new_ver)
 
             emp = emp_dict.get(matched_emp_id) if matched_emp_id else None
             is_emp = emp is not None
@@ -1442,6 +1523,13 @@ class AnalyticsService:
                     epistemic_display=epistemic_lbl,
                 )
             )
+
+        if new_auto_verifications:
+            db.add_all(new_auto_verifications)
+            try:
+                await db.flush()
+            except Exception:
+                pass
 
         total_matched_comments = len(processed_items)
         start_idx = (page - 1) * page_size

@@ -186,13 +186,10 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
     }
   };
 
-  // Cargar comentarios extraídos de Meta para la publicación seleccionada
+  // Cargar comentarios extraídos de Meta para la publicación seleccionada o global
   const fetchPostComments = async (pubId?: string) => {
-    const targetId = pubId || (selectedPublicationId && selectedPublicationId !== 'ALL' ? selectedPublicationId : undefined);
-    if (!targetId || targetId === 'ALL') {
-      setPostComments([]);
-      return;
-    }
+    const activeTarget = pubId !== undefined ? pubId : selectedPublicationId;
+    const targetId = activeTarget && activeTarget !== 'ALL' ? activeTarget : undefined;
     setLoadingComments(true);
     try {
       const res = await analyticsApi.getComments({
@@ -201,7 +198,7 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
       });
       setPostComments(res.items || []);
     } catch (e) {
-      console.error('Error al cargar comentarios del post:', e);
+      console.error('Error al cargar comentarios:', e);
       setPostComments([]);
     } finally {
       setLoadingComments(false);
@@ -2205,21 +2202,30 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   {comment.author?.is_employee ? (
-                    <span
-                      className="badge"
-                      style={{
-                        background: 'rgba(16, 185, 129, 0.2)',
-                        color: '#34d399',
-                        border: '1px solid rgba(16, 185, 129, 0.4)',
-                        fontWeight: 700,
-                        padding: '3px 8px',
-                        fontSize: '0.74rem',
-                      }}
-                    >
-                      🟢 FUNCIONARIO GAMEA ({comment.author.full_name || comment.author.employee_id})
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                      <span
+                        className="badge"
+                        style={{
+                          background: 'rgba(16, 185, 129, 0.2)',
+                          color: '#34d399',
+                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                          fontWeight: 700,
+                          padding: '4px 10px',
+                          fontSize: '0.76rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                        }}
+                      >
+                        <CheckCircle2 size={13} />
+                        FUNCIONARIO CONFIRMADO (GAMEA)
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#6ee7b7', fontWeight: 600 }}>
+                        {comment.author.full_name} {comment.author.document_number ? `(CI: ${comment.author.document_number})` : ''}
+                      </span>
+                    </div>
                   ) : (
                     <span
                       className="badge"
@@ -2255,6 +2261,24 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
                 </div>
               </div>
 
+              {/* Contexto del Post cuando se visualiza en modo global */}
+              {comment.post_title && (
+                <div style={{ fontSize: '0.76rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ color: '#fbbf24', fontWeight: 600 }}>Post:</span>
+                  <span style={{ color: '#cbd5e1' }}>{comment.post_title}</span>
+                  {comment.post_url && (
+                    <a
+                      href={comment.post_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#38bdf8', textDecoration: 'none', marginLeft: '4px' }}
+                    >
+                      (Ver en Facebook ↗)
+                    </a>
+                  )}
+                </div>
+              )}
+
               {/* Texto exacto escrito */}
               <div
                 style={{
@@ -2271,10 +2295,17 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
                 "{comment.content_text}"
               </div>
 
-              {comment.author?.is_employee && comment.author.direction && (
-                <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
-                  🏛️ Dirección: <strong style={{ color: '#cbd5e1' }}>{comment.author.direction}</strong>
-                  {comment.author.secretaria && ` • ${comment.author.secretaria}`}
+              {comment.author?.is_employee && (
+                <div style={{ fontSize: '0.74rem', color: '#94a3b8', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  {comment.author.direction && (
+                    <span>🏛️ Dirección: <strong style={{ color: '#cbd5e1' }}>{comment.author.direction}</strong></span>
+                  )}
+                  {comment.author.secretaria && (
+                    <span>• Secretaría: <strong style={{ color: '#cbd5e1' }}>{comment.author.secretaria}</strong></span>
+                  )}
+                  {comment.author.position && (
+                    <span>• Cargo: <strong style={{ color: '#cbd5e1' }}>{comment.author.position}</strong></span>
+                  )}
                 </div>
               )}
             </div>

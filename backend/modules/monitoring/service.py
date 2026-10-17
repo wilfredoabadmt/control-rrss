@@ -1807,6 +1807,30 @@ class MonitoringHubService:
         )
         interactions = list((await db.execute(stmt_ints)).scalars().all())
 
+        # Auto-verificación y cruce canónico de interacciones sin verificar
+        matrix_new_vers = []
+        for it in interactions:
+            if not it.verifications:
+                match_res = await InteractionMatcher.match_interaction(db, it)
+                if match_res.status == MatchStatus.MATCHED and match_res.employee:
+                    it.data_origin_type = DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value
+                    ver = Verification(
+                        interaction_id=it.id,
+                        employee_id=match_res.employee.employee_id,
+                        verification_status=VerificationStatus.CONFIRMED.value,
+                        verification_method="AUTOMATIC_CROSS_REFERENCE",
+                        verified_by_user_id="MATRIX_AUTO_MATCHER",
+                        explanation=f"Interacción {it.interaction_type} cruzada con éxito con {match_res.employee.first_name} {match_res.employee.last_name} ({match_res.employee.employee_id}).",
+                    )
+                    it.verifications.append(ver)
+                    matrix_new_vers.append(ver)
+        if matrix_new_vers:
+            db.add_all(matrix_new_vers)
+            try:
+                await db.flush()
+            except Exception:
+                pass
+
         # Mapear interacciones por publicación y criterios múltiples de coincidencia
         ints_by_pub_and_emp_id: dict[tuple[uuid.UUID, str], list[Interaction]] = {}
         ints_by_pub_and_name: dict[tuple[uuid.UUID, str], list[Interaction]] = {}
@@ -1924,7 +1948,7 @@ class MonitoringHubService:
                             c_norm = _clean_n(pub_it.external_author_name)
                             if c_norm and len(c_norm) >= 6 and (c_norm in norm_full_name or norm_full_name in c_norm):
                                 _add([pub_it])
-                            elif score_candidate(pub_it.external_author_name, emp_dict) >= 0.85:
+                            elif score_candidate(pub_it.external_author_name, emp_dict) >= 0.75:
                                 _add([pub_it])
 
                 reaction_found: str | None = None
