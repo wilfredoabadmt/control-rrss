@@ -37,12 +37,28 @@ import { BarChartDirection } from '../components/charts/BarChartDirection';
 import { DonutChartReactions } from '../components/charts/DonutChartReactions';
 import { TimelineChart } from '../components/charts/TimelineChart';
 import { PlatformComparisonBar } from '../components/charts/PlatformComparisonBar';
+import { ComplianceGauge } from '../components/charts/ComplianceGauge';
+import { useAnimatedNumber } from '../utils/useAnimatedNumber';
 import {
   LISTA_SECRETARIAS,
   getDireccionesBySecretaria,
   getUnidadesByDireccion,
   findSecretariaForDireccion,
 } from '../data/organigrama';
+
+const AnimatedCounter: React.FC<{ value: number; decimals?: number; suffix?: string }> = ({
+  value,
+  decimals = 0,
+  suffix = '',
+}) => {
+  const animated = useAnimatedNumber(value, 600, decimals);
+  return (
+    <>
+      {decimals > 0 ? animated.toFixed(decimals) : animated.toLocaleString()}
+      {suffix}
+    </>
+  );
+};
 
 export const AnalyticsDashboardPage: React.FC = () => {
   // Pestaña activa principal
@@ -297,6 +313,9 @@ export const AnalyticsDashboardPage: React.FC = () => {
     setSelectedUnit('ALL');
     setCurrentPage(1);
   };
+
+  // Determinar si hay un filtro de área institucional/territorial activo
+  const isAreaFiltered = selectedSecretaria !== 'ALL' || selectedDirection !== 'ALL' || selectedUnit !== 'ALL';
 
   const hasActiveFilters =
     daysPreset !== 30 ||
@@ -784,7 +803,134 @@ export const AnalyticsDashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* 3. Tarjetas KPIs Principales con Desglose de Comentarios y Participación Integral */}
+      {/* 2.5 Indicador de Ámbito Territorial e Institucional Activo (Aislamiento Estricto) */}
+      <div
+        style={{
+          background: isAreaFiltered
+            ? 'linear-gradient(90deg, rgba(6, 182, 212, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%)'
+            : 'rgba(17, 24, 39, 0.5)',
+          border: isAreaFiltered
+            ? '1px solid rgba(6, 182, 212, 0.35)'
+            : '1px solid rgba(255, 255, 255, 0.07)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '14px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '14px',
+          boxShadow: isAreaFiltered ? '0 4px 20px rgba(6, 182, 212, 0.08)' : 'none',
+          transition: 'all 0.3s ease',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: isAreaFiltered ? 'rgba(6, 182, 212, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: isAreaFiltered ? '#38bdf8' : 'var(--text-muted)',
+              fontSize: '1.2rem',
+              border: isAreaFiltered ? '1px solid rgba(6, 182, 212, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)',
+            }}
+          >
+            {selectedUnit !== 'ALL' ? '📄' : selectedDirection !== 'ALL' ? '📁' : selectedSecretaria !== 'ALL' ? '🏛️' : '🌐'}
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: isAreaFiltered ? '#38bdf8' : 'var(--text-muted)',
+                }}
+              >
+                {isAreaFiltered ? 'Ámbito Aislado de Fiscalización' : 'Consolidado Municipal Global'}
+              </span>
+              {isAreaFiltered && (
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    background: 'rgba(16, 185, 129, 0.2)',
+                    color: '#34d399',
+                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                  }}
+                >
+                  ✓ Métricas 100% aisladas al área (Sin totales generales ajenos)
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '0.96rem', fontWeight: 700, color: '#ffffff', marginTop: '3px' }}>
+              {selectedUnit !== 'ALL'
+                ? `Unidad: ${selectedUnit}`
+                : selectedDirection !== 'ALL'
+                ? `Dirección / Subalcaldía: ${selectedDirection}`
+                : selectedSecretaria !== 'ALL'
+                ? `Secretaría / Despacho: ${selectedSecretaria}`
+                : 'Todas las Secretarías, Direcciones y Unidades (GAMEA General)'}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              {selectedUnit !== 'ALL' ? (
+                <>
+                  Depende de: <strong style={{ color: '#cbd5e1' }}>{selectedDirection}</strong> (
+                  <span style={{ color: '#94a3b8' }}>{selectedSecretaria}</span>) — Evaluando exclusivamente servidores públicos adscritos.
+                </>
+              ) : selectedDirection !== 'ALL' ? (
+                <>
+                  Depende de: <strong style={{ color: '#cbd5e1' }}>{selectedSecretaria}</strong> — Evaluando unidades operativas y personal a su cargo.
+                </>
+              ) : selectedSecretaria !== 'ALL' ? (
+                <>
+                  Secretaría Matriz — Evaluando todas las direcciones y subalcaldías bajo su dependencia.
+                </>
+              ) : (
+                'Visualizando métricas agregadas de todos los distritos, secretarías y servidores públicos del municipio.'
+              )}
+            </div>
+          </div>
+        </div>
+
+        {isAreaFiltered && (
+          <button
+            onClick={() => {
+              setSelectedSecretaria('ALL');
+              setSelectedDirection('ALL');
+              setSelectedUnit('ALL');
+              setCurrentPage(1);
+            }}
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              color: '#ffffff',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.16)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+          >
+            <span>Ver Todo el Municipio</span>
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* 3. Tarjetas KPIs Principales con Desglose Dinámico de Acompañamiento */}
       <div
         className="analytics-kpi-grid"
         style={{
@@ -793,78 +939,86 @@ export const AnalyticsDashboardPage: React.FC = () => {
           gap: '16px',
         }}
       >
-        {/* KPI 1: Funcionarios Totales */}
-        <div className="analytics-kpi-card">
+        {/* KPI 1: Funcionarios del Área */}
+        <div className="analytics-kpi-card" style={{ transition: 'all 0.2s ease' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Funcionarios Padrón
+              {isAreaFiltered ? 'Personal del Área' : 'Funcionarios Padrón'}
             </span>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(6, 182, 212, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary-500)' }}>
               <Users size={16} />
             </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
-            {overview ? overview.kpis.total_employees : '—'}
+            {overview ? <AnimatedCounter value={overview.kpis.total_employees} /> : '—'}
           </div>
           <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', marginTop: '4px' }}>
-            {overview ? `${overview.kpis.observable_employees} con redes vinculadas` : 'Cargando...'}
+            {overview ? `${overview.kpis.observable_employees} monitoreados con redes` : 'Cargando...'}
           </div>
         </div>
 
         {/* KPI 2: Total Reacciones */}
-        <div className="analytics-kpi-card">
+        <div className="analytics-kpi-card" style={{ transition: 'all 0.2s ease' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Total Reacciones
+              {isAreaFiltered ? 'Reacciones del Área' : 'Total Reacciones'}
             </span>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
               <ThumbsUp size={16} />
             </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#38bdf8', lineHeight: 1.2 }}>
-            {overview ? overview.kpis.total_reactions.toLocaleString() : '—'}
+            {overview ? <AnimatedCounter value={overview.kpis.total_reactions} /> : '—'}
           </div>
           <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', marginTop: '4px' }}>
             Promedio: {overview ? `${overview.kpis.average_reactions_per_post} por post` : '—'}
           </div>
         </div>
 
-        {/* KPI 3: Total Comentarios (Con Desglose Funcionario vs Ciudadano) */}
-        <div className="analytics-kpi-card">
+        {/* KPI 3: Total Comentarios (Sin mezclar ciudadanos cuando se filtra por área) */}
+        <div className="analytics-kpi-card" style={{ transition: 'all 0.2s ease' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Total Comentarios
+              {isAreaFiltered ? 'Comentarios del Personal' : 'Total Comentarios'}
             </span>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
               <MessageSquare size={16} />
             </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#34d399', lineHeight: 1.2 }}>
-            {overview ? overview.kpis.total_comments.toLocaleString() : '—'}
+            {overview ? <AnimatedCounter value={overview.kpis.total_comments} /> : '—'}
           </div>
-          <div style={{ fontSize: '0.72rem', color: '#cbd5e1', marginTop: '4px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <span style={{ color: '#6ee7b7', fontWeight: 600 }}>
-              🏢 {overview?.kpis?.total_employee_comments ?? 0} func.
-            </span>
-            <span>•</span>
-            <span style={{ color: '#94a3b8' }}>
-              👥 {overview?.kpis?.total_citizen_comments ?? 0} ciud.
-            </span>
+          <div style={{ fontSize: '0.72rem', color: '#cbd5e1', marginTop: '4px' }}>
+            {isAreaFiltered ? (
+              <span style={{ color: '#6ee7b7', fontWeight: 600 }}>
+                🏢 100% servidores de esta área ({overview?.kpis?.total_employee_comments ?? 0})
+              </span>
+            ) : (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <span style={{ color: '#6ee7b7', fontWeight: 600 }}>
+                  🏢 {overview?.kpis?.total_employee_comments ?? 0} func.
+                </span>
+                <span>•</span>
+                <span style={{ color: '#94a3b8' }}>
+                  👥 {overview?.kpis?.total_citizen_comments ?? 0} ciud.
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* KPI 4: Participación Integral (Reaccionó + Comentó) */}
-        <div className="analytics-kpi-card">
+        <div className="analytics-kpi-card" style={{ transition: 'all 0.2s ease' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Participación Integral
+              Acompañamiento Integral
             </span>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
               <Sparkles size={16} />
             </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#fbbf24', lineHeight: 1.2 }}>
-            {overview ? (overview.kpis.employees_with_both ?? 0) : '—'}
+            {overview ? <AnimatedCounter value={overview.kpis.employees_with_both ?? 0} /> : '—'}
           </div>
           <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', marginTop: '4px' }}>
             Reaccionaron y comentaron simultáneamente
@@ -872,7 +1026,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
         </div>
 
         {/* KPI 5: Tasa de Participación */}
-        <div className="analytics-kpi-card">
+        <div className="analytics-kpi-card" style={{ transition: 'all 0.2s ease' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Tasa Acompañamiento
@@ -882,7 +1036,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
             </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10b981', lineHeight: 1.2 }}>
-            {overview ? `${overview.kpis.participation_rate}%` : '—'}
+            {overview ? <AnimatedCounter value={overview.kpis.participation_rate} decimals={1} suffix="%" /> : '—'}
           </div>
           <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', marginTop: '4px' }}>
             {overview ? `${overview.kpis.participating_employees} funcionarios activos` : '—'}
@@ -890,7 +1044,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
         </div>
 
         {/* KPI 6: Posts Auditados */}
-        <div className="analytics-kpi-card">
+        <div className="analytics-kpi-card" style={{ transition: 'all 0.2s ease' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Posts Auditados
@@ -900,28 +1054,51 @@ export const AnalyticsDashboardPage: React.FC = () => {
             </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
-            {overview ? overview.kpis.total_publications : '—'}
+            {overview ? <AnimatedCounter value={overview.kpis.total_publications} /> : '—'}
           </div>
           <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', marginTop: '4px' }}>
-            Evaluadas en la ventana
+            Publicaciones evaluadas en la ventana
           </div>
         </div>
       </div>
+
+      {/* 3.5 Diagnóstico Semafórico y Filtros Rápidos de Cumplimiento */}
+      {overview && (
+        <ComplianceGauge
+          totalEmployees={overview.kpis.total_employees}
+          participatingEmployees={overview.kpis.participating_employees}
+          participationRate={overview.kpis.participation_rate}
+          employeesWithBoth={overview.kpis.employees_with_both}
+          employeesWithComments={overview.kpis.total_employee_comments}
+          activeFilter={participationFilter}
+          onFilterChange={(newFilter) => {
+            setParticipationFilter(newFilter);
+            setCurrentPage(1);
+          }}
+        />
+      )}
 
       {/* CONTENIDO CONDICIONAL SEGÚN PESTAÑA ACTIVA */}
       {activeTab === 'overview' ? (
         <>
           {/* 4. Grilla de Gráficos Estadísticos */}
           <div className="analytics-charts-grid">
-            {/* Gráfico 1: Ranking por Dirección */}
+            {/* Gráfico 1: Ranking Jerárquico Adaptativo */}
             <div className="analytics-chart-card">
               <div className="analytics-card-header">
                 <div>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>
-                    Ranking de Participación por Dirección
+                  <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <BarChart3 size={17} color="var(--primary-500)" />
+                    {overview?.ranking_title || 'Ranking de Participación Institucional'}
                   </h2>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
-                    Tasa de acompañamiento y volumen de reacciones por unidad municipal (haz clic para filtrar).
+                    {overview?.ranking_dimension === 'FUNCIONARIO'
+                      ? 'Desempeño individual de los servidores públicos de la unidad seleccionada.'
+                      : overview?.ranking_dimension === 'UNIDAD'
+                      ? 'Comparativa entre las unidades operativas dependientes de la dirección seleccionada.'
+                      : overview?.ranking_dimension === 'SECRETARIA'
+                      ? 'Desempeño global comparativo entre secretarías municipales.'
+                      : 'Tasa de acompañamiento y volumen de reacciones por dirección o subalcaldía.'}
                   </p>
                 </div>
               </div>
@@ -929,6 +1106,16 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 data={overview ? overview.direction_rankings : []}
                 selectedDirection={selectedDirection !== 'ALL' ? selectedDirection : null}
                 onSelectDirection={handleBarDirectionClick}
+                rankingDimension={overview?.ranking_dimension || 'DIRECCION'}
+                rankingTitle={overview?.ranking_title}
+                onSelectUnit={(unit) => {
+                  setSelectedUnit(unit || 'ALL');
+                  setCurrentPage(1);
+                }}
+                onSelectEmployee={(empName) => {
+                  setSearchTerm(empName);
+                  setCurrentPage(1);
+                }}
               />
             </div>
 
@@ -940,7 +1127,9 @@ export const AnalyticsDashboardPage: React.FC = () => {
                     Taxonomía y Tipos de Reacciones
                   </h2>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
-                    Distribución porcentual de reacciones institucionales y comentarios.
+                    {isAreaFiltered
+                      ? 'Distribución porcentual de reacciones exclusivas de los servidores del área.'
+                      : 'Distribución porcentual de reacciones institucionales y comentarios.'}
                   </p>
                 </div>
               </div>
@@ -958,7 +1147,9 @@ export const AnalyticsDashboardPage: React.FC = () => {
                     Tendencia Cronológica de Acompañamiento
                   </h2>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
-                    Evolución diaria de interacciones en el período seleccionado.
+                    {isAreaFiltered
+                      ? 'Evolución diaria de reacciones y comentarios del personal del área.'
+                      : 'Evolución diaria de interacciones en el período seleccionado.'}
                   </p>
                 </div>
               </div>
@@ -973,7 +1164,9 @@ export const AnalyticsDashboardPage: React.FC = () => {
                     Distribución Bilateral por Red Social
                   </h2>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
-                    Comparativa proporcional entre canales oficiales de Facebook y TikTok.
+                    {isAreaFiltered
+                      ? 'Balance de acompañamiento del área en Facebook vs TikTok.'
+                      : 'Comparativa proporcional entre canales oficiales de Facebook y TikTok.'}
                   </p>
                 </div>
               </div>

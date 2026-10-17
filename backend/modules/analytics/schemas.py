@@ -76,6 +76,8 @@ class AnalyticsOverviewResponse(BaseModel):
     available_secretarias: list[str] = Field(default_factory=list, description="Lista de secretarías municipales para el filtro jerárquico")
     available_directions: list[str] = Field(default_factory=list, description="Lista de direcciones para el filtro")
     available_units: list[str] = Field(default_factory=list, description="Lista de unidades organizacionales para el filtro jerárquico")
+    ranking_dimension: str = Field(default="DIRECCION", description="Nivel jerárquico del ranking: DIRECCION, UNIDAD o FUNCIONARIO")
+    ranking_title: str = Field(default="Ranking de Participación por Dirección", description="Título descriptivo del ranking actual")
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

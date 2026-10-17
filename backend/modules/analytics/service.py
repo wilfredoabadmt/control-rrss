@@ -594,9 +594,39 @@ class AnalyticsService:
             d_str = (p.published_at.strftime("%Y-%m-%d") if p.published_at else "Sin fecha")
             timeline_agg.setdefault(d_str, {"reactions": 0, "comments": 0, "shares": 0})
 
-        for r, _, dir_res, _ in filtered_rows:
-            dir_name = dir_res or r.department or "Otras Direcciones"
-            dir_entry = dir_stats.setdefault(dir_name, {
+        all_directions_set: set[str] = set()
+
+        is_area_filtered = bool(
+            (secretaria and secretaria != "ALL")
+            or (direction and direction != "ALL")
+            or (unit and unit != "ALL")
+        )
+
+        if unit and unit != "ALL":
+            ranking_dimension = "FUNCIONARIO"
+            ranking_title = f"Desempeño de Funcionarios — {unit}"
+        elif direction and direction != "ALL":
+            ranking_dimension = "UNIDAD"
+            ranking_title = f"Ranking de Unidades Operativas — {direction}"
+        elif secretaria and secretaria != "ALL":
+            ranking_dimension = "DIRECCION"
+            ranking_title = f"Ranking de Direcciones — {secretaria}"
+        else:
+            ranking_dimension = "DIRECCION"
+            ranking_title = "Ranking de Participación por Dirección"
+
+        for r, _, dir_res, unit_res in filtered_rows:
+            d_name = dir_res or r.department or "Otras Direcciones"
+            all_directions_set.add(d_name)
+
+            if ranking_dimension == "FUNCIONARIO":
+                rank_key = f"{r.full_name} ({r.position or 'Funcionario'})"
+            elif ranking_dimension == "UNIDAD":
+                rank_key = unit_res if (unit_res and unit_res.strip().lower() not in ("sin unidad asignada", "no asignada", "none", "")) else "Unidad Central / Despacho"
+            else:
+                rank_key = d_name
+
+            dir_entry = dir_stats.setdefault(rank_key, {
                 "total": 0,
                 "participating": 0,
                 "reactions": 0,
@@ -679,14 +709,24 @@ class AnalyticsService:
             (employees_with_comments / total_employees * 100.0) if total_employees > 0 else 0.0, 1
         )
 
+        if is_area_filtered:
+            # En modo área seleccionada (Secretaría, Dirección o Unidad):
+            # No se muestran totales generales ni comentarios externos ajenos.
+            reported_total_comments = total_comments
+            reported_citizen_comments = 0
+        else:
+            # En modo global municipal general:
+            reported_total_comments = max(total_comments_in_db, total_comments)
+            reported_citizen_comments = total_citizen_comments
+
         kpis = AnalyticsKPIs(
             total_employees=total_employees,
             observable_employees=observable_employees,
             total_publications=total_pubs,
             total_reactions=total_reactions,
-            total_comments=max(total_comments_in_db, total_comments),
+            total_comments=reported_total_comments,
             total_employee_comments=total_comments,
-            total_citizen_comments=total_citizen_comments,
+            total_citizen_comments=reported_citizen_comments,
             employees_with_comments=employees_with_comments,
             employees_with_both=employees_with_both,
             comment_participation_rate=comment_part_rate,
@@ -719,7 +759,7 @@ class AnalyticsService:
                 ReactionTypeCount(type="COMMENT", label="Comentarios", count=0, percentage=0.0, color="#06b6d4"),
             ]
 
-        # 6. Rankings por Dirección
+        # 6. Rankings por Dirección / Unidad / Funcionario según jerarquía
         direction_rankings: list[DirectionRankingItem] = []
         for d_name, d_val in dir_stats.items():
             tot = d_val["total"]
@@ -772,7 +812,7 @@ class AnalyticsService:
 
         # 9. Listas disponibles para los selectores en cascada
         available_secretarias = ALL_SECRETARIAS[:]
-        available_directions = sorted(list(dir_stats.keys())) if dir_stats else []
+        available_directions = sorted(list(all_directions_set)) if all_directions_set else (sorted(list(dir_stats.keys())) if dir_stats else [])
         available_units = sorted(list({unit_res for _, _, _, unit_res in filtered_rows if unit_res}))
 
         return AnalyticsOverviewResponse(
@@ -784,6 +824,8 @@ class AnalyticsService:
             available_secretarias=available_secretarias,
             available_directions=available_directions,
             available_units=available_units,
+            ranking_dimension=ranking_dimension,
+            ranking_title=ranking_title,
         )
 
     @classmethod

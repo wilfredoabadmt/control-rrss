@@ -62,6 +62,8 @@ export interface AnalyticsOverviewResponse {
   available_secretarias?: string[];
   available_directions: string[];
   available_units?: string[];
+  ranking_dimension?: 'SECRETARIA' | 'DIRECCION' | 'UNIDAD' | 'FUNCIONARIO';
+  ranking_title?: string;
   generated_at: string;
 }
 

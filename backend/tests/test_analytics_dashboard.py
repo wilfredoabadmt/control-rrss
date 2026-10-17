@@ -604,3 +604,130 @@ async def test_analytics_comments_audit_and_kpis(async_db: AsyncSession, super_a
     assert len(emp_row.comments) == 1
     assert "Excelente gestión" in emp_row.comments[0].comment_text
 
+
+@pytest.mark.asyncio
+async def test_analytics_area_isolation_and_dynamic_rankings(async_db: AsyncSession, super_admin: User):
+    """
+    Verifica que al filtrar por Secretaría, Dirección o Unidad:
+    1. Las métricas y KPIs no mezclen totales globales (comentarios ciudadanos externos o de otras secretarías).
+    2. El ranking adapte su dimensión:
+       - Si se filtra por Dirección -> rankea sus Unidades Operativas (UNIDAD).
+       - Si se filtra por Unidad -> rankea sus Funcionarios (FUNCIONARIO).
+    """
+    # 1. Crear estructura organizativa
+    sec_despacho = "Despacho Alcalde"
+    dir_com = OrganizationalUnit(id=uuid.uuid4(), name="Dirección de Comunicación", code="DIR-COM-TEST")
+    unit_prensa = OrganizationalUnit(id=uuid.uuid4(), name="Unidad de Prensa", code="U-PRENSA-TEST", parent_id=dir_com.id)
+    unit_imagen = OrganizationalUnit(id=uuid.uuid4(), name="Unidad de Imagen Corporativa", code="U-IMG-TEST", parent_id=dir_com.id)
+    async_db.add_all([dir_com, unit_prensa, unit_imagen])
+
+    # 2. Empleados en dos unidades distintas de la misma dirección
+    emp_prensa = Employee(
+        employee_id="EMP-PRENSA-01",
+        first_name="Carla",
+        last_name="Flores",
+        document_number_encrypted="enc_cf",
+        document_hash="hash_cf",
+        status="ACTIVE",
+        direction_name="Dirección de Comunicación",
+        organizational_unit_id=unit_prensa.id,
+    )
+    emp_imagen = Employee(
+        employee_id="EMP-IMG-01",
+        first_name="Rodrigo",
+        last_name="Vargas",
+        document_number_encrypted="enc_rv",
+        document_hash="hash_rv",
+        status="ACTIVE",
+        direction_name="Dirección de Comunicación",
+        organizational_unit_id=unit_imagen.id,
+    )
+    async_db.add_all([emp_prensa, emp_imagen])
+    await async_db.commit()
+
+    # 3. Publicación y Comentarios
+    plat = (await async_db.execute(select(SocialPlatform).where(SocialPlatform.name == "FACEBOOK"))).scalar_one()
+    pub = Publication(
+        platform_id=plat.id,
+        external_post_id="post_isolation_test",
+        content_text="Post institucional de prueba",
+        published_at=datetime.now(UTC),
+        is_monitored=True,
+    )
+    async_db.add(pub)
+    await async_db.commit()
+
+    # Comentario del empleado de Prensa
+    comm_emp = Interaction(
+        id=uuid.uuid4(),
+        publication_id=pub.id,
+        platform_id=plat.id,
+        interaction_type="COMMENT",
+        external_interaction_id="comm_emp_prensa",
+        external_author_id=emp_prensa.employee_id,
+        external_author_name="Carla Flores",
+        content_text="Apoyo total de la Unidad de Prensa",
+        captured_at=datetime.now(UTC),
+        data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
+    )
+    # Comentario de un ciudadano ajeno
+    comm_cit = Interaction(
+        id=uuid.uuid4(),
+        publication_id=pub.id,
+        platform_id=plat.id,
+        interaction_type="COMMENT",
+        external_interaction_id="comm_citizen_ext",
+        external_author_id="fb_cit_999",
+        external_author_name="Ciudadano Externo",
+        content_text="Comentario general sin pertenecer a la alcaldía",
+        captured_at=datetime.now(UTC),
+        data_origin_type=DataOriginType.CITIZEN_COMMENT_ON_OFFICIAL.value,
+    )
+    async_db.add_all([comm_emp, comm_cit])
+    await async_db.flush()
+
+    ver = Verification(
+        interaction_id=comm_emp.id,
+        employee_id=emp_prensa.employee_id,
+        verification_status=VerificationStatus.CONFIRMED.value,
+        verification_method="AUTOMATIC_SYNC_MATCHER",
+        explanation="Cotejo exitoso",
+    )
+    async_db.add(ver)
+    await async_db.commit()
+
+    # A. Vista Global (Sin filtros): Debe mostrar el total consolidado (2 comentarios: 1 funcionario + 1 ciudadano)
+    res_global = await AnalyticsService.get_overview(db=async_db, current_user=super_admin)
+    assert res_global.kpis.total_comments == 2
+    assert res_global.kpis.total_employee_comments == 1
+    assert res_global.kpis.total_citizen_comments == 1
+    assert res_global.ranking_dimension == "DIRECCION"
+
+    # B. Vista Aislada por Dirección: Debe reflejar SOLO la Dirección de Comunicación (1 comentario, 0 ciudadanos ajenos)
+    res_dir = await AnalyticsService.get_overview(
+        db=async_db,
+        current_user=super_admin,
+        direction="Dirección de Comunicación",
+    )
+    assert res_dir.kpis.total_comments == 1
+    assert res_dir.kpis.total_employee_comments == 1
+    assert res_dir.kpis.total_citizen_comments == 0
+    # Al filtrar por Dirección, el ranking debe desglosar las UNIDADES OPERATIVAS de esa dirección
+    assert res_dir.ranking_dimension == "UNIDAD"
+    assert "Unidades Operativas" in res_dir.ranking_title
+    ranking_units = [item.direction for item in res_dir.direction_rankings]
+    assert "Unidad de Prensa" in ranking_units or "Unidad de Imagen Corporativa" in ranking_units
+
+    # C. Vista Aislada por Unidad: Debe desglosar los FUNCIONARIOS de esa unidad
+    res_unit = await AnalyticsService.get_overview(
+        db=async_db,
+        current_user=super_admin,
+        direction="Dirección de Comunicación",
+        unit="Unidad de Prensa",
+    )
+    assert res_unit.kpis.total_employees == 1
+    assert res_unit.ranking_dimension == "FUNCIONARIO"
+    assert "Funcionarios" in res_unit.ranking_title
+    assert "Carla Flores" in res_unit.direction_rankings[0].direction
+
+
