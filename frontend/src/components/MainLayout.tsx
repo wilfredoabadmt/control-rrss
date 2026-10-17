@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar, ActivePage } from './Sidebar';
 import { Header } from './Header';
-import { Activity, Zap, Users, TableProperties, Menu } from 'lucide-react';
+import { Activity, Zap, Users, Menu } from 'lucide-react';
 
 interface MainLayoutProps {
   children: (activePage: ActivePage, onNavigate: (page: ActivePage) => void) => React.ReactNode;
@@ -23,16 +23,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   }, []);
 
   const pageTitles: Record<ActivePage, string> = {
-    dashboard: 'Panel de Control & Analítica',
-    'monitoring-hub': 'Auditoría RRSS, Conectores & Fiscalización',
-    employees: 'Directorio de Funcionarios & Estructura',
-    publications: 'Publicaciones Institucionales & Campañas',
-    interactions: 'Control de Reacciones & Verificación',
-    reports: 'Generación & Custodia de Reportes Oficiales',
-    audit: 'Pistas de Auditoría Inmutable (Principio X)',
-    admin: 'Administración del Sistema & Conectores',
-    matrix: 'Matriz General de Actividad & Cumplimiento',
-    analytics: 'Analítica de Reacciones & Fiscalización Interactiva',
+    dashboard: 'Panel General de Monitoreo',
+    analytics: 'Analítica y Cumplimiento de Personal',
+    interactions: 'Registro y Verificación de Reacciones',
+    publications: 'Publicaciones Oficiales Monitoreadas',
+    employees: 'Padrón de Personal Municipal',
+    reports: 'Reportes y Descargas Oficiales',
+    admin: 'Configuración y Control de Acceso',
+    audit: 'Registro Histórico de Acciones',
+    // Compatibilidad para redirecciones
+    'monitoring-hub': 'Registro y Verificación de Reacciones',
+    matrix: 'Analítica y Cumplimiento de Personal',
   };
 
   return (
@@ -47,7 +48,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowX: 'hidden' }}>
         <Header
-          title={pageTitles[activePage]}
+          title={pageTitles[activePage] || 'GAMEA Social Monitor'}
           onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
         />
         <main className="main-content-layout">
@@ -55,42 +56,42 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         </main>
       </div>
 
-      {/* Barra de navegación inferior móvil exclusiva para celulares (< 768px) */}
+      {/* Barra de navegación inferior móvil (< 768px) */}
       <nav className="mobile-bottom-nav">
         <button
           className={`mobile-bottom-nav-item ${activePage === 'dashboard' ? 'active' : ''}`}
           onClick={() => setActivePage('dashboard')}
-          title="Panel Principal"
+          title="Panel General"
         >
           <Activity size={18} />
           <span>Panel</span>
         </button>
 
         <button
-          className={`mobile-bottom-nav-item ${activePage === 'monitoring-hub' ? 'active' : ''}`}
-          onClick={() => setActivePage('monitoring-hub')}
-          title="Auditoría RRSS"
+          className={`mobile-bottom-nav-item ${activePage === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActivePage('analytics')}
+          title="Analítica y Cumplimiento"
+        >
+          <Activity size={18} />
+          <span>Analítica</span>
+        </button>
+
+        <button
+          className={`mobile-bottom-nav-item ${activePage === 'interactions' ? 'active' : ''}`}
+          onClick={() => setActivePage('interactions')}
+          title="Registro de Reacciones"
         >
           <Zap size={18} />
-          <span>Auditoría</span>
+          <span>Reacciones</span>
         </button>
 
         <button
           className={`mobile-bottom-nav-item ${activePage === 'employees' ? 'active' : ''}`}
           onClick={() => setActivePage('employees')}
-          title="Directorio de Funcionarios"
+          title="Padrón de Personal"
         >
           <Users size={18} />
           <span>Personal</span>
-        </button>
-
-        <button
-          className={`mobile-bottom-nav-item ${activePage === 'matrix' ? 'active' : ''}`}
-          onClick={() => setActivePage('matrix')}
-          title="Matriz de Cumplimiento"
-        >
-          <TableProperties size={18} />
-          <span>Matriz</span>
         </button>
 
         <button
