@@ -10,6 +10,7 @@ from enum import StrEnum
 from modules.employees.models import Employee
 from modules.interactions.models import Interaction
 from modules.shared.enums import BindingStatus, EmployeeStatus
+from modules.shared.name_matching import extract_social_handle
 from modules.social_accounts.models import SocialAccount
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
