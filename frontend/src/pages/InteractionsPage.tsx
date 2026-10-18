@@ -644,7 +644,7 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
     setPasteCommentsResultDetails(null);
   };
 
-  const parseCommentsPreview = (text: string): Array<{ author: string; comment: string }> => {
+  const parseCommentsPreview = (text: string): Array<{ author: string; comment: string; profileUrl?: string }> => {
     const clean_raw = text.replace(/\xa0/g, ' ').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const noiseStrings = new Set([
       'responder', 'me gusta', 'compartir', 'ver traduccion', 'ver traducción',
@@ -665,7 +665,13 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
     };
 
     const cleanAuthor = (raw: string) => {
-      let cleaned = raw.replace(/^foto\s+del\s+perfil\s+de\s+/i, '').trim();
+      let cleaned = raw.trim();
+      const mdMatch = cleaned.match(/^\[([^\]]+)\](?:\([^\)]+\))?/);
+      if (mdMatch) {
+        cleaned = mdMatch[1].trim();
+      }
+      cleaned = cleaned.replace(/\]-R\)?$/, '').replace(/^\[|\]$/g, '').trim();
+      cleaned = cleaned.replace(/^foto\s+del\s+perfil\s+de\s+/i, '').trim();
       const words = cleaned.split(/\s+/);
       if (words.length >= 4 && words.length % 2 === 0) {
         const half = words.length / 2;
@@ -673,12 +679,12 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
           cleaned = words.slice(0, half).join(' ');
         }
       }
-      return cleaned.trim();
+      return cleaned.slice(0, 250).trim();
     };
 
     const splitPattern = /\n\s*(?:Me\s+gusta\s*(?:[·•\.\-]\s*)?)?Responder(?:\s*(?:[·•\.\-]\s*)?Compartir)?.*?(?:\n|$)/i;
     const blocks = clean_raw.split(splitPattern);
-    const parsed: Array<{ author: string; comment: string }> = [];
+    const parsed: Array<{ author: string; comment: string; profileUrl?: string }> = [];
 
     for (const b of blocks) {
       const b_str = b.trim();
@@ -690,7 +696,10 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
       const dot_idx = lines.findIndex(isSeparator);
       if (dot_idx !== -1) {
         const authorParts: string[] = [];
+        let profileUrl = '';
         for (const p of lines.slice(0, dot_idx)) {
+          const urlMatch = p.match(/\((https?:\/\/[^\)]+)\)/);
+          if (urlMatch && !profileUrl) profileUrl = urlMatch[1];
           const c = cleanAuthor(p);
           if (c && !noiseStrings.has(c.toLowerCase()) && !isSeparator(c)) {
             if (!authorParts.length || c.toLowerCase() !== authorParts[authorParts.length - 1].toLowerCase()) {
@@ -701,29 +710,38 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
         const author = authorParts.join(' ').trim();
         const commentParts = lines.slice(dot_idx + 1).filter((p) => !isSeparator(p) && !noiseStrings.has(p.toLowerCase()));
         const comment = commentParts.join(' ').trim();
-        if (author) parsed.push({ author, comment });
+        if (author) parsed.push({ author, comment, profileUrl: profileUrl || undefined });
       } else if (lines[0].includes(':') && lines[0].split(':', 1)[0].trim().length >= 3) {
         const [authorStr, ...restParts] = lines[0].split(':');
+        const urlMatch = authorStr.match(/\((https?:\/\/[^\)]+)\)/);
+        const profileUrl = urlMatch ? urlMatch[1] : undefined;
         const rest = lines.slice(1).filter((l) => !noiseStrings.has(l.toLowerCase()) && !isSeparator(l)).join(' ').trim();
         const fullC = (restParts.join(':').trim() + ' ' + rest).trim();
-        parsed.push({ author: cleanAuthor(authorStr.trim()), comment: fullC });
+        parsed.push({ author: cleanAuthor(authorStr.trim()), comment: fullC, profileUrl });
       } else {
+        const urlMatch = lines[0].match(/\((https?:\/\/[^\)]+)\)/);
+        const profileUrl = urlMatch ? urlMatch[1] : undefined;
         const author = cleanAuthor(lines[0]);
         const comment = lines.slice(1).filter((l) => !noiseStrings.has(l.toLowerCase()) && !isSeparator(l)).join(' ').trim();
         if (author && author.length >= 3) {
-          parsed.push({ author, comment });
+          parsed.push({ author, comment, profileUrl });
         }
       }
     }
 
     if (blocks.length <= 1 && parsed.length <= 1) {
       const all_lines = clean_raw.split('\n').map((l) => l.trim()).filter(Boolean);
-      const line_by_line: Array<{ author: string; comment: string }> = [];
+      const line_by_line: Array<{ author: string; comment: string; profileUrl?: string }> = [];
       for (const l of all_lines) {
         if (l.includes(':') && l.split(':', 1)[0].trim().length >= 3) {
           const [a, ...cParts] = l.split(':');
           if (!noiseStrings.has(a.trim().toLowerCase())) {
-            line_by_line.push({ author: cleanAuthor(a.trim()), comment: cParts.join(':').trim() });
+            const urlMatch = a.match(/\((https?:\/\/[^\)]+)\)/);
+            line_by_line.push({
+              author: cleanAuthor(a.trim()),
+              comment: cParts.join(':').trim(),
+              profileUrl: urlMatch ? urlMatch[1] : undefined,
+            });
           }
         }
       }
@@ -736,10 +754,41 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
   };
 
   // Coincidencia inteligente en tiempo real entre autor detectado y funcionario municipal
-  const matchAuthorToEmployee = (author: string, rows: any[]) => {
-    if (!author || !rows || !rows.length) return null;
+  const matchAuthorToEmployee = (author: string, rows: any[], profileUrl?: string) => {
+    if ((!author && !profileUrl) || !rows || !rows.length) return null;
     const norm = (s: string) =>
       (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // 0. Si hay URL de perfil (ej. profile.php?id=100034218070517 o marcoantonio.patzi.161)
+    if (profileUrl) {
+      let handleCandidate = '';
+      try {
+        const urlObj = new URL(profileUrl);
+        const idParam = urlObj.searchParams.get('id');
+        if (idParam) {
+          handleCandidate = norm(idParam);
+        } else {
+          const pathSegments = urlObj.pathname.split('/').filter(Boolean);
+          if (pathSegments.length > 0) {
+            handleCandidate = norm(pathSegments[pathSegments.length - 1]);
+          }
+        }
+      } catch {
+        const idMatch = profileUrl.match(/[?&]id=(\d+)/);
+        if (idMatch) handleCandidate = norm(idMatch[1]);
+      }
+
+      if (handleCandidate && handleCandidate.length >= 4) {
+        for (const r of rows) {
+          const fb = norm(r.facebook_handle || '');
+          const tt = norm(r.tiktok_handle || '');
+          if ((fb && fb.length >= 4 && (fb.includes(handleCandidate) || handleCandidate.includes(fb))) ||
+              (tt && tt.length >= 4 && (tt.includes(handleCandidate) || handleCandidate.includes(tt)))) {
+            return r;
+          }
+        }
+      }
+    }
 
     const authorTokens = author.split(/\s+/).map(norm).filter(Boolean);
     if (!authorTokens.length) return null;
@@ -812,7 +861,7 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
     const citizens: Array<{ author: string; comment: string }> = [];
 
     parsed.forEach((item) => {
-      const emp = matchAuthorToEmployee(item.author, rows);
+      const emp = matchAuthorToEmployee(item.author, rows, item.profileUrl);
       if (emp) {
         matched.push({ ...item, employee: emp });
       } else {

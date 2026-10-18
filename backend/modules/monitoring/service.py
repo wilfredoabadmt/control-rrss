@@ -2861,14 +2861,31 @@ class MonitoringHubService:
                 return True
             return False
 
-        def _clean_author_candidate(raw: str) -> str:
-            cleaned = re.sub(r"(?i)^foto\s+del\s+perfil\s+de\s+", "", raw).strip()
+        def _extract_author_and_url(raw: str) -> tuple[str, str]:
+            cleaned = raw.strip()
+            profile_url = ""
+            # Si viene como Markdown [Nombre](url) o similar
+            md_match = re.match(r"^\[([^\]]+)\](?:\(([^\)]+)\))?", cleaned)
+            if md_match:
+                cleaned = md_match.group(1).strip()
+                if md_match.group(2):
+                    profile_url = md_match.group(2).strip()
+
+            cleaned = re.sub(r"\]-R\)?$", "", cleaned).strip()
+            cleaned = re.sub(r"^\[|\]$", "", cleaned).strip()
+            cleaned = re.sub(r"(?i)^foto\s+del\s+perfil\s+de\s+", "", cleaned).strip()
+
             words = cleaned.split()
             if len(words) >= 4 and len(words) % 2 == 0:
                 half = len(words) // 2
                 if [w.lower() for w in words[:half]] == [w.lower() for w in words[half:]]:
                     cleaned = " ".join(words[:half])
-            return cleaned.strip()
+
+            return cleaned[:250].strip(), profile_url
+
+        def _clean_author_candidate(raw: str) -> str:
+            name, _ = _extract_author_and_url(raw)
+            return name
 
         # Separar por bloque de acción Facebook ('Responder', 'Me gusta Responder Compartir', etc.)
         split_pattern = re.compile(
@@ -2877,7 +2894,7 @@ class MonitoringHubService:
         )
         blocks = split_pattern.split(clean_raw)
 
-        parsed_comments: list[tuple[str, str]] = []
+        parsed_comments: list[tuple[str, str, str]] = []
         for b in blocks:
             b_str = b.strip()
             if not b_str:
@@ -2897,40 +2914,45 @@ class MonitoringHubService:
             if dot_idx != -1:
                 raw_author_parts = lines[:dot_idx]
                 author_parts: list[str] = []
+                profile_url = ""
                 for p in raw_author_parts:
-                    c = _clean_author_candidate(p)
+                    c, u = _extract_author_and_url(p)
+                    if u and not profile_url:
+                        profile_url = u
                     if c and c.lower() not in noise_strings and not _is_separator(c):
                         if not author_parts or c.lower() != author_parts[-1].lower():
                             author_parts.append(c)
-                author = " ".join(author_parts).strip()
+                author = " ".join(author_parts).strip()[:250]
 
                 raw_c_parts = lines[dot_idx + 1:]
                 c_parts = [p for p in raw_c_parts if not _is_separator(p) and p.lower() not in noise_strings]
                 comment_text = " ".join(c_parts).strip()
                 if author:
-                    parsed_comments.append((author, comment_text))
+                    parsed_comments.append((author, comment_text, profile_url))
             elif ":" in lines[0] and len(lines[0].split(":", 1)[0].strip()) >= 3:
                 # Formato tipo Autor: Comentario
                 author_str, _, comment_str = lines[0].partition(":")
+                c, u = _extract_author_and_url(author_str)
                 rest = " ".join([l for l in lines[1:] if l.lower() not in noise_strings and not _is_separator(l)]).strip()
                 full_c = (comment_str.strip() + " " + rest).strip()
-                parsed_comments.append((_clean_author_candidate(author_str), full_c))
+                parsed_comments.append((c[:250], full_c, u))
             else:
-                author = _clean_author_candidate(lines[0])
+                c, u = _extract_author_and_url(lines[0])
                 c_parts = [l for l in lines[1:] if not _is_separator(l) and l.lower() not in noise_strings]
                 comment_text = " ".join(c_parts).strip()
-                if author and len(author) >= 3:
-                    parsed_comments.append((author, comment_text))
+                if c and len(c) >= 3:
+                    parsed_comments.append((c[:250], comment_text, u))
 
         # Si el texto era sin separadores 'Responder' pero con múltiples 'Autor: Comentario'
         if len(blocks) <= 1 and len(parsed_comments) <= 1:
             all_lines = [l.strip() for l in clean_raw.split("\n") if l.strip()]
-            line_by_line: list[tuple[str, str]] = []
+            line_by_line: list[tuple[str, str, str]] = []
             for l in all_lines:
                 if ":" in l and len(l.split(":", 1)[0].strip()) >= 3:
                     a, _, c = l.partition(":")
                     if a.strip().lower() not in noise_strings:
-                        line_by_line.append((_clean_author_candidate(a.strip()), c.strip()))
+                        clean_a, u = _extract_author_and_url(a.strip())
+                        line_by_line.append((clean_a[:250], c.strip(), u))
             if len(line_by_line) > len(parsed_comments):
                 parsed_comments = line_by_line
 
@@ -2989,8 +3011,8 @@ class MonitoringHubService:
         cid = get_correlation_id()
         now_dt = datetime.now(UTC)
 
-        for author_name, comment_body in parsed_comments:
-            clean_author = _clean_author_candidate(author_name)
+        for author_name, comment_body, profile_url in parsed_comments:
+            clean_author = _clean_author_candidate(author_name)[:250]
             if not clean_author:
                 continue
 
@@ -3002,8 +3024,18 @@ class MonitoringHubService:
             match_reason = "NONE"
             match_score = 0.0
 
-            # A. Cotejo directo por handle de cuenta social registrada
-            if author_pure and len(author_pure) >= 4:
+            # A1. Cotejo directo por URL o ID de perfil si vino en el texto
+            if profile_url:
+                h_url = extract_social_handle(profile_url).lower()
+                h_url_pure = re.sub(r"[^a-z0-9]", "", h_url)
+                if h_url_pure and len(h_url_pure) >= 4:
+                    matched_emp = emp_by_handle.get(h_url_pure)
+                    if matched_emp:
+                        match_reason = "URL_HANDLE"
+                        match_score = 1.0
+
+            # A2. Cotejo directo por handle de cuenta social registrada
+            if not matched_emp and author_pure and len(author_pure) >= 4:
                 matched_emp = emp_by_handle.get(author_pure)
                 if matched_emp:
                     match_reason = "HANDLE"

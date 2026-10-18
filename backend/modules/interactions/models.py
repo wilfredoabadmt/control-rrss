@@ -69,7 +69,7 @@ class Interaction(Base, TimestampMixin, UUIDPrimaryKeyMixin):
         comment="ID de usuario/autor en la plataforma social (ej. Graph API user ID)",
     )
     external_author_name: Mapped[str | None] = mapped_column(
-        String(255),
+        Text,
         nullable=True,
         comment="Nombre visible o display name del autor",
     )
