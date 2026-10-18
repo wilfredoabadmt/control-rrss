@@ -146,6 +146,7 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
 
   // Modal Pegar Comentarios de Facebook
   const [showPasteCommentsModal, setShowPasteCommentsModal] = useState(false);
+  const [pasteCommentsTargetPubId, setPasteCommentsTargetPubId] = useState<string>('');
   const [pasteCommentsRawText, setPasteCommentsRawText] = useState('');
   const [pasteCommentsLoading, setPasteCommentsLoading] = useState(false);
   const [pasteCommentsError, setPasteCommentsError] = useState<string | null>(null);
@@ -636,6 +637,7 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
   // Abrir modal de importar/pegar comentarios
   const handleOpenPasteCommentsModal = () => {
     setShowPasteCommentsModal(true);
+    setPasteCommentsTargetPubId(currentPost?.id || (availablePublications[0]?.id || ''));
     setPasteCommentsRawText('');
     setPasteCommentsError(null);
     setPasteCommentsSuccess(null);
@@ -644,42 +646,189 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
 
   const parseCommentsPreview = (text: string): Array<{ author: string; comment: string }> => {
     const clean_raw = text.replace(/\xa0/g, ' ').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const blocks = clean_raw.split(/\n\s*Responder\s*(?:\n|$)/i);
+    const noiseStrings = new Set([
+      'responder', 'me gusta', 'compartir', 'ver traduccion', 'ver traducción',
+      'ver mas respuestas', 'ver más respuestas', 'mas relevante', 'más relevante',
+      'más relevantes', 'mas relevantes', 'todos los comentarios',
+      'escribe un comentario...', 'escribe una respuesta...',
+      'seguir', 'top fan', 'fan destacado', 'autor', 'administrador',
+      'editar', 'eliminar', 'ocultar',
+    ]);
+
+    const isSeparator = (s: string) => {
+      const t = s.trim();
+      if (!t) return false;
+      if (['·', '•', '-', '*', '.', '–', '—'].includes(t)) return true;
+      if (/^[\·\•\.\-\*\–\—]/.test(t)) return true;
+      if (/^(hace\s+)?\d+\s*(s|m|min|h|d|sem|semanas?|días?|dias?|horas?|meses?|a)(?:\s+editado)?\.?$/i.test(t)) return true;
+      return false;
+    };
+
+    const cleanAuthor = (raw: string) => {
+      let cleaned = raw.replace(/^foto\s+del\s+perfil\s+de\s+/i, '').trim();
+      const words = cleaned.split(/\s+/);
+      if (words.length >= 4 && words.length % 2 === 0) {
+        const half = words.length / 2;
+        if (words.slice(0, half).map((w) => w.toLowerCase()).join(' ') === words.slice(half).map((w) => w.toLowerCase()).join(' ')) {
+          cleaned = words.slice(0, half).join(' ');
+        }
+      }
+      return cleaned.trim();
+    };
+
+    const splitPattern = /\n\s*(?:Me\s+gusta\s*(?:[·•\.\-]\s*)?)?Responder(?:\s*(?:[·•\.\-]\s*)?Compartir)?.*?(?:\n|$)/i;
+    const blocks = clean_raw.split(splitPattern);
     const parsed: Array<{ author: string; comment: string }> = [];
+
     for (const b of blocks) {
       const b_str = b.trim();
       if (!b_str) continue;
-      const lines = b_str.split('\n').map((l) => l.trim()).filter(Boolean);
+      const raw_lines = b_str.split('\n').map((l) => l.trim()).filter(Boolean);
+      const lines = raw_lines.filter((l) => !noiseStrings.has(l.toLowerCase()));
       if (!lines.length) continue;
-      const dot_idx = lines.findIndex((l) => ['·', '•', '-', '*'].includes(l));
+
+      const dot_idx = lines.findIndex(isSeparator);
       if (dot_idx !== -1) {
-        const authorParts = lines.slice(0, dot_idx).filter((l) => !l.toLowerCase().startsWith('responder'));
+        const authorParts: string[] = [];
+        for (const p of lines.slice(0, dot_idx)) {
+          const c = cleanAuthor(p);
+          if (c && !noiseStrings.has(c.toLowerCase()) && !isSeparator(c)) {
+            if (!authorParts.length || c.toLowerCase() !== authorParts[authorParts.length - 1].toLowerCase()) {
+              authorParts.push(c);
+            }
+          }
+        }
         const author = authorParts.join(' ').trim();
-        const commentParts = lines.slice(dot_idx + 1);
+        const commentParts = lines.slice(dot_idx + 1).filter((p) => !isSeparator(p) && !noiseStrings.has(p.toLowerCase()));
         const comment = commentParts.join(' ').trim();
         if (author) parsed.push({ author, comment });
       } else if (lines[0].includes(':') && lines[0].split(':', 1)[0].trim().length >= 3) {
         const [authorStr, ...restParts] = lines[0].split(':');
-        const rest = lines.slice(1).join(' ').trim();
+        const rest = lines.slice(1).filter((l) => !noiseStrings.has(l.toLowerCase()) && !isSeparator(l)).join(' ').trim();
         const fullC = (restParts.join(':').trim() + ' ' + rest).trim();
-        parsed.push({ author: authorStr.trim(), comment: fullC });
+        parsed.push({ author: cleanAuthor(authorStr.trim()), comment: fullC });
       } else {
-        const author = lines[0];
-        const comment = lines.slice(1).join(' ').trim();
+        const author = cleanAuthor(lines[0]);
+        const comment = lines.slice(1).filter((l) => !noiseStrings.has(l.toLowerCase()) && !isSeparator(l)).join(' ').trim();
         if (author && author.length >= 3) {
           parsed.push({ author, comment });
         }
       }
     }
+
+    if (blocks.length <= 1 && parsed.length <= 1) {
+      const all_lines = clean_raw.split('\n').map((l) => l.trim()).filter(Boolean);
+      const line_by_line: Array<{ author: string; comment: string }> = [];
+      for (const l of all_lines) {
+        if (l.includes(':') && l.split(':', 1)[0].trim().length >= 3) {
+          const [a, ...cParts] = l.split(':');
+          if (!noiseStrings.has(a.trim().toLowerCase())) {
+            line_by_line.push({ author: cleanAuthor(a.trim()), comment: cParts.join(':').trim() });
+          }
+        }
+      }
+      if (line_by_line.length > parsed.length) {
+        return line_by_line;
+      }
+    }
+
     return parsed;
   };
+
+  // Coincidencia inteligente en tiempo real entre autor detectado y funcionario municipal
+  const matchAuthorToEmployee = (author: string, rows: any[]) => {
+    if (!author || !rows || !rows.length) return null;
+    const norm = (s: string) =>
+      (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const authorTokens = author.split(/\s+/).map(norm).filter(Boolean);
+    if (!authorTokens.length) return null;
+
+    const hypos: Record<string, string[]> = {
+      marco: ['mark', 'marcos', 'marquitos'],
+      rosario: ['chayo', 'chayito', 'charo', 'ros', 'ross'],
+      armando: ['armand', 'armandito'],
+      roger: ['rogelio'],
+      jorge: ['jorgito', 'jorgex', 'george'],
+      alejandro: ['alex', 'ale', 'jano'],
+      alejandra: ['ale', 'alita'],
+      jose: ['pepe', 'chepe', 'josesito'],
+      juan: ['juancho', 'juancito'],
+      carlos: ['charlie', 'carlitos'],
+      roberto: ['beto', 'robert'],
+      luis: ['lucho', 'luchito'],
+      maria: ['mary', 'mari'],
+      isabel: ['isa', 'chabela', 'micky'],
+      belen: ['beki', 'bel'],
+      yovana: ['yova', 'maritza'],
+      angela: ['angie', 'angi'],
+      patricia: ['patty', 'pati'],
+    };
+
+    const authorPure = authorTokens.join('');
+
+    for (const r of rows) {
+      const fnTokens = (r.full_name || '').split(/\s+/).map(norm).filter(Boolean);
+      if (!fnTokens.length) continue;
+
+      // Handle match
+      const fb = norm(r.facebook_handle || '');
+      const tt = norm(r.tiktok_handle || '');
+      if ((fb && fb.length >= 4 && authorPure.includes(fb)) || (tt && tt.length >= 4 && authorPure.includes(tt))) {
+        return r;
+      }
+
+      const expandedFirst = new Set<string>();
+      expandedFirst.add(fnTokens[0]);
+      (hypos[fnTokens[0]] || []).forEach((h) => expandedFirst.add(h));
+
+      const hasFirst = authorTokens.some((t) => expandedFirst.has(t));
+      const lastTokens = fnTokens.slice(1);
+      const hasLast = authorTokens.some((t) => lastTokens.includes(t));
+
+      let hasAcronym = false;
+      if (lastTokens.length >= 2) {
+        const initials = (lastTokens[0][0] + lastTokens[1][0]).toLowerCase();
+        hasAcronym = authorTokens.some((t) => t === initials);
+      }
+
+      if (hasFirst && (hasLast || hasAcronym)) {
+        return r;
+      }
+
+      const matchingTokens = authorTokens.filter((t) => fnTokens.includes(t));
+      if (matchingTokens.length >= 2) {
+        return r;
+      }
+    }
+    return null;
+  };
+
+  const previewParsedComments = useMemo(() => {
+    if (!pasteCommentsRawText.trim()) return { parsed: [], matched: [], citizens: [] };
+    const parsed = parseCommentsPreview(pasteCommentsRawText);
+    const rows = matrixData?.rows || [];
+    const matched: Array<{ author: string; comment: string; employee: any }> = [];
+    const citizens: Array<{ author: string; comment: string }> = [];
+
+    parsed.forEach((item) => {
+      const emp = matchAuthorToEmployee(item.author, rows);
+      if (emp) {
+        matched.push({ ...item, employee: emp });
+      } else {
+        citizens.push(item);
+      }
+    });
+
+    return { parsed, matched, citizens };
+  }, [pasteCommentsRawText, matrixData?.rows]);
 
   const handleImportComments = async () => {
     if (!pasteCommentsRawText.trim()) {
       setPasteCommentsError('Por favor pega los comentarios copiados de Facebook.');
       return;
     }
-    const pubId = currentPost ? currentPost.id : (selectedPublicationId !== 'ALL' ? selectedPublicationId : null);
+    const pubId = pasteCommentsTargetPubId || (currentPost ? currentPost.id : (selectedPublicationId !== 'ALL' ? selectedPublicationId : null));
     if (!pubId) {
       setPasteCommentsError('Debes seleccionar una publicación institucional específica para registrar los comentarios.');
       return;
@@ -705,6 +854,7 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
         citizen_comments: res.citizen_comments || [],
         ambiguous_names: res.ambiguous_names || [],
       });
+      setSelectedPublicationId(pubId);
       await fetchActivityMatrix(pubId);
       await fetchPostComments(pubId);
     } catch (err: any) {
@@ -3975,14 +4125,35 @@ El motor limpia automáticamente: botones UI ('Agregar a amigos', 'Seguir'), lí
                 background: 'rgba(30, 41, 59, 0.6)',
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 borderRadius: '8px',
-                padding: '10px 14px',
+                padding: '12px 14px',
                 marginBottom: '16px',
                 fontSize: '0.82rem',
                 color: '#cbd5e1',
               }}
             >
-              <strong style={{ color: '#38bdf8' }}>Publicación evaluada:</strong>{' '}
-              {currentPost ? currentPost.title : 'Publicación seleccionada'}
+              <label style={{ display: 'block', fontWeight: 600, color: '#38bdf8', marginBottom: '6px' }}>
+                Publicación Institucional Objetivo:
+              </label>
+              <select
+                value={pasteCommentsTargetPubId || currentPost?.id || ''}
+                onChange={(e) => setPasteCommentsTargetPubId(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: '#0f172a',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  padding: '8px 12px',
+                  fontSize: '0.82rem',
+                  outline: 'none',
+                }}
+              >
+                {availablePublications.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    [{p.id.slice(0, 8)}] {p.title || 'Sin título'}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Instrucciones de Copiado */}
@@ -4050,36 +4221,89 @@ Responder`}
               />
             </div>
 
-            {/* Vista Previa de Comentarios Detectados */}
+            {/* Vista Previa en Tiempo Real de Comentarios y Cruce con Funcionarios */}
             {pasteCommentsRawText.trim() && (
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
-                    Vista Previa: Bloques de Comentarios Detectados ({parseCommentsPreview(pasteCommentsRawText).length})
+                    Cruce en Vivo de Comentarios Detectados:
                   </label>
+                  <div style={{ display: 'flex', gap: '8px', fontSize: '0.72rem' }}>
+                    <span style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '2px 8px', borderRadius: '4px' }}>
+                      Total: {previewParsedComments.parsed.length}
+                    </span>
+                    <span style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>
+                      ✓ Funcionarios: {previewParsedComments.matched.length}
+                    </span>
+                    <span style={{ background: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8', padding: '2px 8px', borderRadius: '4px' }}>
+                      Ciudadanos: {previewParsedComments.citizens.length}
+                    </span>
+                  </div>
                 </div>
+
+                {/* Lista de Funcionarios Detectados */}
+                {previewParsedComments.matched.length > 0 && (
+                  <div
+                    style={{
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                      borderRadius: '8px',
+                      padding: '10px 12px',
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#34d399', marginBottom: '6px' }}>
+                      🟢 Funcionarios Municipales Identificados ({previewParsedComments.matched.length}):
+                    </div>
+                    <div style={{ maxHeight: '110px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {previewParsedComments.matched.map((m, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            background: 'rgba(15, 23, 42, 0.7)',
+                            padding: '6px 10px',
+                            borderRadius: '4px',
+                            fontSize: '0.74rem',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <div>
+                            <span style={{ color: '#38bdf8', fontWeight: 600 }}>{m.author}</span>
+                            <span style={{ color: '#94a3b8' }}> → </span>
+                            <strong style={{ color: '#34d399' }}>{m.employee.full_name}</strong>
+                            <span style={{ color: '#64748b', fontSize: '0.7rem' }}> ({m.employee.department})</span>
+                          </div>
+                          <span style={{ color: '#cbd5e1', fontStyle: 'italic', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            "{m.comment || '(Sin texto)'}"
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Todos los Bloques Detectados */}
                 <div
                   style={{
-                    maxHeight: '130px',
+                    maxHeight: '110px',
                     overflowY: 'auto',
                     background: 'rgba(15, 23, 42, 0.6)',
                     border: '1px solid rgba(255, 255, 255, 0.06)',
                     borderRadius: '6px',
-                    padding: '10px',
-                    fontSize: '0.75rem',
+                    padding: '8px 10px',
+                    fontSize: '0.72rem',
                     fontFamily: 'monospace',
                     color: '#cbd5e1',
                   }}
                 >
-                  {parseCommentsPreview(pasteCommentsRawText).map((item, idx) => (
-                    <div key={idx} style={{ padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  {previewParsedComments.parsed.map((item, idx) => (
+                    <div key={idx} style={{ padding: '2px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                       <span style={{ color: '#38bdf8', fontWeight: 600 }}>{idx + 1}. {item.author}:</span>{' '}
                       <span style={{ color: '#94a3b8' }}>"{item.comment || '(Sin texto)'}"</span>
                     </div>
                   ))}
-                  {parseCommentsPreview(pasteCommentsRawText).length === 0 && (
-                    <span style={{ color: '#64748b' }}>No se detectaron bloques de comentarios. Revisa el texto pegado.</span>
-                  )}
                 </div>
               </div>
             )}

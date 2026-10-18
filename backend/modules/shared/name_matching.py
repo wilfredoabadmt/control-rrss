@@ -162,8 +162,14 @@ def _employee_variants(employee: Any) -> list[list[str]]:
 
     variants: list[list[str]] = []
     if not first_tokens or not last_tokens:
-        raw_full = name_tokens(_full_name(employee))
-        return [raw_full] if raw_full else []
+        full_tokens = name_tokens(_full_name(employee))
+        if len(full_tokens) >= 2:
+            if not first_tokens:
+                first_tokens = [full_tokens[0]]
+            if not last_tokens:
+                last_tokens = full_tokens[1:]
+        else:
+            return [full_tokens] if full_tokens else []
 
     # 1. Nombre completo
     variants.append(first_tokens + last_tokens)
@@ -215,6 +221,15 @@ def score_candidate(candidate: str, employee: Any) -> float:
 
     raw_first_tokens = name_tokens(_field(employee, "first_name"), strip_titles=True)
     raw_last_tokens = name_tokens(_field(employee, "last_name"), strip_titles=True)
+
+    if not raw_first_tokens or not raw_last_tokens:
+        full_tokens = name_tokens(_full_name(employee), strip_titles=True)
+        if len(full_tokens) >= 2:
+            if not raw_first_tokens:
+                raw_first_tokens = [full_tokens[0]]
+            if not raw_last_tokens:
+                raw_last_tokens = full_tokens[1:]
+
     first_tokens = set(raw_first_tokens)
     last_tokens = set(raw_last_tokens)
 
@@ -259,6 +274,10 @@ def score_candidate(candidate: str, employee: Any) -> float:
             overlap = len(intersection) / max(len(cand_set), len(var_set))
             if overlap >= 0.5:
                 best = max(best, round(0.75 + 0.15 * overlap, 3))
+
+    # Coincidencia directa de hipocorístico/nombre con siglas de apellidos (ej: Chayito Ros AC)
+    if check_surname_acronym(cand_tokens, raw_last_tokens) and (cand_set & expanded_first):
+        best = max(best, 0.98)
 
     if best < 1.0:
         emp_full = _full_name(employee)

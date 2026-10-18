@@ -2839,8 +2839,43 @@ class MonitoringHubService:
 
         # 1. Parsear los comentarios del texto copiado de Facebook
         clean_raw = req.raw_text.replace("\xa0", " ").replace("\r\n", "\n").replace("\r", "\n")
-        # Separar por el botón/acción 'Responder' que Facebook inserta al final de cada comentario
-        blocks = re.split(r"\n\s*Responder\s*(?:\n|$)", clean_raw, flags=re.IGNORECASE)
+
+        noise_strings = {
+            "responder", "me gusta", "compartir", "ver traduccion", "ver traducción",
+            "ver mas respuestas", "ver más respuestas", "mas relevante", "más relevante",
+            "más relevantes", "mas relevantes", "todos los comentarios",
+            "escribe un comentario...", "escribe una respuesta...",
+            "seguir", "top fan", "fan destacado", "autor", "administrador",
+            "editar", "eliminar", "ocultar",
+        }
+
+        def _is_separator(line: str) -> bool:
+            s = line.strip()
+            if not s:
+                return False
+            if s in ("·", "•", "-", "*", ".", "–", "—"):
+                return True
+            if re.match(r"^[\·\•\.\-\*\–\—]", s):
+                return True
+            if re.match(r"^(hace\s+)?\d+\s*(s|m|min|h|d|sem|semanas?|días?|dias?|horas?|meses?|a)(?:\s+editado)?\.?$", s, re.IGNORECASE):
+                return True
+            return False
+
+        def _clean_author_candidate(raw: str) -> str:
+            cleaned = re.sub(r"(?i)^foto\s+del\s+perfil\s+de\s+", "", raw).strip()
+            words = cleaned.split()
+            if len(words) >= 4 and len(words) % 2 == 0:
+                half = len(words) // 2
+                if [w.lower() for w in words[:half]] == [w.lower() for w in words[half:]]:
+                    cleaned = " ".join(words[:half])
+            return cleaned.strip()
+
+        # Separar por bloque de acción Facebook ('Responder', 'Me gusta Responder Compartir', etc.)
+        split_pattern = re.compile(
+            r"\n\s*(?:Me\s+gusta\s*(?:[·•\.\-]\s*)?)?Responder(?:\s*(?:[·•\.\-]\s*)?Compartir)?.*?(?:\n|$)",
+            re.IGNORECASE,
+        )
+        blocks = split_pattern.split(clean_raw)
 
         parsed_comments: list[tuple[str, str]] = []
         for b in blocks:
@@ -2848,42 +2883,66 @@ class MonitoringHubService:
             if not b_str:
                 continue
 
-            lines = [l.strip() for l in b_str.split("\n") if l.strip()]
+            raw_lines = [l.strip() for l in b_str.split("\n") if l.strip()]
+            lines = [l for l in raw_lines if l.lower() not in noise_strings]
             if not lines:
                 continue
 
             dot_idx = -1
             for idx, line in enumerate(lines):
-                if line in ("·", "•", "-", "*"):
+                if _is_separator(line):
                     dot_idx = idx
                     break
 
             if dot_idx != -1:
-                # Todo lo anterior al punto es el nombre del autor
-                author_parts = [lines[k] for k in range(dot_idx) if lines[k] and not lines[k].lower().startswith("responder")]
+                raw_author_parts = lines[:dot_idx]
+                author_parts: list[str] = []
+                for p in raw_author_parts:
+                    c = _clean_author_candidate(p)
+                    if c and c.lower() not in noise_strings and not _is_separator(c):
+                        if not author_parts or c.lower() != author_parts[-1].lower():
+                            author_parts.append(c)
                 author = " ".join(author_parts).strip()
-                # Todo lo posterior al punto es el texto del comentario
-                comment_parts = [lines[k] for k in range(dot_idx + 1, len(lines))]
-                comment_text = " ".join(comment_parts).strip()
+
+                raw_c_parts = lines[dot_idx + 1:]
+                c_parts = [p for p in raw_c_parts if not _is_separator(p) and p.lower() not in noise_strings]
+                comment_text = " ".join(c_parts).strip()
                 if author:
                     parsed_comments.append((author, comment_text))
             elif ":" in lines[0] and len(lines[0].split(":", 1)[0].strip()) >= 3:
                 # Formato tipo Autor: Comentario
                 author_str, _, comment_str = lines[0].partition(":")
-                rest = " ".join(lines[1:]).strip()
+                rest = " ".join([l for l in lines[1:] if l.lower() not in noise_strings and not _is_separator(l)]).strip()
                 full_c = (comment_str.strip() + " " + rest).strip()
-                parsed_comments.append((author_str.strip(), full_c))
+                parsed_comments.append((_clean_author_candidate(author_str), full_c))
             else:
-                # Línea simple o autor al final
-                author = lines[0]
-                comment_text = " ".join(lines[1:]).strip() if len(lines) > 1 else ""
+                author = _clean_author_candidate(lines[0])
+                c_parts = [l for l in lines[1:] if not _is_separator(l) and l.lower() not in noise_strings]
+                comment_text = " ".join(c_parts).strip()
                 if author and len(author) >= 3:
                     parsed_comments.append((author, comment_text))
 
-        # 2. Cargar funcionarios activos y cuentas sociales
+        # Si el texto era sin separadores 'Responder' pero con múltiples 'Autor: Comentario'
+        if len(blocks) <= 1 and len(parsed_comments) <= 1:
+            all_lines = [l.strip() for l in clean_raw.split("\n") if l.strip()]
+            line_by_line: list[tuple[str, str]] = []
+            for l in all_lines:
+                if ":" in l and len(l.split(":", 1)[0].strip()) >= 3:
+                    a, _, c = l.partition(":")
+                    if a.strip().lower() not in noise_strings:
+                        line_by_line.append((_clean_author_candidate(a.strip()), c.strip()))
+            if len(line_by_line) > len(parsed_comments):
+                parsed_comments = line_by_line
+
+        # 2. Cargar funcionarios activos y cuentas sociales (protegido contra variaciones 'ACTIVO'/'ACTIVE')
         stmt_emps = (
             select(Employee)
-            .where(Employee.status == EmployeeStatus.ACTIVE.value)
+            .where(
+                or_(
+                    Employee.status.in_([EmployeeStatus.ACTIVE.value, "ACTIVO", "active", "activo", "Active", "Activo"]),
+                    Employee.status.is_(None),
+                )
+            )
             .options(
                 selectinload(Employee.organizational_unit),
                 selectinload(Employee.position),
@@ -2893,7 +2952,12 @@ class MonitoringHubService:
         emp_by_id: dict[str, Employee] = {e.employee_id: e for e in employees}
 
         # Cargar cuentas sociales activas
-        stmt_sa = select(SocialAccount).where(SocialAccount.binding_status == BindingStatus.ACTIVE.value)
+        stmt_sa = select(SocialAccount).where(
+            or_(
+                SocialAccount.binding_status.in_([BindingStatus.ACTIVE.value, "ACTIVO", "active", "activo", "Active", "Activo"]),
+                SocialAccount.binding_status.is_(None),
+            )
+        )
         social_accounts = list((await db.execute(stmt_sa)).scalars().all())
 
         # Indexar cuentas sociales por handles limpios y normalizados
@@ -2926,13 +2990,9 @@ class MonitoringHubService:
         now_dt = datetime.now(UTC)
 
         for author_name, comment_body in parsed_comments:
-            clean_author = author_name.strip()
+            clean_author = _clean_author_candidate(author_name)
             if not clean_author:
                 continue
-
-            # Limpiar posible prefijo 'Foto del perfil de '
-            if clean_author.lower().startswith("foto del perfil de "):
-                clean_author = clean_author[19:].strip()
 
             # Normalizar autor
             author_norm = normalize_name(clean_author)
@@ -3099,6 +3159,12 @@ class MonitoringHubService:
                 "matched_employees": [m.full_name for m in matched_results],
             },
             correlation_id=cid,
+        )
+
+        logger.info(
+            f"IMPORT_COMMENTS_BATCH_SUCCESS: pub_id={pub.id}, parsed={len(parsed_comments)}, "
+            f"matched={len(matched_results)}, citizens={len(citizen_comments)}, "
+            f"officials={[m.full_name for m in matched_results]}"
         )
 
         await db.commit()
