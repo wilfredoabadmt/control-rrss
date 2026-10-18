@@ -11,6 +11,7 @@ Cumplimiento Constitucional SDD:
 
 import contextlib
 import csv
+import hashlib
 import io
 import json
 import logging
@@ -2886,25 +2887,35 @@ class MonitoringHubService:
             .options(
                 selectinload(Employee.organizational_unit),
                 selectinload(Employee.position),
-                selectinload(Employee.social_accounts),
             )
         )
         employees = list((await db.execute(stmt_emps)).scalars().all())
         emp_by_id: dict[str, Employee] = {e.employee_id: e for e in employees}
 
+        # Cargar cuentas sociales activas
+        stmt_sa = select(SocialAccount).where(SocialAccount.binding_status == BindingStatus.ACTIVE.value)
+        social_accounts = list((await db.execute(stmt_sa)).scalars().all())
+
         # Indexar cuentas sociales por handles limpios y normalizados
         emp_by_handle: dict[str, Employee] = {}
-        for emp in employees:
-            for sa in getattr(emp, "social_accounts", []) or []:
-                if sa.current_username:
-                    raw_u = sa.current_username.lstrip("@").strip().lower()
-                    pure_u = re.sub(r"[^a-z]", "", raw_u)
-                    if pure_u and len(pure_u) >= 4:
-                        emp_by_handle[pure_u] = emp
-                    h = extract_social_handle(sa.current_username).lower()
-                    h_pure = re.sub(r"[^a-z]", "", h)
-                    if h_pure and len(h_pure) >= 4:
-                        emp_by_handle[h_pure] = emp
+        for sa in social_accounts:
+            if not sa.employee_id or sa.employee_id not in emp_by_id:
+                continue
+            emp = emp_by_id[sa.employee_id]
+            if sa.current_username:
+                raw_u = sa.current_username.lstrip("@").strip().lower()
+                pure_u = re.sub(r"[^a-z]", "", raw_u)
+                if pure_u and len(pure_u) >= 4:
+                    emp_by_handle[pure_u] = emp
+                h = extract_social_handle(sa.current_username).lower()
+                h_pure = re.sub(r"[^a-z]", "", h)
+                if h_pure and len(h_pure) >= 4:
+                    emp_by_handle[h_pure] = emp
+            if sa.profile_url:
+                h_url = extract_social_handle(sa.profile_url).lower()
+                h_url_pure = re.sub(r"[^a-z]", "", h_url)
+                if h_url_pure and len(h_url_pure) >= 4:
+                    emp_by_handle[h_url_pure] = emp
 
         matched_results: list[MatchedEmployeeCommentItem] = []
         citizen_comments: list[ParsedCitizenCommentItem] = []
@@ -3038,7 +3049,8 @@ class MonitoringHubService:
                     )
             else:
                 # Comentario de ciudadano del público general
-                ext_cit_id = f"batch_cit_{pub.id}_{abs(hash(clean_author + comment_body)) % 10000000}"
+                hash_key = hashlib.md5(f"{clean_author}_{comment_body}".encode("utf-8")).hexdigest()[:12]
+                ext_cit_id = f"batch_cit_{pub.id}_{hash_key}"
                 stmt_cit = select(Interaction).where(
                     Interaction.publication_id == pub.id,
                     Interaction.external_interaction_id == ext_cit_id,
