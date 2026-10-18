@@ -3,6 +3,7 @@ import {
   AlertCircle,
   Award,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Download,
   ExternalLink,
@@ -88,6 +89,26 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
   const [selectedInteractionFilter, setSelectedInteractionFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [showHelpBanner, setShowHelpBanner] = useState(true);
+
+  // Selector elegante y compacto de publicaciones con búsqueda interactiva
+  const [showPostSelectorDropdown, setShowPostSelectorDropdown] = useState(false);
+  const [postSelectorSearch, setPostSelectorSearch] = useState('');
+  const [postSelectorPlatform, setPostSelectorPlatform] = useState<'ALL' | 'FACEBOOK' | 'TIKTOK'>('ALL');
+  const postSelectorRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (postSelectorRef.current && !postSelectorRef.current.contains(e.target as Node)) {
+        setShowPostSelectorDropdown(false);
+      }
+    };
+    if (showPostSelectorDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPostSelectorDropdown]);
 
   // Exportar Excel
   const [exportingExcel, setExportingExcel] = useState(false);
@@ -346,6 +367,57 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
       fetchPostComments(availablePublications[0].id);
     }
   }, [selectedPublicationId, availablePublications]);
+
+  // Formateador limpio y conciso de títulos de publicaciones
+  const formatPostTitleClean = (rawTitle: string, maxLen = 65): string => {
+    if (!rawTitle) return '(Sin título)';
+    let clean = rawTitle.replace(/#[a-zA-Z0-9_áéíóúÁÉÍÓÚñÑ]+/g, '').trim();
+    clean = clean.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!clean) clean = rawTitle.trim();
+    if (clean.length > maxLen) {
+      const truncated = clean.slice(0, maxLen);
+      const lastSpace = truncated.lastIndexOf(' ');
+      if (lastSpace > 35) {
+        return truncated.slice(0, lastSpace).trim() + '...';
+      }
+      return truncated.trim() + '...';
+    }
+    return clean;
+  };
+
+  const formatDateShort = (rawDate?: string): string => {
+    if (!rawDate) return '';
+    try {
+      const d = new Date(rawDate);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('es-BO', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  // Filtrar publicaciones para el selector interactivo
+  const filteredPublicationsForSelector = useMemo(() => {
+    return availablePublications.filter((pub) => {
+      if (postSelectorPlatform !== 'ALL') {
+        if (pub.platform.toUpperCase() !== postSelectorPlatform) return false;
+      }
+      if (postSelectorSearch.trim()) {
+        const q = postSelectorSearch.toLowerCase().trim();
+        const matchesTitle = (pub.title || '').toLowerCase().includes(q);
+        const matchesPlatform = (pub.platform || '').toLowerCase().includes(q);
+        const matchesDate = (pub.date || '').toLowerCase().includes(q);
+        if (!matchesTitle && !matchesPlatform && !matchesDate) return false;
+      }
+      return true;
+    });
+  }, [availablePublications, postSelectorPlatform, postSelectorSearch]);
 
   // Filtrado de comentarios por tipo y búsqueda
   const filteredComments = useMemo(() => {
@@ -1253,42 +1325,301 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
           </div>
 
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: '280px' }}>
-              <select
-                value={selectedPublicationId}
-                onChange={(e) => {
-                  setSelectedPublicationId(e.target.value);
-                  fetchActivityMatrix(e.target.value);
-                  fetchPostComments(e.target.value);
-                }}
+            {/* Selector de publicaciones estilizado, compacto y con buscador instantáneo */}
+            <div ref={postSelectorRef} style={{ position: 'relative', flex: 1, minWidth: '300px' }}>
+              <div
+                onClick={() => setShowPostSelectorDropdown((prev) => !prev)}
+                title="Haz clic para desplegar y buscar entre las publicaciones institucionales"
                 style={{
                   width: '100%',
-                  background: 'rgba(30, 41, 59, 0.9)',
-                  border: '1px solid rgba(6, 182, 212, 0.4)',
+                  background: 'rgba(30, 41, 59, 0.95)',
+                  border: showPostSelectorDropdown ? '1px solid #06b6d4' : '1px solid rgba(6, 182, 212, 0.4)',
+                  boxShadow: showPostSelectorDropdown ? '0 0 15px rgba(6, 182, 212, 0.3)' : 'none',
                   color: '#fff',
-                  padding: '11px 14px',
+                  padding: '10px 14px',
                   borderRadius: '8px',
-                  fontSize: '0.9rem',
+                  fontSize: '0.88rem',
                   fontWeight: 500,
-                  outline: 'none',
                   cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  transition: 'all 0.2s ease',
+                  userSelect: 'none',
+                  boxSizing: 'border-box',
                 }}
               >
-                {availablePublications.length === 0 ? (
-                  <option value="NONE" disabled>
-                    (No hay publicaciones institucionales vinculadas todavía)
-                  </option>
-                ) : (
-                  <>
-                    <option value="ALL">📋 Todas las Publicaciones ({availablePublications.length})</option>
-                    {availablePublications.map((pub) => (
-                      <option key={pub.id} value={pub.id}>
-                        [{pub.platform.toUpperCase()}] {pub.title}
-                      </option>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
+                  {selectedPublicationId === 'ALL' ? (
+                    <>
+                      <span
+                        style={{
+                          background: 'rgba(6, 182, 212, 0.2)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(6, 182, 212, 0.4)',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        GLOBAL
+                      </span>
+                      <span style={{ fontWeight: 600, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        📋 Todas las Publicaciones ({availablePublications.length})
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span
+                        style={{
+                          background: currentPost?.platform?.toUpperCase() === 'TIKTOK' ? 'rgba(236, 72, 153, 0.2)' : 'rgba(24, 119, 242, 0.2)',
+                          color: currentPost?.platform?.toUpperCase() === 'TIKTOK' ? '#f472b6' : '#60a5fa',
+                          border: currentPost?.platform?.toUpperCase() === 'TIKTOK' ? '1px solid rgba(236, 72, 153, 0.4)' : '1px solid rgba(24, 119, 242, 0.4)',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {currentPost?.platform?.toUpperCase() || 'POST'}
+                      </span>
+                      <span style={{ fontWeight: 600, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {formatPostTitleClean(currentPost?.title || '', 60)}
+                      </span>
+                      {currentPost?.date && (
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8', whiteSpace: 'nowrap', marginLeft: 'auto' }}>
+                          {formatDateShort(currentPost.date)}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+                <ChevronDown
+                  size={16}
+                  color="#38bdf8"
+                  style={{
+                    transform: showPostSelectorDropdown ? 'rotate(180deg)' : 'none',
+                    transition: 'transform 0.2s ease',
+                    flexShrink: 0,
+                  }}
+                />
+              </div>
+
+              {/* Menú desplegable interactivo y filtrable */}
+              {showPostSelectorDropdown && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    left: 0,
+                    width: '100%',
+                    minWidth: '360px',
+                    maxWidth: '650px',
+                    background: '#0b1329',
+                    border: '1px solid rgba(6, 182, 212, 0.5)',
+                    borderRadius: '10px',
+                    boxShadow: '0 20px 45px rgba(0, 0, 0, 0.8), 0 0 20px rgba(6, 182, 212, 0.15)',
+                    zIndex: 1050,
+                    padding: '12px',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {/* Buscador de posts */}
+                  <div style={{ position: 'relative', marginBottom: '10px' }}>
+                    <Search
+                      size={14}
+                      color="#94a3b8"
+                      style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Buscar post por palabra clave o fecha..."
+                      value={postSelectorSearch}
+                      onChange={(e) => setPostSelectorSearch(e.target.value)}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px 8px 32px',
+                        background: 'rgba(30, 41, 59, 0.85)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        borderRadius: '6px',
+                        color: '#fff',
+                        fontSize: '0.82rem',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    {postSelectorSearch && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPostSelectorSearch('');
+                        }}
+                        style={{
+                          position: 'absolute',
+                          right: '8px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          color: '#94a3b8',
+                          cursor: 'pointer',
+                          padding: '2px',
+                        }}
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filtro rápido por plataforma */}
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                    {(['ALL', 'FACEBOOK', 'TIKTOK'] as const).map((plat) => (
+                      <button
+                        key={plat}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPostSelectorPlatform(plat);
+                        }}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '5px',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          border: postSelectorPlatform === plat ? '1px solid #06b6d4' : '1px solid rgba(255, 255, 255, 0.08)',
+                          background: postSelectorPlatform === plat ? 'rgba(6, 182, 212, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          color: postSelectorPlatform === plat ? '#38bdf8' : '#94a3b8',
+                        }}
+                      >
+                        {plat === 'ALL' ? `Todos (${availablePublications.length})` : plat}
+                      </button>
                     ))}
-                  </>
-                )}
-              </select>
+                  </div>
+
+                  {/* Lista scrolleable con diseño de tarjetas compactas */}
+                  <div style={{ maxHeight: '310px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {/* Opción Global: Todas las Publicaciones */}
+                    <div
+                      onClick={() => {
+                        setSelectedPublicationId('ALL');
+                        fetchActivityMatrix('ALL');
+                        fetchPostComments('ALL');
+                        setShowPostSelectorDropdown(false);
+                        setPostSelectorSearch('');
+                      }}
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        background: selectedPublicationId === 'ALL' ? 'rgba(6, 182, 212, 0.2)' : 'transparent',
+                        border: selectedPublicationId === 'ALL' ? '1px solid #06b6d4' : '1px solid transparent',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedPublicationId !== 'ALL') e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedPublicationId !== 'ALL') e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.9rem' }}>📋</span>
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f1f5f9' }}>
+                            Todas las Publicaciones (Modo Consolidado)
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                            Visualiza el acompañamiento general en las {availablePublications.length} publicaciones
+                          </div>
+                        </div>
+                      </div>
+                      {selectedPublicationId === 'ALL' && <CheckCircle2 size={15} color="#06b6d4" />}
+                    </div>
+
+                    {/* Lista filtrada de publicaciones */}
+                    {filteredPublicationsForSelector.map((pub) => {
+                      const isSelected = selectedPublicationId === pub.id;
+                      const shortTitle = formatPostTitleClean(pub.title, 65);
+                      const formattedDate = formatDateShort(pub.date);
+                      return (
+                        <div
+                          key={pub.id}
+                          onClick={() => {
+                            setSelectedPublicationId(pub.id);
+                            fetchActivityMatrix(pub.id);
+                            fetchPostComments(pub.id);
+                            setShowPostSelectorDropdown(false);
+                            setPostSelectorSearch('');
+                          }}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            background: isSelected ? 'rgba(6, 182, 212, 0.18)' : 'transparent',
+                            border: isSelected ? '1px solid #06b6d4' : '1px solid rgba(255, 255, 255, 0.04)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
+                            <span
+                              style={{
+                                background: pub.platform?.toUpperCase() === 'TIKTOK' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(24, 119, 242, 0.15)',
+                                color: pub.platform?.toUpperCase() === 'TIKTOK' ? '#f472b6' : '#60a5fa',
+                                border: pub.platform?.toUpperCase() === 'TIKTOK' ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(24, 119, 242, 0.3)',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {pub.platform?.toUpperCase() === 'TIKTOK' ? 'TIKTOK' : 'FB'}
+                            </span>
+                            <div style={{ overflow: 'hidden' }}>
+                              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {shortTitle}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: '#94a3b8', display: 'flex', gap: '8px', marginTop: '2px' }}>
+                                {formattedDate && <span>📅 {formattedDate}</span>}
+                                {typeof pub.metaReactions === 'number' && pub.metaReactions > 0 && (
+                                  <span style={{ color: '#ec4899' }}>👍 {pub.metaReactions} reacciones</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          {isSelected && <CheckCircle2 size={15} color="#06b6d4" style={{ flexShrink: 0 }} />}
+                        </div>
+                      );
+                    })}
+
+                    {filteredPublicationsForSelector.length === 0 && (
+                      <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
+                        No se encontraron publicaciones con "{postSelectorSearch}".
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
