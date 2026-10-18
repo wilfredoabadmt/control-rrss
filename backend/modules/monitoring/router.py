@@ -23,6 +23,8 @@ from modules.monitoring.schemas import (
     BulkEmployeeActivityVerifyResponse,
     ImportReactionsBatchRequest,
     ImportReactionsBatchResponse,
+    ImportCommentsBatchRequest,
+    ImportCommentsBatchResponse,
     MonitoredPersonBulkImportRequest,
     MonitoredPersonBulkImportResponse,
     MonitoredPersonCreate,
@@ -274,6 +276,27 @@ async def import_reactions_batch(
     ),
 ):
     return await MonitoringHubService.import_reactions_batch(db, req, current_user)
+
+
+@monitoring_router.post(
+    "/hub/import-comments",
+    response_model=ImportCommentsBatchResponse,
+    summary="Importación y cruce masivo de comentarios reales de Facebook contra el padrón municipal",
+)
+async def import_comments_batch(
+    req: ImportCommentsBatchRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(
+        require_roles(
+            UserRole.SUPER_ADMIN,
+            UserRole.COMMUNICATIONS_LEAD,
+            UserRole.OPERATOR,
+            UserRole.DIRECTOR,
+            UserRole.ANALYST,
+        )
+    ),
+):
+    return await MonitoringHubService.import_comments_batch(db, req, current_user)
 
 
 

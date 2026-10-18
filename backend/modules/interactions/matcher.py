@@ -118,7 +118,8 @@ class InteractionMatcher:
                 .options(selectinload(SocialAccount.employee))
             )
             candidates = list((await db.execute(stmt_user)).scalars().all())
-            from modules.shared.name_matching import extract_social_handle
+            import re
+            clean_name_pure = re.sub(r"[^a-z]", "", clean_name)
             for cand in candidates:
                 cand_handle = (cand.current_username or "").lstrip("@").lower()
                 clean_cand_h = extract_social_handle(cand.current_username).lower()
@@ -132,6 +133,12 @@ class InteractionMatcher:
                     if clean_name in (cand_handle, clean_cand_h, cand_url):
                         account = cand
                         break
+                    # Coincidencia pura sin dígitos o símbolos (ej: @markpatzi88 vs Mark Patzi)
+                    cand_pure = re.sub(r"[^a-z]", "", clean_cand_h or cand_handle)
+                    if len(cand_pure) >= 5 and len(clean_name_pure) >= 5:
+                        if cand_pure == clean_name_pure or cand_pure in clean_name_pure or clean_name_pure in cand_pure:
+                            account = cand
+                            break
 
         if account and account.employee and account.employee.status == EmployeeStatus.ACTIVE.value:
             return MatchResult(

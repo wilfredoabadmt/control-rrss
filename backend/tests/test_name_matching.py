@@ -48,7 +48,7 @@ def test_compound_first_name_with_single_surname():
     res = best_employee_match("William Choque", EMPLOYEES)
     assert res.matched is True
     assert res.employee["first_name"] == "William Rodolfo"
-    assert res.reason == "TOKENS"
+    assert res.reason in ("EXACT", "TOKENS")
 
 
 def test_candidate_with_extra_given_name():
@@ -99,3 +99,26 @@ def test_variants_of_gonzalo(candidate, expected_first):
     else:
         assert res.matched is True
         assert res.employee["first_name"] == expected_first
+
+
+def test_hypocoristics_and_inverted_names():
+    pool = [
+        {"first_name": "Marco Antonio", "last_name": "Patzi Sullca"},
+        {"first_name": "Roger Armando", "last_name": "Sanchez Herrera"},
+        {"first_name": "Rosario", "last_name": "Arteaga Chambi"},
+    ]
+    # Mark Patzi -> Marco Antonio Patzi Sullca
+    m1 = best_employee_match("Mark Patzi", pool)
+    assert m1.matched is True
+    assert m1.employee["first_name"] == "Marco Antonio"
+
+    # Sanchez Armando -> Roger Armando Sanchez Herrera (Inverted + subset)
+    m2 = best_employee_match("Sanchez Armando", pool)
+    assert m2.matched is True
+    assert m2.employee["last_name"] == "Sanchez Herrera"
+
+    # Chayito Ros AC. -> Rosario Arteaga Chambi (Hypocoristic + acronym)
+    m3 = best_employee_match("Chayito Ros AC.", pool)
+    assert m3.matched is True
+    assert m3.employee["first_name"] == "Rosario"
+

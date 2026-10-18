@@ -123,6 +123,20 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
     ambiguous_names: string[];
   } | null>(null);
 
+  // Modal Pegar Comentarios de Facebook
+  const [showPasteCommentsModal, setShowPasteCommentsModal] = useState(false);
+  const [pasteCommentsRawText, setPasteCommentsRawText] = useState('');
+  const [pasteCommentsLoading, setPasteCommentsLoading] = useState(false);
+  const [pasteCommentsError, setPasteCommentsError] = useState<string | null>(null);
+  const [pasteCommentsSuccess, setPasteCommentsSuccess] = useState<string | null>(null);
+  const [pasteCommentsResultDetails, setPasteCommentsResultDetails] = useState<{
+    matched_count: number;
+    unmatched_citizens_count: number;
+    matched_employees: any[];
+    citizen_comments: any[];
+    ambiguous_names: string[];
+  } | null>(null);
+
 
   // Cargar publicaciones registradas desde backend
   const loadPublications = async () => {
@@ -544,6 +558,87 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
       setPasteError(err.response?.data?.detail || 'Error al procesar y guardar las reacciones en PostgreSQL.');
     } finally {
       setPasteLoading(false);
+    }
+  };
+
+  // Abrir modal de importar/pegar comentarios
+  const handleOpenPasteCommentsModal = () => {
+    setShowPasteCommentsModal(true);
+    setPasteCommentsRawText('');
+    setPasteCommentsError(null);
+    setPasteCommentsSuccess(null);
+    setPasteCommentsResultDetails(null);
+  };
+
+  const parseCommentsPreview = (text: string): Array<{ author: string; comment: string }> => {
+    const clean_raw = text.replace(/\xa0/g, ' ').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const blocks = clean_raw.split(/\n\s*Responder\s*(?:\n|$)/i);
+    const parsed: Array<{ author: string; comment: string }> = [];
+    for (const b of blocks) {
+      const b_str = b.trim();
+      if (!b_str) continue;
+      const lines = b_str.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (!lines.length) continue;
+      const dot_idx = lines.findIndex((l) => ['·', '•', '-', '*'].includes(l));
+      if (dot_idx !== -1) {
+        const authorParts = lines.slice(0, dot_idx).filter((l) => !l.toLowerCase().startsWith('responder'));
+        const author = authorParts.join(' ').trim();
+        const commentParts = lines.slice(dot_idx + 1);
+        const comment = commentParts.join(' ').trim();
+        if (author) parsed.push({ author, comment });
+      } else if (lines[0].includes(':') && lines[0].split(':', 1)[0].trim().length >= 3) {
+        const [authorStr, ...restParts] = lines[0].split(':');
+        const rest = lines.slice(1).join(' ').trim();
+        const fullC = (restParts.join(':').trim() + ' ' + rest).trim();
+        parsed.push({ author: authorStr.trim(), comment: fullC });
+      } else {
+        const author = lines[0];
+        const comment = lines.slice(1).join(' ').trim();
+        if (author && author.length >= 3) {
+          parsed.push({ author, comment });
+        }
+      }
+    }
+    return parsed;
+  };
+
+  const handleImportComments = async () => {
+    if (!pasteCommentsRawText.trim()) {
+      setPasteCommentsError('Por favor pega los comentarios copiados de Facebook.');
+      return;
+    }
+    const pubId = currentPost ? currentPost.id : (selectedPublicationId !== 'ALL' ? selectedPublicationId : null);
+    if (!pubId) {
+      setPasteCommentsError('Debes seleccionar una publicación institucional específica para registrar los comentarios.');
+      return;
+    }
+
+    setPasteCommentsLoading(true);
+    setPasteCommentsError(null);
+    setPasteCommentsSuccess(null);
+    setPasteCommentsResultDetails(null);
+
+    try {
+      const res = await monitoringApi.importCommentsBatch({
+        publication_id: pubId,
+        raw_text: pasteCommentsRawText,
+        platform: 'FACEBOOK',
+      });
+
+      setPasteCommentsSuccess(res.message);
+      setPasteCommentsResultDetails({
+        matched_count: res.matched_count,
+        unmatched_citizens_count: res.unmatched_citizens_count,
+        matched_employees: res.matched_employees,
+        citizen_comments: res.citizen_comments || [],
+        ambiguous_names: res.ambiguous_names || [],
+      });
+      await fetchActivityMatrix(pubId);
+      await fetchPostComments(pubId);
+    } catch (err: any) {
+      setPasteCommentsError(err.response?.data?.detail || 'Error al procesar y guardar los comentarios en PostgreSQL.');
+    } finally {
+      setPasteCommentsLoading(false);
     }
   };
 
@@ -1238,6 +1333,29 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
             >
               <ThumbsUp size={16} />
               <span>📥 Pegar Reacciones de Facebook</span>
+            </button>
+
+            {/* Botón Pegar Comentarios de Facebook */}
+            <button
+              onClick={handleOpenPasteCommentsModal}
+              title="Pegar los comentarios copiados de la publicación de Facebook para cruzar automáticamente los funcionarios"
+              style={{
+                background: 'linear-gradient(135deg, #0284c7, #2563eb)',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 16px',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
+              }}
+            >
+              <MessageSquare size={16} />
+              <span>📥 Pegar Comentarios de Facebook</span>
             </button>
 
             {/* Botón Sincronizar con Redes */}
@@ -2045,6 +2163,28 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
           >
             <RefreshCw size={13} className={loadingComments ? 'animate-spin' : ''} />
             <span>Actualizar Comentarios</span>
+          </button>
+
+          <button
+            onClick={handleOpenPasteCommentsModal}
+            title="Pegar comentarios copiados de Facebook y cruzarlos con la nómina municipal"
+            style={{
+              background: 'linear-gradient(135deg, #0284c7, #2563eb)',
+              color: '#fff',
+              border: 'none',
+              padding: '7px 14px',
+              borderRadius: '7px',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
+            }}
+          >
+            <MessageSquare size={14} />
+            <span>📥 Pegar Comentarios de Facebook</span>
           </button>
 
           {onNavigate && (
@@ -3421,6 +3561,309 @@ El motor limpia automáticamente: botones UI ('Agregar a amigos', 'Seguir'), lí
               >
                 {pasteLoading && <RefreshCw size={14} className="animate-spin" />}
                 <span>{pasteLoading ? 'Cruzando con Funcionarios...' : '⚡ Procesar y Guardar en PostgreSQL'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Pegar Comentarios de Facebook y Cruce Masivo */}
+      {showPasteCommentsModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: '750px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              background: '#0f172a',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              borderRadius: '14px',
+              padding: '24px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 25px rgba(56, 189, 248, 0.2)',
+            }}
+          >
+            {/* Header del Modal */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#38bdf8',
+                    }}
+                  >
+                    <MessageSquare size={18} />
+                  </div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', margin: 0 }}>
+                    📥 Ingesta y Cruce Masivo de Comentarios de Facebook
+                  </h3>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: 0, lineHeight: 1.4 }}>
+                  Pega el texto de los comentarios copiados directamente del post de Facebook. El sistema detecta
+                  automáticamente nombres y apodos de funcionarios (ej. <em>Mark Patzi</em>, <em>Sanchez Armando</em>, <em>Chayito Ros AC.</em>),
+                  extrae su comentario exacto y lo registra en PostgreSQL como <strong style={{ color: '#34d399' }}>CUMPLIDO</strong>.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowPasteCommentsModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Publicación Objetivo */}
+            <div
+              style={{
+                background: 'rgba(30, 41, 59, 0.6)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                marginBottom: '16px',
+                fontSize: '0.82rem',
+                color: '#cbd5e1',
+              }}
+            >
+              <strong style={{ color: '#38bdf8' }}>Publicación evaluada:</strong>{' '}
+              {currentPost ? currentPost.title : 'Publicación seleccionada'}
+            </div>
+
+            {/* Instrucciones de Copiado */}
+            <div
+              style={{
+                background: 'rgba(6, 182, 212, 0.08)',
+                border: '1px solid rgba(6, 182, 212, 0.25)',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                marginBottom: '16px',
+                color: '#cbd5e1',
+                fontSize: '0.78rem',
+                lineHeight: 1.5,
+              }}
+            >
+              <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Info size={14} />
+                <span>¿Cómo copiar los comentarios de Facebook?</span>
+              </div>
+              <div>
+                En Facebook, selecciona el texto de los comentarios (incluyendo el autor y las líneas '·' y 'Responder'),
+                cópialos con <kbd style={{ background: '#1e293b', padding: '1px 4px', borderRadius: '3px' }}>Ctrl + C</kbd> y
+                pégalos directamente aquí. También admite el formato <code>Nombre: Comentario</code>.
+              </div>
+            </div>
+
+            {/* Cuadro de Texto para Pegar */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', marginBottom: '6px' }}>
+                Pegar Comentarios Copiados de Facebook:
+              </label>
+              <textarea
+                rows={8}
+                placeholder={`Pega aquí los comentarios copiados directamente. Ejemplo:
+
+Mark Patzi
+·
+Excelente trabajo
+Responder
+
+Sanchez Armando
+·
+Y pa cuando a l@s que venden en las vitrinas en la misma feria...
+Responder
+
+Chayito Ros AC.
+·
+Wawitas de Dios
+Responder`}
+                value={pasteCommentsRawText}
+                onChange={(e) => setPasteCommentsRawText(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(30, 41, 59, 0.8)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  padding: '12px',
+                  fontSize: '0.82rem',
+                  fontFamily: 'monospace',
+                  outline: 'none',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Vista Previa de Comentarios Detectados */}
+            {pasteCommentsRawText.trim() && (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
+                    Vista Previa: Bloques de Comentarios Detectados ({parseCommentsPreview(pasteCommentsRawText).length})
+                  </label>
+                </div>
+                <div
+                  style={{
+                    maxHeight: '130px',
+                    overflowY: 'auto',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    padding: '10px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'monospace',
+                    color: '#cbd5e1',
+                  }}
+                >
+                  {parseCommentsPreview(pasteCommentsRawText).map((item, idx) => (
+                    <div key={idx} style={{ padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                      <span style={{ color: '#38bdf8', fontWeight: 600 }}>{idx + 1}. {item.author}:</span>{' '}
+                      <span style={{ color: '#94a3b8' }}>"{item.comment || '(Sin texto)'}"</span>
+                    </div>
+                  ))}
+                  {parseCommentsPreview(pasteCommentsRawText).length === 0 && (
+                    <span style={{ color: '#64748b' }}>No se detectaron bloques de comentarios. Revisa el texto pegado.</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Mensajes de Alerta */}
+            {pasteCommentsError && (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  color: '#f87171',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '14px',
+                }}
+              >
+                <AlertCircle size={16} />
+                <span>{pasteCommentsError}</span>
+              </div>
+            )}
+
+            {pasteCommentsSuccess && (
+              <div
+                style={{
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  color: '#34d399',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  marginBottom: '14px',
+                }}
+              >
+                <CheckCircle2 size={16} style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 700 }}>{pasteCommentsSuccess}</div>
+                  {pasteCommentsResultDetails && (
+                    <div style={{ fontSize: '0.75rem', marginTop: '4px', color: '#cbd5e1' }}>
+                      Persistido en PostgreSQL: {pasteCommentsResultDetails.matched_count} comentarios de funcionarios vinculados.
+                      {pasteCommentsResultDetails.matched_employees.length > 0 && (
+                        <div style={{ marginTop: '6px', maxHeight: '130px', overflowY: 'auto' }}>
+                          {pasteCommentsResultDetails.matched_employees.map((me, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                background: 'rgba(16, 185, 129, 0.2)',
+                                border: '1px solid rgba(16, 185, 129, 0.4)',
+                                borderRadius: '4px',
+                                padding: '4px 8px',
+                                margin: '3px 0',
+                                fontSize: '0.72rem',
+                              }}
+                            >
+                              <strong style={{ color: '#34d399' }}>✓ {me.full_name} ({me.department}):</strong> "{me.comment_text}"
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {pasteCommentsResultDetails.unmatched_citizens_count > 0 && (
+                        <div style={{ marginTop: '6px', color: '#94a3b8' }}>
+                          🔵 {pasteCommentsResultDetails.unmatched_citizens_count} comentarios de ciudadanos externos registrados.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Botones del Modal */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setShowPasteCommentsModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border-subtle)',
+                  color: '#94a3b8',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={handleImportComments}
+                disabled={pasteCommentsLoading || !pasteCommentsRawText.trim()}
+                style={{
+                  background: 'linear-gradient(135deg, #0284c7, #2563eb)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '9px 20px',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: (pasteCommentsLoading || !pasteCommentsRawText.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (pasteCommentsLoading || !pasteCommentsRawText.trim()) ? 0.6 : 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+                }}
+              >
+                {pasteCommentsLoading && <RefreshCw size={14} className="animate-spin" />}
+                <span>{pasteCommentsLoading ? 'Cruzando con Funcionarios...' : '⚡ Procesar y Guardar en PostgreSQL'}</span>
               </button>
             </div>
           </div>

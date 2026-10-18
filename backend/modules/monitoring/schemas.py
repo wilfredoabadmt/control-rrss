@@ -247,6 +247,41 @@ class ImportReactionsBatchResponse(BaseModel):
     )
 
 
+class MatchedEmployeeCommentItem(BaseModel):
+    employee_id: str
+    full_name: str
+    department: str
+    comment_text: str
+    interaction_id: str
+    verification_id: str
+    match_reason: str | None = None
+    match_score: float = 0.0
+
+
+class ParsedCitizenCommentItem(BaseModel):
+    author_name: str
+    comment_text: str
+
+
+class ImportCommentsBatchRequest(BaseModel):
+    publication_id: uuid.UUID = Field(..., description="UUID de la publicación evaluada")
+    raw_text: str = Field(..., description="Texto copiado de los comentarios de Facebook")
+    platform: str = Field(default="FACEBOOK")
+
+
+class ImportCommentsBatchResponse(BaseModel):
+    success: bool
+    message: str
+    publication_id: uuid.UUID
+    total_comments_parsed: int
+    matched_count: int
+    unmatched_citizens_count: int
+    matched_employees: list[MatchedEmployeeCommentItem]
+    citizen_comments: list[ParsedCitizenCommentItem]
+    ambiguous_names: list[str] = Field(
+        default_factory=list,
+        description="Nombres que empatan con más de un funcionario y requieren revisión manual",
+    )
 
 
 class ConnectorVariableDetail(BaseModel):

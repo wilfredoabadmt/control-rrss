@@ -27,6 +27,65 @@ NOISE_TITLES = {
     "msc", "phd", "sr", "sra", "univ", "tec", "tecnico", "don", "dona",
 }
 
+# Diccionario de hipocorísticos, apodos y variantes comunes bolivianas / hispanas
+HYPOCORISTICS: dict[str, set[str]] = {
+    "marco": {"mark", "marcos", "marquitos"},
+    "rosario": {"chayo", "chayito", "charo", "ros", "ross"},
+    "armando": {"armand", "armandito"},
+    "roger": {"rogelio"},
+    "jorge": {"jorgito", "jorgex", "george"},
+    "alejandro": {"alex", "ale", "jano"},
+    "alejandra": {"ale", "alita"},
+    "jose": {"pepe", "chepe", "josesito"},
+    "juan": {"juancho", "juancito"},
+    "carlos": {"charlie", "carlitos"},
+    "roberto": {"beto", "robert"},
+    "luis": {"lucho", "luchito"},
+    "maria": {"mary", "mari"},
+    "isabel": {"isa", "chabela", "micky"},
+    "belen": {"beki", "bel"},
+    "william": {"willy", "guille", "guillermo"},
+    "javier": {"javi", "javy"},
+    "miguel": {"mike", "migue"},
+    "richard": {"richi", "ricky"},
+    "elmer": {"elmo", "elmercito"},
+    "jimmy": {"jim", "jimi"},
+    "grover": {"freddy"},
+    "hans": {"jhans", "janz"},
+    "yovana": {"yova", "maritza"},
+    "angela": {"angie", "angi"},
+    "patricia": {"patty", "pati"},
+    "francisco": {"pancho", "fran", "paco"},
+    "fernando": {"fer", "nando"},
+}
+
+
+def expand_first_names(tokens: set[str] | list[str]) -> set[str]:
+    """Expande nombres de pila con sus variantes de hipocorísticos e informales."""
+    expanded = set(tokens)
+    for t in tokens:
+        t_low = t.lower()
+        for k, vals in HYPOCORISTICS.items():
+            if t_low == k:
+                expanded.update(vals)
+            elif t_low in vals:
+                expanded.add(k)
+                expanded.update(vals)
+    return expanded
+
+
+def check_surname_acronym(cand_tokens: list[str], last_tokens: list[str]) -> bool:
+    """Verifica si alguno de los tokens del candidato corresponde a las iniciales de los apellidos (ej: 'AC' -> 'Arteaga Chambi')."""
+    if len(last_tokens) < 2:
+        return False
+    expected_initials = "".join(t[0] for t in last_tokens if t).lower()
+    two_initials = (last_tokens[0][0] + last_tokens[1][0]).lower()
+    for c in cand_tokens:
+        clean_c = c.rstrip(".").lower()
+        if clean_c in (expected_initials, two_initials) and len(clean_c) >= 2:
+            return True
+    return False
+
 
 def normalize_name(text: str | None) -> str:
     """Normaliza un nombre sin acentos, en minúsculas y sin separadores."""
@@ -96,6 +155,7 @@ def _employee_variants(employee: Any) -> list[list[str]]:
     - Segundo nombre + segundo apellido
     - Nombres + primer apellido
     - Formas invertidas (apellidos primero)
+    - Formas con iniciales de apellidos (ej. 'Rosario AC')
     """
     first_tokens = name_tokens(_field(employee, "first_name"))
     last_tokens = name_tokens(_field(employee, "last_name"))
@@ -125,6 +185,17 @@ def _employee_variants(employee: Any) -> list[list[str]]:
             variants.append([first_tokens[1], last_tokens[-1]])
             variants.append([last_tokens[-1], first_tokens[1]])
 
+    # 4. Formas con hipocorísticos
+    exp_first = expand_first_names(first_tokens)
+    for h in exp_first:
+        variants.append([h, last_tokens[0]])
+        variants.append([last_tokens[0], h])
+        if len(last_tokens) > 1:
+            variants.append([h, last_tokens[-1]])
+            acronym = (last_tokens[0][0] + last_tokens[1][0]).lower()
+            variants.append([h, acronym])
+            variants.append([h, "ros", acronym])
+
     # Eliminar duplicados preservando orden
     seen = set()
     deduped = []
@@ -142,16 +213,18 @@ def score_candidate(candidate: str, employee: Any) -> float:
     if not cand_tokens:
         return 0.0
 
-    first_tokens = set(name_tokens(_field(employee, "first_name"), strip_titles=True))
-    last_tokens = set(name_tokens(_field(employee, "last_name"), strip_titles=True))
+    raw_first_tokens = name_tokens(_field(employee, "first_name"), strip_titles=True)
+    raw_last_tokens = name_tokens(_field(employee, "last_name"), strip_titles=True)
+    first_tokens = set(raw_first_tokens)
+    last_tokens = set(raw_last_tokens)
 
     cand_set = set(cand_tokens)
 
-    # Regla epistémica fundamental: Si el candidato tiene 2 o más tokens,
-    # DEBE coincidir al menos en un nombre de pila Y en un apellido del funcionario.
-    # Evita que 'María Flores Callisaya' empate con 'Patricia Flores Callisaya'.
-    has_first_match = bool(cand_set & first_tokens)
-    has_last_match = bool(cand_set & last_tokens)
+    # Expansión de nombres con hipocorísticos y apodos bolivianos
+    expanded_first = expand_first_names(first_tokens)
+
+    has_first_match = bool(cand_set & expanded_first)
+    has_last_match = bool(cand_set & last_tokens) or check_surname_acronym(cand_tokens, raw_last_tokens)
 
     if not has_first_match and not has_last_match:
         # Podría ser coincidencia difusa alta sobre el nombre completo

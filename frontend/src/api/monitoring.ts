@@ -155,6 +155,38 @@ export const monitoringApi = {
     const res = await apiClient.post('/monitoring/hub/import-reactions', data);
     return res.data;
   },
+
+  // 8. Importación Masiva de Comentarios de Facebook
+  importCommentsBatch: async (data: {
+    publication_id: string;
+    raw_text: string;
+    platform?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    publication_id: string;
+    total_comments_parsed: number;
+    matched_count: number;
+    unmatched_citizens_count: number;
+    matched_employees: Array<{
+      employee_id: string;
+      full_name: string;
+      department: string;
+      comment_text: string;
+      interaction_id: string;
+      verification_id: string;
+      match_reason?: string;
+      match_score?: number;
+    }>;
+    citizen_comments: Array<{
+      author_name: string;
+      comment_text: string;
+    }>;
+    ambiguous_names?: string[];
+  }> => {
+    const res = await apiClient.post('/monitoring/hub/import-comments', data);
+    return res.data;
+  },
 };
 
 export const fetchActivityMatrixApi = (params?: {
