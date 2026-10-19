@@ -28,6 +28,8 @@ def upgrade() -> None:
 
     if bind.dialect.name == "postgresql":
         op.execute("ALTER TABLE interactions ALTER COLUMN raw_payload_ref TYPE TEXT")
+        op.execute("ALTER TABLE interactions ALTER COLUMN external_author_name TYPE TEXT")
+        op.execute("ALTER TABLE interactions ALTER COLUMN content_text TYPE TEXT")
         op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_direction VARCHAR(200)")
         op.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS created_by_user_id UUID")
         op.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS direction_name VARCHAR(200)")

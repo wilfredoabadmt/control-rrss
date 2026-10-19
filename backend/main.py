@@ -112,8 +112,9 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_total INTEGER NOT NULL DEFAULT 0;"))
                     await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_by_type JSON NOT NULL DEFAULT '{}';"))
                     await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_comments_total INTEGER NOT NULL DEFAULT 0;"))
-                    await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_metrics_synced_at TIMESTAMPTZ;"))
                     await conn.execute(text("ALTER TABLE interactions ALTER COLUMN external_author_name TYPE TEXT;"))
+                    await conn.execute(text("ALTER TABLE interactions ALTER COLUMN raw_payload_ref TYPE TEXT;"))
+                    await conn.execute(text("ALTER TABLE interactions ALTER COLUMN content_text TYPE TEXT;"))
                 else:
                     for _sql_col in (
                         "ALTER TABLE users ADD COLUMN assigned_direction VARCHAR(200)",

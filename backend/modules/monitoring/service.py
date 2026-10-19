@@ -98,6 +98,46 @@ from sqlalchemy.orm import selectinload
 logger = logging.getLogger("modules.monitoring.service")
 
 
+def _safe_raw_payload_ref(payload_dict: dict, max_chars: int = 250) -> str:
+    """
+    Serializa un diccionario de auditoría a JSON asegurando que nunca exceda max_chars (por defecto 250).
+    Garantiza compatibilidad absoluta con esquemas PostgreSQL legados donde interactions.raw_payload_ref
+    sea VARCHAR(255). Si el payload excede max_chars, resume comment_text con SHA-256 preservando
+    la trazabilidad forense, autor, auditor y estado de compartido ('shared': True).
+    """
+    try:
+        raw_str = json.dumps(payload_dict, ensure_ascii=False)
+        if len(raw_str) <= max_chars:
+            return raw_str
+
+        safe_dict = dict(payload_dict)
+        comment = safe_dict.pop("comment_text", None)
+        if comment:
+            c_str = str(comment)
+            safe_dict["comment_hash"] = hashlib.sha256(c_str.encode("utf-8")).hexdigest()[:16]
+            base_json = json.dumps(safe_dict, ensure_ascii=False)
+            avail = max_chars - len(base_json) - 25
+            if avail > 15:
+                safe_dict["comment_snippet"] = c_str[:avail] + "..."
+
+        compact_str = json.dumps(safe_dict, ensure_ascii=False)
+        if len(compact_str) <= max_chars:
+            return compact_str
+
+        # Resumen ultra-compacto garantizado <= max_chars
+        fallback_dict = {
+            "source": str(safe_dict.get("source", "BATCH"))[:25],
+            "audited_by": str(safe_dict.get("audited_by", ""))[:25],
+            "hash": hashlib.sha256(raw_str.encode("utf-8")).hexdigest()[:16],
+            "ts": str(safe_dict.get("timestamp", ""))[:19],
+        }
+        if "shared" in safe_dict:
+            fallback_dict["shared"] = bool(safe_dict["shared"])
+        return json.dumps(fallback_dict, ensure_ascii=False)[:max_chars]
+    except Exception:
+        return json.dumps({"source": "SAFE_AUDIT"})[:max_chars]
+
+
 class MonitoringHubService:
 
     # -------------------------------------------------------------------------
@@ -2424,7 +2464,7 @@ class MonitoringHubService:
                 capture_method=CaptureMethod.MANUAL_IMPORT.value,
                 data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
                 source_platform=pub.platform.name if pub.platform else "FACEBOOK",
-                raw_payload_ref=json.dumps(payload_data),
+                raw_payload_ref=_safe_raw_payload_ref(payload_data),
             )
             db.add(interaction)
             await db.flush()
@@ -2441,7 +2481,7 @@ class MonitoringHubService:
             else:
                 interaction.interaction_type = "LIKE"
             
-            interaction.raw_payload_ref = json.dumps(payload_data)
+            interaction.raw_payload_ref = _safe_raw_payload_ref(payload_data)
 
         # Crear o actualizar Verificación formal
         stmt_ver = select(Verification).where(
@@ -2733,14 +2773,14 @@ class MonitoringHubService:
                         capture_method=CaptureMethod.MANUAL_IMPORT.value,
                         data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
                         source_platform=pub.platform.name if pub.platform else "FACEBOOK",
-                        raw_payload_ref=json.dumps(payload_dict),
+                        raw_payload_ref=_safe_raw_payload_ref(payload_dict),
                     )
                     db.add(interaction)
                     await db.flush()
                 else:
                     interaction.reaction_type = react_val
                     interaction.interaction_type = "LIKE"
-                    interaction.raw_payload_ref = json.dumps(payload_dict)
+                    interaction.raw_payload_ref = _safe_raw_payload_ref(payload_dict)
 
                 stmt_ver = select(Verification).where(
                     Verification.interaction_id == interaction.id,
@@ -3081,7 +3121,7 @@ class MonitoringHubService:
                     emp_full = f"{matched_emp.first_name} {matched_emp.last_name}".strip()
                     dept_name = matched_emp.organizational_unit.name if matched_emp.organizational_unit else "Sin Dirección"
 
-                    ext_int_id = f"batch_comm_{pub.id}_{emp_ci}"
+                    ext_int_id = f"batch_comm_{pub.id}_{emp_ci}"[:100]
                     interaction = emp_interactions_by_id.get(emp_ci)
                     if not interaction:
                         stmt_int = select(Interaction).where(
@@ -3103,6 +3143,7 @@ class MonitoringHubService:
                         "audited_by": current_user.email,
                         "timestamp": now_dt.isoformat(),
                     }
+                    safe_payload_ref = _safe_raw_payload_ref(payload_dict, max_chars=250)
 
                     if not interaction:
                         interaction = Interaction(
@@ -3110,15 +3151,15 @@ class MonitoringHubService:
                             platform_id=pub.platform_id,
                             interaction_type="COMMENT",
                             external_interaction_id=ext_int_id,
-                            external_post_id=pub.external_post_id,
-                            external_author_id=emp_ci,
+                            external_post_id=(pub.external_post_id or "")[:100] or None,
+                            external_author_id=emp_ci[:100],
                             external_author_name=clean_author,
                             content_text=comment_body or "(Comentario en publicación)",
                             captured_at=now_dt,
                             capture_method=CaptureMethod.MANUAL_IMPORT.value,
                             data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
                             source_platform=pub.platform.name if pub.platform else "FACEBOOK",
-                            raw_payload_ref=json.dumps(payload_dict),
+                            raw_payload_ref=safe_payload_ref,
                         )
                         db.add(interaction)
                         await db.flush()
@@ -3126,7 +3167,7 @@ class MonitoringHubService:
                         interaction.content_text = comment_body or interaction.content_text
                         interaction.external_author_name = clean_author
                         interaction.interaction_type = "COMMENT"
-                        interaction.raw_payload_ref = json.dumps(payload_dict)
+                        interaction.raw_payload_ref = safe_payload_ref
                         await db.flush()
 
                     emp_interactions_by_id[emp_ci] = interaction
@@ -3197,8 +3238,8 @@ class MonitoringHubService:
                             publication_id=pub.id,
                             platform_id=pub.platform_id,
                             interaction_type="COMMENT",
-                            external_interaction_id=ext_cit_id,
-                            external_post_id=pub.external_post_id,
+                            external_interaction_id=ext_cit_id[:100],
+                            external_post_id=(pub.external_post_id or "")[:100] or None,
                             external_author_id="anonimo",
                             external_author_name=clean_author,
                             content_text=comment_body or "(Comentario ciudadano)",

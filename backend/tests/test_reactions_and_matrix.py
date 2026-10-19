@@ -373,3 +373,38 @@ Responder
     assert res2.success is True
     assert res2.matched_count == 1
 
+    # 3. Comentario muy largo de funcionario (> 350 caracteres, similar a producción):
+    # raw_payload_ref debe mantenerse <= 250 caracteres y content_text íntegro
+    emp2 = await _add_employee(async_db, "EMP-COMM-02", "Armando", "Sanchez")
+    long_comment = (
+        "Y pa cuando a l@s que venden en las vitrinas en la misma feria y los que venden por las redes, "
+        "es también negocio ilisito y lucrar con las vida de los animalitos no ? "
+        "Exigimos que las autoridades correspondientes tomen cartas en el asunto de manera inmediata "
+        "para proteger a todas las mascotas indefensas de nuestra querida ciudad de El Alto."
+    )
+    raw_long_text = f"""Sanchez Armando
+·
+{long_comment}
+Responder
+"""
+    req_long = ImportCommentsBatchRequest(
+        publication_id=pub.id,
+        raw_text=raw_long_text,
+        platform="FACEBOOK",
+    )
+    res_long = await MonitoringHubService.import_comments_batch(async_db, req_long, mock_user)
+    assert res_long.success is True
+    assert res_long.matched_count == 1
+
+    # Verificar interacción persistida
+    stmt = select(Interaction).where(
+        Interaction.publication_id == pub.id,
+        Interaction.external_author_id == "EMP-COMM-02",
+    )
+    int_rec = (await async_db.execute(stmt)).scalars().first()
+    assert int_rec is not None
+    assert int_rec.content_text == long_comment
+    assert int_rec.raw_payload_ref is not None
+    assert len(int_rec.raw_payload_ref) <= 250
+    assert "BATCH_COMMENT_PASTE" in int_rec.raw_payload_ref
+
