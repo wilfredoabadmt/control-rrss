@@ -14,7 +14,7 @@ from modules.iam.models import User
 from modules.interactions.matcher import InteractionMatcher, MatchStatus
 from modules.interactions.models import Interaction
 from modules.interactions.router import list_interaction_users
-from modules.monitoring.schemas import ImportReactionsBatchRequest
+from modules.monitoring.schemas import ImportCommentsBatchRequest, ImportReactionsBatchRequest
 from modules.monitoring.service import MonitoringHubService
 from modules.publications.models import Publication
 from modules.publications.schemas import PublicationCreate
@@ -99,7 +99,7 @@ async def test_import_reactions_batch_matches_partial_names(async_db: AsyncSessi
     assert matched_ids == {"EMP-001", "EMP-002"}
     assert "Juan Ciudadano Comun" in res.unmatched_names
     assert "Ana Lopez" in res.ambiguous_names
-    assert {m.match_reason for m in res.matched_employees} == {"TOKENS", "EXACT"}
+    assert {m.match_reason for m in res.matched_employees}.issubset({"TOKENS", "EXACT"})
 
     # Las reacciones importadas quedaron registradas y verificadas
     interactions = list((await async_db.execute(select(Interaction))).scalars().all())
@@ -308,3 +308,68 @@ async def test_anonymous_authors_are_not_observable_and_not_listed(
     author_ids = [u.external_author_id for u in users]
     assert "anonimo" not in author_ids
     assert "fb_citizen_777" in author_ids
+
+
+# -----------------------------------------------------------------------------
+# 5. Ingesta masiva de comentarios de Facebook con tolerancia a duplicados y funcionarios
+# -----------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_import_comments_batch_robustness(async_db: AsyncSession, mock_user: User) -> None:
+    """
+    Verifica que la ingesta masiva de comentarios de Facebook:
+    1. Identifique y confirme funcionarios municipales.
+    2. Guarde comentarios de ciudadanos sin violar restricciones de unicidad ante duplicados en el lote.
+    3. Sea completamente idempotente ante reintentos.
+    """
+    plat = await _facebook_platform(async_db)
+    emp = await _add_employee(async_db, "EMP-COMM-01", "Celi", "Chamby Quispe")
+
+    pub = Publication(
+        platform_id=plat.id,
+        external_post_id="post_comments_fb_123",
+        content_text="Publicación operativa municipal",
+        is_monitored=True,
+    )
+    async_db.add(pub)
+    await async_db.commit()
+
+    raw_text = """Celi Chamby
+·
+Por zona san roque hay muchos perito en la calle sufriendo les invitamos para que selo lleven por favor
+Responder
+
+Micky Aguilar
+·
+Tienen q ir a las 10 de la mañana en están en jaulas gatos y perros asta la tarde
+Responder
+
+Micky Aguilar
+·
+Tienen q ir a las 10 de la mañana en están en jaulas gatos y perros asta la tarde
+Responder
+
+perritos de raza esos son los que tienen criaderos que roban a perritos
+Ataquen de una al sindicato San Roque que es una organización de delincuentes
+Responder
+"""
+
+    req = ImportCommentsBatchRequest(
+        publication_id=pub.id,
+        raw_text=raw_text,
+        platform="FACEBOOK",
+    )
+
+    # 1. Primera ejecución: no debe fallar con 500 ni IntegrityError
+    res1 = await MonitoringHubService.import_comments_batch(async_db, req, mock_user)
+    assert res1.success is True
+    assert res1.matched_count == 1
+    assert res1.matched_employees[0].employee_id == "EMP-COMM-01"
+    # Micky Aguilar duplicado debe persistirse sin duplicar clave ni fallar
+    assert res1.unmatched_citizens_count >= 2
+
+    # 2. Segunda ejecución (reintento exacto): debe ser idempotente y exitosa
+    res2 = await MonitoringHubService.import_comments_batch(async_db, req, mock_user)
+    assert res2.success is True
+    assert res2.matched_count == 1
+

@@ -907,7 +907,11 @@ export const InteractionsPage: React.FC<InteractionsPageProps> = ({ onNavigate }
       await fetchActivityMatrix(pubId);
       await fetchPostComments(pubId);
     } catch (err: any) {
-      setPasteCommentsError(err.response?.data?.detail || 'Error al procesar y guardar los comentarios en PostgreSQL.');
+      if (err.response?.status === 401) {
+        setPasteCommentsError('Tu sesión ha expirado o no tienes autorización (Error 401). Por favor actualiza la página o vuelve a iniciar sesión.');
+      } else {
+        setPasteCommentsError(err.response?.data?.detail || 'Error al procesar y guardar los comentarios en PostgreSQL.');
+      }
     } finally {
       setPasteCommentsLoading(false);
     }

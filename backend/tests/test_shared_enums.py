@@ -55,6 +55,7 @@ def test_user_roles_has_exact_seven_constitutional_roles():
     """Principio XVII: Los 7 roles de acceso del sistema."""
     expected_roles = {
         "SUPER_ADMIN",
+        "MAE",
         "AUDITOR",
         "DIRECTOR",
         "COMMUNICATIONS_LEAD",
@@ -63,7 +64,7 @@ def test_user_roles_has_exact_seven_constitutional_roles():
         "VIEWER",
     }
     actual_roles = {e.value for e in UserRole}
-    assert len(UserRole) == 7
+    assert len(UserRole) == 8
     assert actual_roles == expected_roles
 
 

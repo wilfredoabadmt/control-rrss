@@ -2668,151 +2668,165 @@ class MonitoringHubService:
         cid = get_correlation_id()
         now_dt = datetime.now(UTC)
 
-        for cand_name, cand_reaction in cleaned_candidates:
-            c_norm = normalize_name(cand_name)
-            if not c_norm:
-                continue
-
-            matched_emp: Employee | None = emp_by_fb.get(c_norm)
-            match_reason = "HANDLE" if matched_emp else "NONE"
-            match_score = 1.0 if matched_emp else 0.0
-            if not matched_emp:
-                match_result = best_employee_match(cand_name, employees)
-                if match_result.reason == "AMBIGUOUS":
-                    if cand_name not in ambiguous_names:
-                        ambiguous_names.append(cand_name)
+        try:
+            for cand_name, cand_reaction in cleaned_candidates:
+                c_norm = normalize_name(cand_name)
+                if not c_norm:
                     continue
-                matched_emp = match_result.employee
-                match_reason = match_result.reason
-                match_score = match_result.score
 
-            if not matched_emp:
-                if cand_name not in unmatched_names:
-                    unmatched_names.append(cand_name)
-                continue
+                matched_emp: Employee | None = emp_by_fb.get(c_norm)
+                match_reason = "HANDLE" if matched_emp else "NONE"
+                match_score = 1.0 if matched_emp else 0.0
+                if not matched_emp:
+                    match_result = best_employee_match(cand_name, employees)
+                    if match_result.reason == "AMBIGUOUS":
+                        if cand_name not in ambiguous_names:
+                            ambiguous_names.append(cand_name)
+                        continue
+                    matched_emp = match_result.employee
+                    match_reason = match_result.reason
+                    match_score = match_result.score
 
-            if matched_emp.employee_id in seen_matched_emp_ids:
-                continue
-            seen_matched_emp_ids.add(matched_emp.employee_id)
+                if not matched_emp:
+                    if cand_name not in unmatched_names:
+                        unmatched_names.append(cand_name)
+                    continue
 
-            emp_ci = matched_emp.employee_id
-            emp_full = f"{matched_emp.first_name} {matched_emp.last_name}".strip()
-            dept_name = matched_emp.organizational_unit.name if matched_emp.organizational_unit else "Sin Dirección"
-            react_val = cand_reaction or req.default_reaction_type or "LIKE"
+                if matched_emp.employee_id in seen_matched_emp_ids:
+                    continue
+                seen_matched_emp_ids.add(matched_emp.employee_id)
 
-            ext_int_id = f"batch_{pub.id}_{emp_ci}"
-            stmt_int = select(Interaction).where(
-                Interaction.publication_id == pub.id,
-                or_(
-                    Interaction.external_interaction_id == ext_int_id,
-                    Interaction.external_author_id == emp_ci,
+                emp_ci = matched_emp.employee_id
+                emp_full = f"{matched_emp.first_name} {matched_emp.last_name}".strip()
+                dept_name = matched_emp.organizational_unit.name if matched_emp.organizational_unit else "Sin Dirección"
+                react_val = cand_reaction or req.default_reaction_type or "LIKE"
+
+                ext_int_id = f"batch_{pub.id}_{emp_ci}"
+                stmt_int = select(Interaction).where(
+                    Interaction.publication_id == pub.id,
+                    or_(
+                        Interaction.external_interaction_id == ext_int_id,
+                        Interaction.external_author_id == emp_ci,
+                    ),
+                )
+                interaction = (await db.execute(stmt_int)).scalars().first()
+
+                payload_dict = {
+                    "source": "BATCH_REACTION_PASTE",
+                    "candidate_name": cand_name,
+                    "reaction_type": react_val,
+                    "audited_by": current_user.email,
+                    "timestamp": now_dt.isoformat(),
+                }
+
+                if not interaction:
+                    interaction = Interaction(
+                        publication_id=pub.id,
+                        platform_id=pub.platform_id,
+                        interaction_type="LIKE",
+                        external_interaction_id=ext_int_id,
+                        external_post_id=pub.external_post_id,
+                        external_author_id=emp_ci,
+                        external_author_name=cand_name,
+                        reaction_type=react_val,
+                        captured_at=now_dt,
+                        capture_method=CaptureMethod.MANUAL_IMPORT.value,
+                        data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
+                        source_platform=pub.platform.name if pub.platform else "FACEBOOK",
+                        raw_payload_ref=json.dumps(payload_dict),
+                    )
+                    db.add(interaction)
+                    await db.flush()
+                else:
+                    interaction.reaction_type = react_val
+                    interaction.interaction_type = "LIKE"
+                    interaction.raw_payload_ref = json.dumps(payload_dict)
+
+                stmt_ver = select(Verification).where(
+                    Verification.interaction_id == interaction.id,
+                    Verification.employee_id == emp_ci,
+                )
+                verification = (await db.execute(stmt_ver)).scalars().first()
+                if not verification:
+                    verification = Verification(
+                        interaction_id=interaction.id,
+                        employee_id=emp_ci,
+                        verification_status=VerificationStatus.CONFIRMED.value,
+                        verification_method="BATCH_REACTION_MATCHER",
+                        verified_at=now_dt,
+                        verified_by_user_id=str(current_user.id),
+                        explanation=f"Reacción {react_val} importada y verificada contra padrón de funcionarios por {current_user.email}.",
+                    )
+                    db.add(verification)
+                    await db.flush()
+                else:
+                    verification.verification_status = VerificationStatus.CONFIRMED.value
+                    verification.verified_at = now_dt
+                    verification.verified_by_user_id = str(current_user.id)
+                    verification.explanation = f"Reacción {react_val} actualizada por {current_user.email}."
+
+                matched_results.append(
+                    MatchedEmployeeItem(
+                        employee_id=emp_ci,
+                        full_name=emp_full,
+                        department=dept_name,
+                        reaction_type=react_val,
+                        interaction_id=str(interaction.id),
+                        verification_id=str(verification.id),
+                        match_reason=match_reason,
+                        match_score=round(match_score, 3),
+                    )
+                )
+
+            await record_audit_event(
+                db=db,
+                action=AuditAction.CREATE,
+                entity_name="BatchReactionImport",
+                entity_id=str(pub.id),
+                user_id=str(current_user.id),
+                user_email=current_user.email,
+                new_state={
+                    "publication_id": str(pub.id),
+                    "total_names_parsed": len(cleaned_candidates),
+                    "matched_count": len(matched_results),
+                    "unmatched_count": len(unmatched_names),
+                    "ambiguous_count": len(ambiguous_names),
+                    "unmatched_names": unmatched_names[:50],
+                    "ambiguous_names": ambiguous_names[:50],
+                },
+                correlation_id=cid,
+            )
+
+            await db.commit()
+
+            return ImportReactionsBatchResponse(
+                success=True,
+                message=(
+                    f"Se identificaron y registraron exitosamente {len(matched_results)} funcionarios con reacción "
+                    f"en PostgreSQL ({len(unmatched_names)} ciudadanos no pertenecientes a la nómina y "
+                    f"{len(ambiguous_names)} nombres ambiguos para revisión manual)."
                 ),
+                publication_id=pub.id,
+                total_names_parsed=len(cleaned_candidates),
+                matched_count=len(matched_results),
+                unmatched_citizens_count=len(unmatched_names),
+                matched_employees=matched_results,
+                unmatched_names=unmatched_names[:50],
+                ambiguous_names=ambiguous_names[:50],
             )
-            interaction = (await db.execute(stmt_int)).scalars().first()
-
-            payload_dict = {
-                "source": "BATCH_REACTION_PASTE",
-                "candidate_name": cand_name,
-                "reaction_type": react_val,
-                "audited_by": current_user.email,
-                "timestamp": now_dt.isoformat(),
-            }
-
-            if not interaction:
-                interaction = Interaction(
-                    publication_id=pub.id,
-                    platform_id=pub.platform_id,
-                    interaction_type="LIKE",
-                    external_interaction_id=ext_int_id,
-                    external_post_id=pub.external_post_id,
-                    external_author_id=emp_ci,
-                    external_author_name=cand_name,
-                    reaction_type=react_val,
-                    captured_at=now_dt,
-                    capture_method=CaptureMethod.MANUAL_IMPORT.value,
-                    data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
-                    source_platform=pub.platform.name if pub.platform else "FACEBOOK",
-                    raw_payload_ref=json.dumps(payload_dict),
-                )
-                db.add(interaction)
-                await db.flush()
-            else:
-                interaction.reaction_type = react_val
-                interaction.interaction_type = "LIKE"
-                interaction.raw_payload_ref = json.dumps(payload_dict)
-
-            stmt_ver = select(Verification).where(
-                Verification.interaction_id == interaction.id,
-                Verification.employee_id == emp_ci,
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as exc:
+            await db.rollback()
+            logger.error(
+                f"IMPORT_REACTIONS_BATCH_ERROR: pub_id={req.publication_id}, error={exc}",
+                exc_info=True,
             )
-            verification = (await db.execute(stmt_ver)).scalars().first()
-            if not verification:
-                verification = Verification(
-                    interaction_id=interaction.id,
-                    employee_id=emp_ci,
-                    verification_status=VerificationStatus.CONFIRMED.value,
-                    verification_method="BATCH_REACTION_MATCHER",
-                    verified_at=now_dt,
-                    verified_by_user_id=str(current_user.id),
-                    explanation=f"Reacción {react_val} importada y verificada contra padrón de funcionarios por {current_user.email}.",
-                )
-                db.add(verification)
-                await db.flush()
-            else:
-                verification.verification_status = VerificationStatus.CONFIRMED.value
-                verification.verified_at = now_dt
-                verification.verified_by_user_id = str(current_user.id)
-                verification.explanation = f"Reacción {react_val} actualizada por {current_user.email}."
-
-            matched_results.append(
-                MatchedEmployeeItem(
-                    employee_id=emp_ci,
-                    full_name=emp_full,
-                    department=dept_name,
-                    reaction_type=react_val,
-                    interaction_id=str(interaction.id),
-                    verification_id=str(verification.id),
-                    match_reason=match_reason,
-                    match_score=round(match_score, 3),
-                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al procesar lote de reacciones: {str(exc)}",
             )
-
-        await record_audit_event(
-            db=db,
-            action=AuditAction.CREATE,
-            entity_name="BatchReactionImport",
-            entity_id=str(pub.id),
-            user_id=str(current_user.id),
-            user_email=current_user.email,
-            new_state={
-                "publication_id": str(pub.id),
-                "total_names_parsed": len(cleaned_candidates),
-                "matched_count": len(matched_results),
-                "unmatched_count": len(unmatched_names),
-                "ambiguous_count": len(ambiguous_names),
-                "unmatched_names": unmatched_names[:50],
-                "ambiguous_names": ambiguous_names[:50],
-            },
-            correlation_id=cid,
-        )
-
-        await db.commit()
-
-        return ImportReactionsBatchResponse(
-            success=True,
-            message=(
-                f"Se identificaron y registraron exitosamente {len(matched_results)} funcionarios con reacción "
-                f"en PostgreSQL ({len(unmatched_names)} ciudadanos no pertenecientes a la nómina y "
-                f"{len(ambiguous_names)} nombres ambiguos para revisión manual)."
-            ),
-            publication_id=pub.id,
-            total_names_parsed=len(cleaned_candidates),
-            matched_count=len(matched_results),
-            unmatched_citizens_count=len(unmatched_names),
-            matched_employees=matched_results,
-            unmatched_names=unmatched_names[:50],
-            ambiguous_names=ambiguous_names[:50],
-        )
 
     @staticmethod
     async def import_comments_batch(
@@ -2941,7 +2955,12 @@ class MonitoringHubService:
                 c_parts = [l for l in lines[1:] if not _is_separator(l) and l.lower() not in noise_strings]
                 comment_text = " ".join(c_parts).strip()
                 if c and len(c) >= 3:
-                    parsed_comments.append((c[:250], comment_text, u))
+                    if len(c.split()) > 6:
+                        # Si parece una oración o texto largo huérfano en vez de nombre
+                        full_comm = f"{c} {comment_text}".strip()
+                        parsed_comments.append(("Ciudadano", full_comm, u))
+                    else:
+                        parsed_comments.append((c[:250], comment_text, u))
 
         # Si el texto era sin separadores 'Responder' pero con múltiples 'Autor: Comentario'
         if len(blocks) <= 1 and len(parsed_comments) <= 1:
@@ -2982,239 +3001,286 @@ class MonitoringHubService:
         )
         social_accounts = list((await db.execute(stmt_sa)).scalars().all())
 
-        # Indexar cuentas sociales por handles limpios y normalizados
-        emp_by_handle: dict[str, Employee] = {}
-        for sa in social_accounts:
-            if not sa.employee_id or sa.employee_id not in emp_by_id:
-                continue
-            emp = emp_by_id[sa.employee_id]
-            if sa.current_username:
-                raw_u = sa.current_username.lstrip("@").strip().lower()
-                pure_u = re.sub(r"[^a-z]", "", raw_u)
-                if pure_u and len(pure_u) >= 4:
-                    emp_by_handle[pure_u] = emp
-                h = extract_social_handle(sa.current_username).lower()
-                h_pure = re.sub(r"[^a-z]", "", h)
-                if h_pure and len(h_pure) >= 4:
-                    emp_by_handle[h_pure] = emp
-            if sa.profile_url:
-                h_url = extract_social_handle(sa.profile_url).lower()
-                h_url_pure = re.sub(r"[^a-z]", "", h_url)
-                if h_url_pure and len(h_url_pure) >= 4:
-                    emp_by_handle[h_url_pure] = emp
+        try:
+            # Indexar cuentas sociales por handles limpios y normalizados (incluyendo dígitos)
+            emp_by_handle: dict[str, Employee] = {}
+            for sa in social_accounts:
+                if not sa.employee_id or sa.employee_id not in emp_by_id:
+                    continue
+                emp = emp_by_id[sa.employee_id]
+                if sa.current_username:
+                    raw_u = sa.current_username.lstrip("@").strip().lower()
+                    pure_u = re.sub(r"[^a-z0-9]", "", raw_u)
+                    if pure_u and len(pure_u) >= 4:
+                        emp_by_handle[pure_u] = emp
+                    h = extract_social_handle(sa.current_username).lower()
+                    h_pure = re.sub(r"[^a-z0-9]", "", h)
+                    if h_pure and len(h_pure) >= 4:
+                        emp_by_handle[h_pure] = emp
+                if sa.profile_url:
+                    h_url = extract_social_handle(sa.profile_url).lower()
+                    h_url_pure = re.sub(r"[^a-z0-9]", "", h_url)
+                    if h_url_pure and len(h_url_pure) >= 4:
+                        emp_by_handle[h_url_pure] = emp
 
-        matched_results: list[MatchedEmployeeCommentItem] = []
-        citizen_comments: list[ParsedCitizenCommentItem] = []
-        ambiguous_names: list[str] = []
-        seen_matched_emp_ids: set[str] = set()
+            matched_results: list[MatchedEmployeeCommentItem] = []
+            citizen_comments: list[ParsedCitizenCommentItem] = []
+            ambiguous_names: list[str] = []
+            seen_matched_emp_ids: set[str] = set()
+            seen_citizen_ext_ids: dict[str, Interaction] = {}
+            seen_citizen_hashes: set[str] = set()
+            emp_interactions_by_id: dict[str, Interaction] = {}
 
-        cid = get_correlation_id()
-        now_dt = datetime.now(UTC)
+            cid = get_correlation_id()
+            now_dt = datetime.now(UTC)
 
-        for author_name, comment_body, profile_url in parsed_comments:
-            clean_author = _clean_author_candidate(author_name)[:250]
-            if not clean_author:
-                continue
+            for author_name, comment_body, profile_url in parsed_comments:
+                clean_author = _clean_author_candidate(author_name)[:250]
+                if not clean_author or clean_author.lower() in noise_strings or _is_separator(clean_author):
+                    continue
 
-            # Normalizar autor
-            author_norm = normalize_name(clean_author)
-            author_pure = re.sub(r"[^a-z]", "", author_norm)
+                # Normalizar autor
+                author_norm = normalize_name(clean_author)
+                author_pure = re.sub(r"[^a-z0-9]", "", author_norm)
 
-            matched_emp: Employee | None = None
-            match_reason = "NONE"
-            match_score = 0.0
+                matched_emp: Employee | None = None
+                match_reason = "NONE"
+                match_score = 0.0
 
-            # A1. Cotejo directo por URL o ID de perfil si vino en el texto
-            if profile_url:
-                h_url = extract_social_handle(profile_url).lower()
-                h_url_pure = re.sub(r"[^a-z0-9]", "", h_url)
-                if h_url_pure and len(h_url_pure) >= 4:
-                    matched_emp = emp_by_handle.get(h_url_pure)
+                # A1. Cotejo directo por URL o ID de perfil si vino en el texto
+                if profile_url:
+                    h_url = extract_social_handle(profile_url).lower()
+                    h_url_pure = re.sub(r"[^a-z0-9]", "", h_url)
+                    if h_url_pure and len(h_url_pure) >= 4:
+                        matched_emp = emp_by_handle.get(h_url_pure)
+                        if matched_emp:
+                            match_reason = "URL_HANDLE"
+                            match_score = 1.0
+
+                # A2. Cotejo directo por handle de cuenta social registrada
+                if not matched_emp and author_pure and len(author_pure) >= 4:
+                    matched_emp = emp_by_handle.get(author_pure)
                     if matched_emp:
-                        match_reason = "URL_HANDLE"
+                        match_reason = "HANDLE"
                         match_score = 1.0
 
-            # A2. Cotejo directo por handle de cuenta social registrada
-            if not matched_emp and author_pure and len(author_pure) >= 4:
-                matched_emp = emp_by_handle.get(author_pure)
+                # B. Cotejo difuso algorítmico contra el padrón municipal
+                if not matched_emp:
+                    match_res = best_employee_match(clean_author, employees)
+                    if match_res.reason == "AMBIGUOUS":
+                        if clean_author not in ambiguous_names:
+                            ambiguous_names.append(clean_author)
+                        continue
+                    if match_res.matched:
+                        matched_emp = match_res.employee
+                        match_reason = match_res.reason
+                        match_score = match_res.score
+
                 if matched_emp:
-                    match_reason = "HANDLE"
-                    match_score = 1.0
+                    emp_ci = matched_emp.employee_id
+                    emp_full = f"{matched_emp.first_name} {matched_emp.last_name}".strip()
+                    dept_name = matched_emp.organizational_unit.name if matched_emp.organizational_unit else "Sin Dirección"
 
-            # B. Cotejo difuso algorítmico contra el padrón municipal
-            if not matched_emp:
-                match_res = best_employee_match(clean_author, employees)
-                if match_res.reason == "AMBIGUOUS":
-                    if clean_author not in ambiguous_names:
-                        ambiguous_names.append(clean_author)
-                    continue
-                if match_res.matched:
-                    matched_emp = match_res.employee
-                    match_reason = match_res.reason
-                    match_score = match_res.score
-
-            if matched_emp:
-                emp_ci = matched_emp.employee_id
-                emp_full = f"{matched_emp.first_name} {matched_emp.last_name}".strip()
-                dept_name = matched_emp.organizational_unit.name if matched_emp.organizational_unit else "Sin Dirección"
-
-                ext_int_id = f"batch_comm_{pub.id}_{emp_ci}"
-                stmt_int = select(Interaction).where(
-                    Interaction.publication_id == pub.id,
-                    or_(
-                        Interaction.external_interaction_id == ext_int_id,
-                        and_(
-                            Interaction.external_author_id == emp_ci,
-                            Interaction.interaction_type.in_(["COMMENT", "REPLY"]),
-                        ),
-                    ),
-                )
-                interaction = (await db.execute(stmt_int)).scalars().first()
-
-                payload_dict = {
-                    "source": "BATCH_COMMENT_PASTE",
-                    "author_name": clean_author,
-                    "comment_text": comment_body,
-                    "audited_by": current_user.email,
-                    "timestamp": now_dt.isoformat(),
-                }
-
-                if not interaction:
-                    interaction = Interaction(
-                        publication_id=pub.id,
-                        platform_id=pub.platform_id,
-                        interaction_type="COMMENT",
-                        external_interaction_id=ext_int_id,
-                        external_post_id=pub.external_post_id,
-                        external_author_id=emp_ci,
-                        external_author_name=clean_author,
-                        content_text=comment_body or "(Comentario en publicación)",
-                        captured_at=now_dt,
-                        capture_method=CaptureMethod.MANUAL_IMPORT.value,
-                        data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
-                        source_platform=pub.platform.name if pub.platform else "FACEBOOK",
-                        raw_payload_ref=json.dumps(payload_dict),
-                    )
-                    db.add(interaction)
-                    await db.flush()
-                else:
-                    interaction.content_text = comment_body or interaction.content_text
-                    interaction.external_author_name = clean_author
-                    interaction.interaction_type = "COMMENT"
-                    interaction.raw_payload_ref = json.dumps(payload_dict)
-
-                # Registrar o actualizar verificación
-                stmt_ver = select(Verification).where(
-                    Verification.interaction_id == interaction.id,
-                    Verification.employee_id == emp_ci,
-                )
-                verification = (await db.execute(stmt_ver)).scalars().first()
-                if not verification:
-                    verification = Verification(
-                        interaction_id=interaction.id,
-                        employee_id=emp_ci,
-                        verification_status=VerificationStatus.CONFIRMED.value,
-                        verification_method="BATCH_COMMENT_MATCHER",
-                        verified_at=now_dt,
-                        verified_by_user_id=str(current_user.id),
-                        explanation=(
-                            f"Comentario importado y cruzado por {match_reason} "
-                            f"(puntaje {match_score:.2f}) con el funcionario {emp_full} ({emp_ci})."
-                        ),
-                    )
-                    db.add(verification)
-                    await db.flush()
-
-                if emp_ci not in seen_matched_emp_ids:
-                    seen_matched_emp_ids.add(emp_ci)
-                    matched_results.append(
-                        MatchedEmployeeCommentItem(
-                            employee_id=emp_ci,
-                            full_name=emp_full,
-                            department=dept_name,
-                            comment_text=comment_body or "(Comentario en publicación)",
-                            interaction_id=str(interaction.id),
-                            verification_id=str(verification.id),
-                            match_reason=match_reason,
-                            match_score=match_score,
+                    ext_int_id = f"batch_comm_{pub.id}_{emp_ci}"
+                    interaction = emp_interactions_by_id.get(emp_ci)
+                    if not interaction:
+                        stmt_int = select(Interaction).where(
+                            Interaction.publication_id == pub.id,
+                            or_(
+                                Interaction.external_interaction_id == ext_int_id,
+                                and_(
+                                    Interaction.external_author_id == emp_ci,
+                                    Interaction.interaction_type.in_(["COMMENT", "REPLY"]),
+                                ),
+                            ),
                         )
+                        interaction = (await db.execute(stmt_int)).scalars().first()
+
+                    payload_dict = {
+                        "source": "BATCH_COMMENT_PASTE",
+                        "author_name": clean_author,
+                        "comment_text": comment_body,
+                        "audited_by": current_user.email,
+                        "timestamp": now_dt.isoformat(),
+                    }
+
+                    if not interaction:
+                        interaction = Interaction(
+                            publication_id=pub.id,
+                            platform_id=pub.platform_id,
+                            interaction_type="COMMENT",
+                            external_interaction_id=ext_int_id,
+                            external_post_id=pub.external_post_id,
+                            external_author_id=emp_ci,
+                            external_author_name=clean_author,
+                            content_text=comment_body or "(Comentario en publicación)",
+                            captured_at=now_dt,
+                            capture_method=CaptureMethod.MANUAL_IMPORT.value,
+                            data_origin_type=DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value,
+                            source_platform=pub.platform.name if pub.platform else "FACEBOOK",
+                            raw_payload_ref=json.dumps(payload_dict),
+                        )
+                        db.add(interaction)
+                        await db.flush()
+                    else:
+                        interaction.content_text = comment_body or interaction.content_text
+                        interaction.external_author_name = clean_author
+                        interaction.interaction_type = "COMMENT"
+                        interaction.raw_payload_ref = json.dumps(payload_dict)
+                        await db.flush()
+
+                    emp_interactions_by_id[emp_ci] = interaction
+
+                    # Registrar o actualizar verificación
+                    stmt_ver = select(Verification).where(
+                        Verification.interaction_id == interaction.id,
+                        Verification.employee_id == emp_ci,
                     )
-            else:
-                # Comentario de ciudadano del público general
-                hash_key = hashlib.md5(f"{clean_author}_{comment_body}".encode("utf-8")).hexdigest()[:12]
-                ext_cit_id = f"batch_cit_{pub.id}_{hash_key}"
-                stmt_cit = select(Interaction).where(
-                    Interaction.publication_id == pub.id,
-                    Interaction.external_interaction_id == ext_cit_id,
-                )
-                cit_int = (await db.execute(stmt_cit)).scalars().first()
-                if not cit_int:
-                    cit_int = Interaction(
-                        publication_id=pub.id,
-                        platform_id=pub.platform_id,
-                        interaction_type="COMMENT",
-                        external_interaction_id=ext_cit_id,
-                        external_post_id=pub.external_post_id,
-                        external_author_id="anonimo",
-                        external_author_name=clean_author,
-                        content_text=comment_body or "(Comentario ciudadano)",
-                        captured_at=now_dt,
-                        capture_method=CaptureMethod.MANUAL_IMPORT.value,
-                        data_origin_type=DataOriginType.CITIZEN_COMMENT_ON_OFFICIAL.value,
-                        source_platform=pub.platform.name if pub.platform else "FACEBOOK",
-                    )
-                    db.add(cit_int)
+                    verification = (await db.execute(stmt_ver)).scalars().first()
+                    if not verification:
+                        verification = Verification(
+                            interaction_id=interaction.id,
+                            employee_id=emp_ci,
+                            verification_status=VerificationStatus.CONFIRMED.value,
+                            verification_method="BATCH_COMMENT_MATCHER",
+                            verified_at=now_dt,
+                            verified_by_user_id=str(current_user.id),
+                            explanation=(
+                                f"Comentario importado y cruzado por {match_reason} "
+                                f"(puntaje {match_score:.2f}) con el funcionario {emp_full} ({emp_ci})."
+                            ),
+                        )
+                        db.add(verification)
+                        await db.flush()
+                    else:
+                        verification.verification_status = VerificationStatus.CONFIRMED.value
+                        verification.verified_at = now_dt
+                        verification.verified_by_user_id = str(current_user.id)
+                        verification.explanation = (
+                            f"Comentario importado y actualizado por {match_reason} "
+                            f"(puntaje {match_score:.2f}) con el funcionario {emp_full} ({emp_ci})."
+                        )
+                        await db.flush()
 
-                citizen_comments.append(
-                    ParsedCitizenCommentItem(
-                        author_name=clean_author,
-                        comment_text=comment_body,
-                    )
-                )
+                    if emp_ci not in seen_matched_emp_ids:
+                        seen_matched_emp_ids.add(emp_ci)
+                        matched_results.append(
+                            MatchedEmployeeCommentItem(
+                                employee_id=emp_ci,
+                                full_name=emp_full,
+                                department=dept_name,
+                                comment_text=comment_body or "(Comentario en publicación)",
+                                interaction_id=str(interaction.id),
+                                verification_id=str(verification.id),
+                                match_reason=match_reason,
+                                match_score=match_score,
+                            )
+                        )
+                else:
+                    # Comentario de ciudadano del público general
+                    norm_author = clean_author.strip().lower()
+                    norm_body = (comment_body or "").strip().lower()
+                    hash_str = f"{norm_author}_{norm_body}"
+                    hash_key = hashlib.md5(hash_str.encode("utf-8")).hexdigest()[:16]
+                    ext_cit_id = f"batch_cit_{pub.id}_{hash_key}"
 
-        # Actualizar total de comentarios en la publicación
-        pub.meta_comments_total = max(getattr(pub, "meta_comments_total", 0) or 0, len(parsed_comments))
+                    cit_int = seen_citizen_ext_ids.get(ext_cit_id)
+                    if not cit_int:
+                        stmt_cit = select(Interaction).where(
+                            Interaction.publication_id == pub.id,
+                            Interaction.external_interaction_id == ext_cit_id,
+                        )
+                        cit_int = (await db.execute(stmt_cit)).scalars().first()
 
-        # Registrar auditoría formal
-        await record_audit_event(
-            db=db,
-            action=AuditAction.VERIFY,
-            entity_name="PublicationCommentsBatch",
-            entity_id=str(pub.id),
-            user_id=str(current_user.id),
-            user_email=current_user.email,
-            new_state={
-                "publication_id": str(pub.id),
-                "total_comments_parsed": len(parsed_comments),
-                "matched_count": len(matched_results),
-                "citizen_count": len(citizen_comments),
-                "matched_employees": [m.full_name for m in matched_results],
-            },
-            correlation_id=cid,
-        )
+                    if not cit_int:
+                        cit_int = Interaction(
+                            publication_id=pub.id,
+                            platform_id=pub.platform_id,
+                            interaction_type="COMMENT",
+                            external_interaction_id=ext_cit_id,
+                            external_post_id=pub.external_post_id,
+                            external_author_id="anonimo",
+                            external_author_name=clean_author,
+                            content_text=comment_body or "(Comentario ciudadano)",
+                            captured_at=now_dt,
+                            capture_method=CaptureMethod.MANUAL_IMPORT.value,
+                            data_origin_type=DataOriginType.CITIZEN_COMMENT_ON_OFFICIAL.value,
+                            source_platform=pub.platform.name if pub.platform else "FACEBOOK",
+                        )
+                        db.add(cit_int)
+                        await db.flush()
+                    else:
+                        if comment_body and (not cit_int.content_text or cit_int.content_text == "(Comentario ciudadano)"):
+                            cit_int.content_text = comment_body
+                            await db.flush()
 
-        logger.info(
-            f"IMPORT_COMMENTS_BATCH_SUCCESS: pub_id={pub.id}, parsed={len(parsed_comments)}, "
-            f"matched={len(matched_results)}, citizens={len(citizen_comments)}, "
-            f"officials={[m.full_name for m in matched_results]}"
-        )
+                    seen_citizen_ext_ids[ext_cit_id] = cit_int
 
-        await db.commit()
+                    if hash_key not in seen_citizen_hashes:
+                        seen_citizen_hashes.add(hash_key)
+                        citizen_comments.append(
+                            ParsedCitizenCommentItem(
+                                author_name=clean_author,
+                                comment_text=comment_body or "(Comentario ciudadano)",
+                            )
+                        )
 
-        return ImportCommentsBatchResponse(
-            success=True,
-            message=(
-                f"Se procesaron {len(parsed_comments)} comentarios de Facebook: "
-                f"{len(matched_results)} funcionarios municipales identificados y confirmados, "
-                f"{len(citizen_comments)} comentarios de ciudadanos guardados."
-            ),
-            publication_id=pub.id,
-            total_comments_parsed=len(parsed_comments),
-            matched_count=len(matched_results),
-            unmatched_citizens_count=len(citizen_comments),
-            matched_employees=matched_results,
-            citizen_comments=citizen_comments,
-            ambiguous_names=ambiguous_names[:50],
-        )
+            # Actualizar total de comentarios en la publicación
+            pub.meta_comments_total = max(getattr(pub, "meta_comments_total", 0) or 0, len(parsed_comments))
+
+            # Registrar auditoría formal
+            await record_audit_event(
+                db=db,
+                action=AuditAction.VERIFY,
+                entity_name="PublicationCommentsBatch",
+                entity_id=str(pub.id),
+                user_id=str(current_user.id),
+                user_email=current_user.email,
+                new_state={
+                    "publication_id": str(pub.id),
+                    "total_comments_parsed": len(parsed_comments),
+                    "matched_count": len(matched_results),
+                    "citizen_count": len(citizen_comments),
+                    "matched_employees": [m.full_name for m in matched_results],
+                },
+                correlation_id=cid,
+            )
+
+            logger.info(
+                f"IMPORT_COMMENTS_BATCH_SUCCESS: pub_id={pub.id}, parsed={len(parsed_comments)}, "
+                f"matched={len(matched_results)}, citizens={len(citizen_comments)}, "
+                f"officials={[m.full_name for m in matched_results]}"
+            )
+
+            await db.commit()
+
+            return ImportCommentsBatchResponse(
+                success=True,
+                message=(
+                    f"Se procesaron {len(parsed_comments)} comentarios de Facebook: "
+                    f"{len(matched_results)} funcionarios municipales identificados y confirmados, "
+                    f"{len(citizen_comments)} comentarios de ciudadanos guardados."
+                ),
+                publication_id=pub.id,
+                total_comments_parsed=len(parsed_comments),
+                matched_count=len(matched_results),
+                unmatched_citizens_count=len(citizen_comments),
+                matched_employees=matched_results,
+                citizen_comments=citizen_comments,
+                ambiguous_names=ambiguous_names[:50],
+            )
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as exc:
+            await db.rollback()
+            logger.error(
+                f"IMPORT_COMMENTS_BATCH_ERROR: pub_id={req.publication_id}, error={exc}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al procesar lote de comentarios: {str(exc)}",
+            )
 
 
