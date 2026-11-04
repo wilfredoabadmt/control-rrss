@@ -413,23 +413,21 @@ class EmployeeService:
         """
         Verifica si un usuario tiene visibilidad institucional global sobre todas las
         direcciones y unidades (Superadmin, Visor institucional, MAE o workspace GLOBAL).
-        Si el usuario está configurado expresamente como AUTONOMOUS, prevalece el aislamiento individual.
+        Si el usuario está configurado expresamente como AUTONOMOUS y no posee un rol
+        de supervisión ejecutiva global (SUPER_ADMIN, VIEWER, MAE), prevalece el aislamiento individual.
         """
         if not current_user:
             return True
-        ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
-        if ws_type == "AUTONOMOUS":
-            return False
         if EmployeeService.is_global_superadmin(current_user):
             return True
         user_roles = {r.name for r in current_user.roles} if getattr(current_user, "roles", None) else set()
+        if UserRole.VIEWER.value in user_roles or UserRole.MAE.value in user_roles:
+            return True
+        ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
         if ws_type == "GLOBAL":
             return True
-        if (
-            UserRole.VIEWER.value in user_roles
-            or UserRole.MAE.value in user_roles
-        ):
-            return True
+        if ws_type == "AUTONOMOUS":
+            return False
         return False
 
     @staticmethod

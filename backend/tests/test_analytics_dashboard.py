@@ -759,3 +759,32 @@ async def test_analytics_area_isolation_and_dynamic_rankings(async_db: AsyncSess
     assert "Carla Flores" in res_unit.direction_rankings[0].direction
 
 
+
+
+@pytest.mark.asyncio
+async def test_analytics_viewer_role_has_full_global_visibility(async_db: AsyncSession, super_admin: User):
+    """
+    Verifica que un usuario con rol VIEWER (visualizador institucional)
+    tenga visibilidad global completa idéntica a la del superadmin,
+    sin recorte a cero de funcionarios ni métricas, independientemente
+    de su workspace_type o de no haber creado registros personalmente.
+    """
+    role_viewer = Role(id=uuid.uuid4(), name=UserRole.VIEWER.value, description="Visualizador")
+    viewer_user = User(
+        id=uuid.uuid4(),
+        email="visualizador.test@elalto.gob.bo",
+        full_name="Visualizador Institucional Test",
+        password_hash="hash",
+        workspace_type="AUTONOMOUS",  # Inició como autónomo sin unidad
+        assigned_direction=None,
+        assigned_unit=None,
+        roles=[role_viewer],
+    )
+
+    overview_super = await AnalyticsService.get_overview(db=async_db, current_user=super_admin)
+    overview_viewer = await AnalyticsService.get_overview(db=async_db, current_user=viewer_user)
+
+    assert overview_viewer.kpis.total_employees == overview_super.kpis.total_employees
+    assert overview_viewer.kpis.total_reactions == overview_super.kpis.total_reactions
+    assert overview_viewer.kpis.total_comments == overview_super.kpis.total_comments
+    assert overview_viewer.available_secretarias == overview_super.available_secretarias

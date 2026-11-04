@@ -98,10 +98,11 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_direction VARCHAR(200);"))
                     await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_unit VARCHAR(200);"))
                     await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS workspace_type VARCHAR(30) DEFAULT 'UNIT';"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE lower(email) = 'admin@elalto.gob.bo';"))
+                    await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE lower(email) IN ('admin@elalto.gob.bo', 'visualizador@elalto.gob.bo');"))
                     await conn.execute(text("UPDATE users SET workspace_type = 'DIRECTION' WHERE workspace_type IS NULL AND assigned_direction IS NOT NULL AND assigned_unit IS NULL;"))
                     await conn.execute(text("UPDATE users SET workspace_type = 'UNIT' WHERE workspace_type IS NULL AND assigned_unit IS NOT NULL;"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'AUTONOMOUS' WHERE lower(email) != 'admin@elalto.gob.bo' AND (workspace_type IS NULL OR (assigned_direction IS NULL AND assigned_unit IS NULL));"))
+                    await conn.execute(text("UPDATE users SET workspace_type = 'AUTONOMOUS' WHERE lower(email) NOT IN ('admin@elalto.gob.bo', 'visualizador@elalto.gob.bo') AND (workspace_type IS NULL OR (assigned_direction IS NULL AND assigned_unit IS NULL));"))
+                    await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE id IN (SELECT ur.user_id FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE r.name IN ('SUPER_ADMIN', 'VIEWER', 'MAE'));"))
                     await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS created_by_user_id UUID;"))
                     await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS direction_name VARCHAR(200);"))
                     await conn.execute(text("UPDATE organizational_units SET name = 'Despacho Alcalde' WHERE lower(name) = 'despacho alcaldesa';"))
@@ -178,6 +179,9 @@ async def lifespan(app: FastAPI):
                 session.add(viewer_user)
                 await session.commit()
                 logger.info("viewer_seeded_successfully", email=viewer_email)
+            elif existing_viewer.workspace_type != "GLOBAL":
+                existing_viewer.workspace_type = "GLOBAL"
+                await session.commit()
 
             # Limpieza de publicaciones sintéticas heredadas para garantizar datos reales (Principio V)
             try:
