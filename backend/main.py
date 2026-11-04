@@ -159,6 +159,26 @@ async def lifespan(app: FastAPI):
                 existing_admin.workspace_type = "GLOBAL"
                 await session.commit()
 
+            # Sembrar usuario de demostración con rol exclusivo VIEWER
+            viewer_email = "visualizador@elalto.gob.bo"
+            stmt_v = select(User).where(User.email == viewer_email).options(selectinload(User.roles))
+            existing_viewer = (await session.execute(stmt_v)).scalar_one_or_none()
+            if not existing_viewer:
+                stmt_role_v = select(Role).where(Role.name == UserRole.VIEWER.value)
+                role_res_v = await session.execute(stmt_role_v)
+                viewer_role = role_res_v.scalar_one_or_none()
+                viewer_user = User(
+                    email=viewer_email,
+                    full_name="Visualizador Ejecutivo GAMEA",
+                    password_hash=hash_password("ViewerGamea2026!"),
+                    is_active=True,
+                    workspace_type="GLOBAL",
+                    roles=[viewer_role] if viewer_role else [],
+                )
+                session.add(viewer_user)
+                await session.commit()
+                logger.info("viewer_seeded_successfully", email=viewer_email)
+
             # Limpieza de publicaciones sintéticas heredadas para garantizar datos reales (Principio V)
             try:
                 await session.execute(

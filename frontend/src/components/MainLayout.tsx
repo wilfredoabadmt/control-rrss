@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar, ActivePage } from './Sidebar';
+import { useAuth } from '../context/AuthContext';
+import { UserRole } from '../types';
 import { Header } from './Header';
 import { SectionManualModal } from './SectionManualModal';
 import { SectionGuideBanner } from './SectionGuideBanner';
@@ -10,7 +12,28 @@ interface MainLayoutProps {
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-  const [activePage, setActivePage] = useState<ActivePage>('dashboard');
+  const { user, hasRole } = useAuth();
+  const isExclusiveViewer = Boolean(
+    user?.roles?.includes(UserRole.VIEWER) &&
+      !hasRole([
+        UserRole.SUPER_ADMIN,
+        UserRole.MAE,
+        UserRole.DIRECTOR,
+        UserRole.COMMUNICATIONS_LEAD,
+        UserRole.ANALYST,
+        UserRole.OPERATOR,
+        UserRole.AUDITOR,
+      ])
+  );
+
+  const [activePage, setActivePage] = useState<ActivePage>(() => (isExclusiveViewer ? 'analytics' : 'dashboard'));
+
+  // Asegurar que si el usuario es exclusivamente visualizador se mantenga en el tablero ejecutivo
+  useEffect(() => {
+    if (isExclusiveViewer && (activePage === 'dashboard' || activePage === 'admin' || activePage === 'employees')) {
+      setActivePage('analytics');
+    }
+  }, [isExclusiveViewer, activePage]);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isManualOpen, setIsManualOpen] = useState<boolean>(false);
 
@@ -28,7 +51,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const pageTitles: Record<ActivePage, string> = {
     dashboard: 'Panel General de Monitoreo',
     'mae-dashboard': 'Tablero de Decisiones MAE',
-    analytics: 'Analítica y Cumplimiento de Personal',
+    analytics: 'Tablero Ejecutivo Estadístico',
     interactions: 'Registro y Verificación de Reacciones',
     publications: 'Publicaciones Oficiales Monitoreadas',
     employees: 'Padrón de Personal Municipal',

@@ -4,7 +4,7 @@ Principio XVII: Los 7 roles constitucionales del sistema
 """
 
 
-from modules.iam.models import Permission, Role
+from modules.iam.models import Permission, Role, role_permissions
 from modules.shared.enums import UserRole
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,9 +79,63 @@ INITIAL_PERMISSIONS = [
     {"code": "system:configure", "description": "Modificar parámetros del sistema y conectores"},
 ]
 
+ROLE_DEFAULT_PERMISSIONS: dict[str, list[str]] = {
+    UserRole.SUPER_ADMIN.value: [p["code"] for p in INITIAL_PERMISSIONS],
+    UserRole.MAE.value: [
+        "dashboard:view_executive",
+        "reports:generate",
+        "audit:read",
+        "publications:read",
+        "employees:read",
+    ],
+    UserRole.AUDITOR.value: [
+        "audit:read",
+        "audit:export",
+        "dashboard:view_executive",
+        "reports:generate",
+        "publications:read",
+        "employees:read",
+    ],
+    UserRole.DIRECTOR.value: [
+        "dashboard:view_executive",
+        "dashboard:view_operational",
+        "reports:generate",
+        "publications:read",
+        "employees:read",
+    ],
+    UserRole.COMMUNICATIONS_LEAD.value: [
+        "campaigns:manage",
+        "publications:read",
+        "publications:manage",
+        "dashboard:view_executive",
+        "dashboard:view_operational",
+        "reports:generate",
+        "employees:read",
+    ],
+    UserRole.ANALYST.value: [
+        "verifications:execute",
+        "publications:read",
+        "dashboard:view_executive",
+        "dashboard:view_operational",
+        "reports:generate",
+        "employees:read",
+    ],
+    UserRole.OPERATOR.value: [
+        "publications:read",
+        "publications:manage",
+        "dashboard:view_operational",
+        "employees:read",
+    ],
+    UserRole.VIEWER.value: [
+        "dashboard:view_executive",
+        "reports:generate",
+        "publications:read",
+    ],
+}
+
 
 async def seed_roles_and_permissions(session: AsyncSession) -> list[Role]:
-    """Crea los roles y permisos constitucionales si aún no existen."""
+    """Crea los roles y permisos constitucionales si aún no existen y asocia los permisos predeterminados."""
     # 1. Sembrar Permisos
     db_permissions = {}
     for perm_data in INITIAL_PERMISSIONS:
@@ -105,6 +159,21 @@ async def seed_roles_and_permissions(session: AsyncSession) -> list[Role]:
             session.add(role)
             await session.flush()
         seeded_roles.append(role)
+
+    # 3. Asociar Permisos Canónicos a cada Rol
+    for role in seeded_roles:
+        expected_codes = ROLE_DEFAULT_PERMISSIONS.get(role.name, [])
+        for code in expected_codes:
+            if code in db_permissions:
+                perm_id = db_permissions[code].id
+                chk = select(role_permissions.c.role_id).where(
+                    role_permissions.c.role_id == role.id,
+                    role_permissions.c.permission_id == perm_id,
+                )
+                if not (await session.execute(chk)).scalar_one_or_none():
+                    await session.execute(
+                        role_permissions.insert().values(role_id=role.id, permission_id=perm_id)
+                    )
 
     await session.commit()
     return seeded_roles

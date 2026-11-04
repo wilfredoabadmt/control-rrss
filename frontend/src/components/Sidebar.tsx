@@ -56,6 +56,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'dashboard',
       label: 'Panel General',
       icon: Activity,
+      roles: [
+        UserRole.SUPER_ADMIN,
+        UserRole.DIRECTOR,
+        UserRole.COMMUNICATIONS_LEAD,
+        UserRole.ANALYST,
+        UserRole.OPERATOR,
+        UserRole.AUDITOR,
+      ],
     },
     {
       id: 'mae-dashboard',
@@ -65,9 +73,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'analytics',
-      label: 'Analítica y Cumplimiento',
+      label: 'Tablero Ejecutivo Estadístico',
       icon: BarChart3,
-      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR, UserRole.AUDITOR],
+      roles: [
+        UserRole.SUPER_ADMIN,
+        UserRole.DIRECTOR,
+        UserRole.COMMUNICATIONS_LEAD,
+        UserRole.ANALYST,
+        UserRole.OPERATOR,
+        UserRole.AUDITOR,
+        UserRole.VIEWER,
+      ],
     },
     {
       id: 'interactions',
@@ -79,7 +95,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'publications',
       label: 'Publicaciones Oficiales',
       icon: Radio,
-      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR, UserRole.VIEWER],
+      roles: [UserRole.SUPER_ADMIN, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.OPERATOR],
     },
     {
       id: 'employees',

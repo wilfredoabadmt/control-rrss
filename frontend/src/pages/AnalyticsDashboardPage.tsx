@@ -39,6 +39,8 @@ import { TimelineChart } from '../components/charts/TimelineChart';
 import { PlatformComparisonBar } from '../components/charts/PlatformComparisonBar';
 import { ComplianceGauge } from '../components/charts/ComplianceGauge';
 import { useAnimatedNumber } from '../utils/useAnimatedNumber';
+import { useAuth } from '../context/AuthContext';
+import { UserRole } from '../types';
 import {
   LISTA_SECRETARIAS,
   getDireccionesBySecretaria,
@@ -61,6 +63,20 @@ const AnimatedCounter: React.FC<{ value: number; decimals?: number; suffix?: str
 };
 
 export const AnalyticsDashboardPage: React.FC = () => {
+  const { user, hasRole } = useAuth();
+  const canPurge = hasRole([UserRole.SUPER_ADMIN, UserRole.DIRECTOR]);
+  const isViewerOnly = Boolean(
+    user?.roles?.includes(UserRole.VIEWER) &&
+      !hasRole([
+        UserRole.SUPER_ADMIN,
+        UserRole.DIRECTOR,
+        UserRole.COMMUNICATIONS_LEAD,
+        UserRole.ANALYST,
+        UserRole.OPERATOR,
+        UserRole.AUDITOR,
+      ])
+  );
+
   // Pestaña activa principal
   const [activeTab, setActiveTab] = useState<'overview' | 'comments'>('overview');
 
@@ -441,28 +457,30 @@ export const AnalyticsDashboardPage: React.FC = () => {
             <span>{exportingExcel ? 'Generando Excel...' : 'Exportar Excel Oficial'}</span>
           </button>
 
-          <button
-            onClick={handlePurgeTestData}
-            disabled={purgingData}
-            title="Eliminar interacciones y verificaciones de prueba para iniciar en blanco"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: 'var(--radius-md)',
-              background: 'rgba(239, 68, 68, 0.15)',
-              border: '1px solid rgba(239, 68, 68, 0.4)',
-              color: '#f87171',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-          >
-            <Trash2 size={14} />
-            <span>{purgingData ? 'Limpiando...' : 'Limpiar Datos de Prueba'}</span>
-          </button>
+          {canPurge && (
+            <button
+              onClick={handlePurgeTestData}
+              disabled={purgingData}
+              title="Eliminar interacciones y verificaciones de prueba para iniciar en blanco"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: 'var(--radius-md)',
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                color: '#f87171',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              <Trash2 size={14} />
+              <span>{purgingData ? 'Limpiando...' : 'Limpiar Datos de Prueba'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -560,6 +578,8 @@ export const AnalyticsDashboardPage: React.FC = () => {
               { label: '7 días', val: 7 },
               { label: '15 días', val: 15 },
               { label: '30 días', val: 30 },
+              { label: '60 días', val: 60 },
+              { label: '90 días', val: 90 },
               { label: 'Histórico', val: null },
             ].map((p) => (
               <button
