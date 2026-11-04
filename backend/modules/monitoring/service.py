@@ -892,7 +892,7 @@ class MonitoringHubService:
 
         if current_user:
             from modules.employees.service import EmployeeService
-            if not EmployeeService.is_global_superadmin(current_user):
+            if not EmployeeService.has_global_visibility(current_user):
                 ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
                 user_unit = getattr(current_user, "assigned_unit", None)
                 user_dir = getattr(current_user, "assigned_direction", None)

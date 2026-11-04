@@ -409,11 +409,35 @@ class EmployeeService:
         return ws_type == "GLOBAL"
 
     @staticmethod
+    def has_global_visibility(current_user: User | None) -> bool:
+        """
+        Verifica si un usuario tiene visibilidad institucional global sobre todas las
+        direcciones y unidades (Superadmin, Visor institucional, MAE o workspace GLOBAL).
+        Si el usuario está configurado expresamente como AUTONOMOUS, prevalece el aislamiento individual.
+        """
+        if not current_user:
+            return True
+        ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
+        if ws_type == "AUTONOMOUS":
+            return False
+        if EmployeeService.is_global_superadmin(current_user):
+            return True
+        user_roles = {r.name for r in current_user.roles} if getattr(current_user, "roles", None) else set()
+        if ws_type == "GLOBAL":
+            return True
+        if (
+            UserRole.VIEWER.value in user_roles
+            or UserRole.MAE.value in user_roles
+        ):
+            return True
+        return False
+
+    @staticmethod
     def is_accessible_by_user(emp: Employee, current_user: User | None) -> bool:
         """Verifica si un funcionario pertenece al espacio de trabajo accesible por el usuario (REQ-EMP-005)."""
         if not current_user:
             return True
-        if EmployeeService.is_global_superadmin(current_user):
+        if EmployeeService.has_global_visibility(current_user):
             return True
 
         # Si el usuario es el creador directo, siempre tiene acceso a su funcionario
@@ -793,7 +817,7 @@ class EmployeeService:
 
         # Aislamiento por espacio de trabajo (Workspaces & Tenancy Scoping - REQ-IAM-005, REQ-EMP-005)
         # Aislamiento por espacio de trabajo (Workspaces & Tenancy Scoping - REQ-IAM-005, REQ-EMP-005)
-        if current_user and not EmployeeService.is_global_superadmin(current_user):
+        if current_user and not EmployeeService.has_global_visibility(current_user):
             ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
             user_unit = getattr(current_user, "assigned_unit", None)
             user_dir = getattr(current_user, "assigned_direction", None)

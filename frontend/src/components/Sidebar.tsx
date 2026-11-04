@@ -66,12 +66,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
-      id: 'mae-dashboard',
-      label: 'Decisiones MAE',
-      icon: Crown,
-      roles: [UserRole.SUPER_ADMIN, UserRole.MAE, UserRole.VIEWER],
-    },
-    {
       id: 'analytics',
       label: 'Tablero Ejecutivo Estadístico',
       icon: BarChart3,

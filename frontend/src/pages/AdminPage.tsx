@@ -150,13 +150,13 @@ export const ROLE_DEFINITIONS: RoleMeta[] = [
     color: '#94a3b8',
     bg: 'rgba(148, 163, 184, 0.1)',
     border: 'rgba(148, 163, 184, 0.35)',
-    summary: 'Acceso exclusivo a la sección de Analítica y al Tablero de Decisiones MAE en modo solo lectura.',
+    summary: 'Acceso exclusivo al Tablero Ejecutivo Estadístico (Analítica y Cumplimiento) en modo solo lectura.',
     functions: [
       'Visualización del Tablero de Analítica y Cumplimiento de Acompañamiento institucional.',
-      'Acceso al Tablero Ejecutivo de Decisiones MAE para supervisión de gabinete.',
       'Consulta del padrón estadístico de participación por secretarías, direcciones y unidades.',
+      'Acceso a métricas de cumplimiento, gráficos de distribución taxonómica y series temporales.',
     ],
-    restrictions: 'Sin acceso a Publicaciones Oficiales, Reportes Oficiales, Padrón de Personal, Auditoría ni Configuración.',
+    restrictions: 'Sin acceso a Decisiones MAE, Publicaciones Oficiales, Reportes Oficiales, Padrón de Personal, Auditoría ni Configuración.',
   },
 ];
 

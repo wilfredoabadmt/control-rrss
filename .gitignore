@@ -143,3 +143,5 @@ logs/
 .claude/*
 !.claude/rsc-bootstrap.mjs
 !.claude/settings.json
+
+Anthropic-Cybersecurity-Skills/

@@ -28,9 +28,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const [activePage, setActivePage] = useState<ActivePage>(() => (isExclusiveViewer ? 'analytics' : 'dashboard'));
 
-  // Asegurar que si el usuario es exclusivamente visualizador se mantenga entre Analítica y Decisiones MAE
+  // Asegurar que si el usuario es exclusivamente visualizador se mantenga en el Tablero Ejecutivo
   useEffect(() => {
-    if (isExclusiveViewer && activePage !== 'analytics' && activePage !== 'mae-dashboard') {
+    if (isExclusiveViewer && activePage !== 'analytics') {
       setActivePage('analytics');
     }
   }, [isExclusiveViewer, activePage]);
