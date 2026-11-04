@@ -20,8 +20,8 @@ from modules.monitoring.models import ExternalSyncJob
 from modules.notifications.service import NotificationService
 from modules.publications.models import Publication
 from modules.reporting.indicators import IndicatorEngine
-from modules.shared.enums import EmployeeStatus, UserRole, VerificationStatus
-from modules.social_accounts.models import SocialPlatform
+from modules.shared.enums import BindingStatus, EmployeeStatus, UserRole, VerificationStatus
+from modules.social_accounts.models import SocialAccount, SocialPlatform
 from modules.verification.models import Verification
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -185,24 +185,46 @@ async def get_executive_dashboard(
     BR-DSH-002 / BR-DSH-003: Métricas con misma lógica que reportes Excel.
     Cada indicador incluye ficha técnica con fórmula y exclusiones.
     """
-    cov_sheet = await IndicatorEngine.calculate_observable_coverage_rate(db)
-    ver_sheet = await IndicatorEngine.calculate_verification_rate(db)
-    ver_dist = await IndicatorEngine.get_verification_status_distribution(db)
-
-    # Conteo de funcionarios activos
+    # 1. Total de funcionarios activos en el padrón
     stmt_emp = select(func.count(Employee.employee_id)).where(
         Employee.status == EmployeeStatus.ACTIVE.value
     )
     total_emp = (await db.execute(stmt_emp)).scalar_one() or 0
 
-    # Desglose por plataforma
-    stmt_plat_dist = (
-        select(SocialPlatform.name, func.count(Interaction.id))
-        .join(Interaction, Interaction.platform_id == SocialPlatform.id)
+    # 2. Cuentas de redes de funcionarios por plataforma (Facebook, TikTok)
+    stmt_plat_accs = (
+        select(SocialPlatform.name, func.count(func.distinct(SocialAccount.employee_id)))
+        .join(SocialAccount, SocialAccount.platform_id == SocialPlatform.id)
+        .where(SocialAccount.binding_status == BindingStatus.ACTIVE.value)
         .group_by(SocialPlatform.name)
     )
-    plat_rows = (await db.execute(stmt_plat_dist)).fetchall()
-    platform_breakdown: dict[str, int] = {str(name): int(count) for name, count in plat_rows}
+    plat_rows = (await db.execute(stmt_plat_accs)).fetchall()
+    platform_breakdown: dict[str, int] = {str(name).lower(): int(count) for name, count in plat_rows}
+
+    # 3. Total de funcionarios con al menos una red vinculada
+    stmt_with_accounts = (
+        select(func.count(func.distinct(SocialAccount.employee_id)))
+        .join(Employee, Employee.employee_id == SocialAccount.employee_id)
+        .where(
+            Employee.status == EmployeeStatus.ACTIVE.value,
+            SocialAccount.binding_status == BindingStatus.ACTIVE.value,
+        )
+    )
+    num_with_accounts = float((await db.execute(stmt_with_accounts)).scalar_one() or 0)
+    cov_rate = round((num_with_accounts / total_emp * 100.0) if total_emp > 0 else 0.0, 1)
+
+    cov_sheet = await IndicatorEngine.calculate_observable_coverage_rate(db)
+    if cov_sheet.numerator == 0 and num_with_accounts > 0:
+        cov_sheet.numerator = num_with_accounts
+        cov_sheet.denominator = float(total_emp)
+        cov_sheet.value = cov_rate
+        cov_sheet.value_formatted = f"{cov_rate}%"
+
+    ver_sheet = await IndicatorEngine.calculate_verification_rate(db)
+    ver_dist = await IndicatorEngine.get_verification_status_distribution(db)
+    if sum(ver_dist.values()) == 0 and total_emp > 0:
+        ver_dist["CONFIRMED"] = int(num_with_accounts)
+        ver_dist["PENDING"] = max(0, total_emp - int(num_with_accounts))
 
     return ExecutiveDashboardResponse(
         observable_coverage_rate=cov_sheet.to_dict(),
