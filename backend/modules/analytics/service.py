@@ -1163,11 +1163,11 @@ class AnalyticsService:
                 last_name = ""
 
             likes_count = emp.reactions_by_type.get("LIKE", 0)
-            reacted_val = emp.participated_posts_count if emp.participated_posts_count > 0 else (emp.total_reactions if emp.total_reactions > 0 else None)
-            likes_val = likes_count if likes_count > 0 else (reacted_val if reacted_val is not None else None)
-            comments_val = emp.total_comments if emp.total_comments > 0 else None
-            shares_val = emp.total_shares if emp.total_shares > 0 else None
-            obs = f"{emp.position} ({emp.direction})" if emp.direction else emp.position
+            reacted_val = emp.participated_posts_count if emp.participated_posts_count > 0 else (emp.total_reactions if emp.total_reactions > 0 else 0)
+            likes_val = likes_count if likes_count > 0 else reacted_val
+            comments_val = emp.total_comments if emp.total_comments > 0 else 0
+            shares_val = emp.total_shares if emp.total_shares > 0 else 0
+            obs = f"{emp.position} ({emp.direction})" if emp.direction else (emp.position or "")
 
             ws_raw.append([
                 first_name,
@@ -1181,7 +1181,7 @@ class AnalyticsService:
             ])
 
         if not emp_items:
-            ws_raw.append(["—", "—", None, None, None, None, "", total_available_posts])
+            ws_raw.append(["Sin funcionarios", "—", 0, 0, 0, 0, "", total_available_posts])
 
         # Formato del banner dinámico de Dashboard cumplimiento
         days_label = f"ÚLTIMOS {days} DÍAS" if days and days > 0 else "HISTÓRICO COMPLETO"
@@ -1269,13 +1269,13 @@ class AnalyticsService:
 
             ws_dash[f"A{r}"] = f'=TRIM(Hoja1!A{raw_r}&" "&Hoja1!B{raw_r})'
             ws_dash[f"B{r}"] = "=$B$5"
-            ws_dash[f"C{r}"] = f'=IF(Hoja1!C{raw_r}="","",Hoja1!C{raw_r})'
-            ws_dash[f"D{r}"] = f'=IF(C{r}="","",IFERROR(C{r}/B{r},0))'
+            ws_dash[f"C{r}"] = f'=IF(Hoja1!C{raw_r}="",0,Hoja1!C{raw_r})'
+            ws_dash[f"D{r}"] = f'=IFERROR(C{r}/B{r},0)'
             ws_dash[f"D{r}"].number_format = "0.00%"
-            ws_dash[f"E{r}"] = f'=IF(C{r}="","",MAX(0,B{r}-C{r}))'
-            ws_dash[f"F{r}"] = f'=IF(Hoja1!D{raw_r}="","",Hoja1!D{raw_r})'
-            ws_dash[f"G{r}"] = f'=IF(Hoja1!E{raw_r}="","",Hoja1!E{raw_r})'
-            ws_dash[f"H{r}"] = f'=IF(Hoja1!F{raw_r}="","",Hoja1!F{raw_r})'
+            ws_dash[f"E{r}"] = f'=MAX(0,B{r}-C{r})'
+            ws_dash[f"F{r}"] = f'=IF(Hoja1!D{raw_r}="",0,Hoja1!D{raw_r})'
+            ws_dash[f"G{r}"] = f'=IF(Hoja1!E{raw_r}="",0,Hoja1!E{raw_r})'
+            ws_dash[f"H{r}"] = f'=IF(Hoja1!F{raw_r}="",0,Hoja1!F{raw_r})'
 
             for col_l in ["A", "B", "C", "D", "E", "F", "G", "H"]:
                 cell = ws_dash[f"{col_l}{r}"]
@@ -1296,23 +1296,23 @@ class AnalyticsService:
 
         foot_r2 = foot_r1 + 1
         ws_dash.merge_cells(f"A{foot_r2}:H{foot_r2}")
-        ws_dash[f"A{foot_r2}"] = "Sin dato se deja en blanco, no se interpreta automáticamente como cero."
+        ws_dash[f"A{foot_r2}"] = "Los servidores públicos sin registro de interacción se contabilizan con valor 0 (cero)."
         ws_dash[f"A{foot_r2}"].font = Font(name="Calibri", size=10, color="64748B")
         ws_dash[f"A{foot_r2}"].alignment = Alignment(horizontal="left", vertical="center")
         ws_dash.row_dimensions[foot_r2].height = 22.0
 
-        # Gráfico de barras horizontal nativo para impresión
+        # Gráfico de barras vertical (columnas) nativo para impresión
         if emp_items:
             chart = BarChart()
-            chart.type = "bar"
+            chart.type = "col"
             chart.grouping = "clustered"
             chart.gapWidth = 150
             chart.style = 2
             chart.y_axis.number_format = "0.00%"
             chart.x_axis.tickLblPos = "nextTo"
             chart.legend.legendPos = "b"
-            chart.width = 20
-            chart.height = max(10, min(35, len(emp_items) * 0.45 + 5))
+            chart.width = max(20, min(42, len(emp_items) * 1.4 + 6))
+            chart.height = 14
 
             data = Reference(ws_dash, min_col=4, min_row=9, max_row=last_row_data)
             cats = Reference(ws_dash, min_col=1, min_row=10, max_row=last_row_data)

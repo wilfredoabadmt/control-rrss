@@ -314,6 +314,14 @@ async def test_analytics_export_excel(async_db: AsyncSession, super_admin: User)
     assert dash_sheet.page_setup.orientation == "landscape"
     assert dash_sheet.page_setup.fitToWidth == 1
 
+    # Verificar que el gráfico sea de barras verticales (columnas: 'col')
+    if dash_sheet._charts:
+        assert dash_sheet._charts[0].type == "col"
+
+    # Verificar que fórmulas reemplacen vacíos con 0
+    assert dash_sheet["C10"].value == '=IF(Hoja1!C2="",0,Hoja1!C2)'
+    assert dash_sheet["D10"].value == '=IFERROR(C10/B10,0)'
+
     summary_sheet = wb["Resumen Ejecutivo"]
     assert "GOBIERNO AUTÓNOMO MUNICIPAL DE EL ALTO" in str(summary_sheet["A1"].value)
 
