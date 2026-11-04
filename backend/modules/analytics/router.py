@@ -64,6 +64,7 @@ async def get_analytics_overview(
     description="Permite buscar por nombre/CI, filtrar por secretaría, dirección, unidad, publicación, plataforma y estado de participación.",
 )
 async def get_analytics_employees(
+    days: int | None = Query(None, description="Ventana de tiempo relativa en días (ej. 7, 15, 30, 60, 90)"),
     search: str | None = Query(None, description="Término de búsqueda (Nombre o CI)"),
     secretaria: str | None = Query(None, description="Filtrar por Secretaría Municipal o Despacho"),
     direction: str | None = Query(None, description="Filtrar por Dirección dependiente"),
@@ -88,6 +89,7 @@ async def get_analytics_employees(
         participation_status=participation_status,
         page=page,
         page_size=page_size,
+        days=days,
     )
 
 
@@ -128,6 +130,7 @@ async def get_analytics_comments(
     description="Genera y descarga un libro de trabajo Excel con carátula ejecutiva y tabla detallada de fiscalización.",
 )
 async def export_analytics_excel(
+    days: int | None = Query(None, description="Ventana de tiempo en días (ej. 7, 15, 30, 60, 90)"),
     secretaria: str | None = Query(None, description="Filtrar por Secretaría"),
     direction: str | None = Query(None, description="Filtrar por Dirección"),
     unit: str | None = Query(None, description="Filtrar por Unidad"),
@@ -144,6 +147,7 @@ async def export_analytics_excel(
         unit=unit,
         publication_id=publication_id,
         platform_name=platform_name,
+        days=days,
     )
     timestamp_str = datetime.now(UTC).strftime("%Y%m%d_%H%M")
     filename = f"GAMEA_Analitica_Reacciones_{timestamp_str}.xlsx"

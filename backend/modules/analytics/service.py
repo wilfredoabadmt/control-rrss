@@ -33,6 +33,7 @@ from modules.shared.enums import BindingStatus, DataOriginType, VerificationStat
 from modules.social_accounts.models import SocialAccount
 from modules.verification.models import Verification
 from openpyxl import Workbook
+from openpyxl.chart import BarChart, Reference
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from sqlalchemy import func, or_, select
@@ -641,7 +642,7 @@ class AnalyticsService:
             row_had_activity = False
 
             for p_post in r.posts:
-                if active_pub_ids and p_post.publication_id not in active_pub_ids:
+                if p_post.publication_id not in active_pub_ids:
                     continue
 
                 has_reaction = bool(p_post.reaction_type)
@@ -853,6 +854,9 @@ class AnalyticsService:
         participation_status: str | None = "ALL",
         page: int = 1,
         page_size: int = 20,
+        days: int | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> AnalyticsEmployeesPageResponse:
         """
         Retorna la tabla paginada y detallada de funcionarios con filtrado jerárquico tridimensional.
@@ -865,6 +869,10 @@ class AnalyticsService:
             current_user=current_user,
             max_posts=50,
         )
+
+        if days and days > 0:
+            date_to = datetime.now(UTC)
+            date_from = date_to - timedelta(days=days)
 
         all_rows = matrix.rows or []
 
@@ -889,6 +897,26 @@ class AnalyticsService:
                 if p.publication_id not in unique_posts_dict:
                     unique_posts_dict[p.publication_id] = p
         pubs = list(unique_posts_dict.values())
+
+        if date_from or date_to:
+            filtered_pub_ids = set()
+            for p in pubs:
+                p_dt = p.published_at or getattr(p, "created_at", None)
+                if not p_dt:
+                    filtered_pub_ids.add(p.publication_id)
+                    continue
+                if p_dt.tzinfo is None:
+                    p_dt = p_dt.replace(tzinfo=UTC)
+                if date_from and p_dt < date_from:
+                    continue
+                if date_to and p_dt > date_to:
+                    continue
+                filtered_pub_ids.add(p.publication_id)
+            if filtered_pub_ids:
+                pubs = [p for p in pubs if p.publication_id in filtered_pub_ids]
+            elif pubs and (date_from or date_to):
+                pubs = []
+
         total_available_posts = len(pubs)
         active_pub_ids = {p.publication_id for p in pubs}
 
@@ -1053,6 +1081,7 @@ class AnalyticsService:
         unit: str | None = None,
         publication_id: uuid.UUID | None = None,
         platform_name: str | None = None,
+        days: int | None = None,
     ) -> bytes:
         """
         Genera un informe Excel (.xlsx) oficial con carátula ejecutiva y detalle analítico por secretaría y dirección.
@@ -1065,6 +1094,7 @@ class AnalyticsService:
             unit=unit,
             publication_id=publication_id,
             platform_name=platform_name,
+            days=days,
         )
 
         emp_table = await cls.get_employees_table(
@@ -1075,6 +1105,7 @@ class AnalyticsService:
             unit=unit,
             publication_id=publication_id,
             platform_name=platform_name,
+            days=days,
             page=1,
             page_size=10000,
         )
@@ -1095,9 +1126,234 @@ class AnalyticsService:
         thin_side = Side(border_style="thin", color="CBD5E1")
         thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
 
-        # 1. Hoja Resumen Ejecutivo
-        ws_kpis = wb.active
-        ws_kpis.title = "Resumen Ejecutivo"
+        # =========================================================================
+        # 1. HOJA MODELO: Dashboard cumplimiento (Diseño Ejecutivo Imprimible)
+        # =========================================================================
+        ws_dash = wb.active
+        ws_dash.title = "Dashboard cumplimiento"
+
+        # 2. Hoja de Datos Crudos para Fórmulas (Hoja1)
+        ws_raw = wb.create_sheet(title="Hoja1")
+        raw_headers = [
+            "NOMBRE ",
+            "APELLIDO",
+            "PUBLICACIONES A LAS QUE REACCIONO ",
+            "LIKE",
+            "COMENTA",
+            "COMPARTE",
+            "OBSERVACIONES",
+            "TOTAL DE PUBLICACIONES COMPARTIDAD PARA REACCIONAR ",
+        ]
+        ws_raw.append(raw_headers)
+
+        total_available_posts = overview.kpis.total_publications
+        emp_items = emp_table.items
+
+        for idx, emp in enumerate(emp_items):
+            raw_r = idx + 2
+            parts = (emp.full_name or "").strip().split()
+            if len(parts) >= 2:
+                first_name = parts[0]
+                last_name = " ".join(parts[1:])
+            elif len(parts) == 1:
+                first_name = parts[0]
+                last_name = ""
+            else:
+                first_name = emp.employee_id
+                last_name = ""
+
+            likes_count = emp.reactions_by_type.get("LIKE", 0)
+            reacted_val = emp.participated_posts_count if emp.participated_posts_count > 0 else (emp.total_reactions if emp.total_reactions > 0 else None)
+            likes_val = likes_count if likes_count > 0 else (reacted_val if reacted_val is not None else None)
+            comments_val = emp.total_comments if emp.total_comments > 0 else None
+            shares_val = emp.total_shares if emp.total_shares > 0 else None
+            obs = f"{emp.position} ({emp.direction})" if emp.direction else emp.position
+
+            ws_raw.append([
+                first_name,
+                last_name,
+                reacted_val,
+                likes_val,
+                comments_val,
+                shares_val,
+                obs,
+                total_available_posts if raw_r == 2 else None,
+            ])
+
+        if not emp_items:
+            ws_raw.append(["—", "—", None, None, None, None, "", total_available_posts])
+
+        # Formato del banner dinámico de Dashboard cumplimiento
+        days_label = f"ÚLTIMOS {days} DÍAS" if days and days > 0 else "HISTÓRICO COMPLETO"
+        if unit and unit != "ALL":
+            hierarchy_label = f"UNIDAD: {unit.upper()}"
+        elif direction and direction != "ALL":
+            hierarchy_label = f"DIRECCIÓN: {direction.upper()}"
+        elif secretaria and secretaria != "ALL":
+            hierarchy_label = f"SECRETARÍA: {secretaria.upper()}"
+        else:
+            hierarchy_label = "GOBIERNO AUTÓNOMO MUNICIPAL DE EL ALTO"
+
+        banner_title = f"{hierarchy_label} | CUMPLIMIENTO DE REACCIONES ({days_label})"
+
+        # Renglones 1-2: Banner principal
+        ws_dash.merge_cells("A1:H2")
+        ws_dash["A1"] = banner_title
+        ws_dash["A1"].font = Font(name="Calibri", size=16, bold=True, color="FFFFFF")
+        ws_dash["A1"].fill = PatternFill(start_color="14243A", end_color="14243A", fill_type="solid")
+        ws_dash["A1"].alignment = Alignment(horizontal="center", vertical="center")
+        ws_dash.row_dimensions[1].height = 25.0
+        ws_dash.row_dimensions[2].height = 25.0
+
+        # Renglón 3: Subtítulo metodológico
+        ws_dash.merge_cells("A3:H3")
+        ws_dash["A3"] = "Base individual: publicaciones a las que reaccionó cada integrante / publicaciones compartidas para reaccionar."
+        ws_dash["A3"].font = Font(name="Calibri", size=10, bold=False, color="34445A")
+        ws_dash["A3"].fill = PatternFill(start_color="E8EFF7", end_color="E8EFF7", fill_type="solid")
+        ws_dash["A3"].alignment = Alignment(horizontal="left", vertical="center")
+        ws_dash.row_dimensions[3].height = 26.0
+
+        # Renglón 5: Tarjetas ejecutivas KPI
+        ws_dash.row_dimensions[5].height = 28.0
+        ws_dash["A5"] = "TOTAL PUBLICACIONES DISPONIBLES"
+        ws_dash["A5"].font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        ws_dash["A5"].fill = PatternFill(start_color="233C59", end_color="233C59", fill_type="solid")
+        ws_dash["A5"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws_dash["B5"] = "=Hoja1!H2"
+        ws_dash["B5"].font = Font(name="Calibri", size=15, bold=True, color="11644E")
+        ws_dash["B5"].fill = PatternFill(start_color="DBF1EB", end_color="DBF1EB", fill_type="solid")
+        ws_dash["B5"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws_dash["G5"] = "PERSONAS REGISTRADAS"
+        ws_dash["G5"].font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        ws_dash["G5"].fill = PatternFill(start_color="233C59", end_color="233C59", fill_type="solid")
+        ws_dash["G5"].alignment = Alignment(horizontal="center", vertical="center")
+
+        last_row_data = max(10, 9 + (len(emp_items) if emp_items else 1))
+        ws_dash["H5"] = f"=COUNT(C10:C{last_row_data})"
+        ws_dash["H5"].font = Font(name="Calibri", size=15, bold=True, color="11644E")
+        ws_dash["H5"].fill = PatternFill(start_color="DBF1EB", end_color="DBF1EB", fill_type="solid")
+        ws_dash["H5"].alignment = Alignment(horizontal="center", vertical="center")
+
+        # Renglón 7: Contexto y fecha
+        ws_dash["A7"] = f"Dependencia: {hierarchy_label}  |  Ventana evaluada: {days_label}  |  Generado: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}"
+        ws_dash["A7"].font = Font(name="Calibri", size=9, italic=True, color="64748B")
+
+        # Renglón 9: Cabeceras de tabla
+        dash_headers = [
+            "INTEGRANTE",
+            "PUBLICACIONES DISPONIBLES",
+            "REACCIONÓ A",
+            "CUMPLIMIENTO",
+            "PENDIENTES",
+            "LIKE",
+            "COMENTÓ",
+            "COMPARTIÓ",
+        ]
+        ws_dash.row_dimensions[9].height = 29.0
+        for col_idx, h in enumerate(dash_headers, start=1):
+            c_cell = ws_dash.cell(row=9, column=col_idx, value=h)
+            c_cell.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+            c_cell.fill = PatternFill(start_color="245B79", end_color="245B79", fill_type="solid")
+            c_cell.alignment = Alignment(horizontal="center", vertical="center")
+            c_cell.border = thin_border
+
+        # Filas de funcionarios
+        num_rows = len(emp_items) if emp_items else 1
+        for i in range(num_rows):
+            r = 10 + i
+            raw_r = 2 + i
+            fill_zebra = PatternFill(start_color="F0F5FA" if r % 2 == 0 else "FFFFFF", fill_type="solid")
+            ws_dash.row_dimensions[r].height = 21.0
+
+            ws_dash[f"A{r}"] = f'=TRIM(Hoja1!A{raw_r}&" "&Hoja1!B{raw_r})'
+            ws_dash[f"B{r}"] = "=$B$5"
+            ws_dash[f"C{r}"] = f'=IF(Hoja1!C{raw_r}="","",Hoja1!C{raw_r})'
+            ws_dash[f"D{r}"] = f'=IF(C{r}="","",IFERROR(C{r}/B{r},0))'
+            ws_dash[f"D{r}"].number_format = "0.00%"
+            ws_dash[f"E{r}"] = f'=IF(C{r}="","",MAX(0,B{r}-C{r}))'
+            ws_dash[f"F{r}"] = f'=IF(Hoja1!D{raw_r}="","",Hoja1!D{raw_r})'
+            ws_dash[f"G{r}"] = f'=IF(Hoja1!E{raw_r}="","",Hoja1!E{raw_r})'
+            ws_dash[f"H{r}"] = f'=IF(Hoja1!F{raw_r}="","",Hoja1!F{raw_r})'
+
+            for col_l in ["A", "B", "C", "D", "E", "F", "G", "H"]:
+                cell = ws_dash[f"{col_l}{r}"]
+                cell.fill = fill_zebra
+                cell.border = thin_border
+                cell.font = Font(name="Calibri", size=11, color="1E293B")
+                if col_l != "A":
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        # Notas al pie
+        foot_r1 = last_row_data + 2
+        ws_dash.merge_cells(f"A{foot_r1}:H{foot_r1}")
+        ws_dash[f"A{foot_r1}"] = f"Nota: cada porcentaje usa el mismo denominador ({total_available_posts}). No son participaciones de un total colectivo y no tienen que sumar 100 %."
+        ws_dash[f"A{foot_r1}"].font = Font(name="Calibri", size=10, color="7B5307")
+        ws_dash[f"A{foot_r1}"].fill = PatternFill(start_color="FFFFF3D7", end_color="FFFFF3D7", fill_type="solid")
+        ws_dash[f"A{foot_r1}"].alignment = Alignment(horizontal="left", vertical="center")
+        ws_dash.row_dimensions[foot_r1].height = 28.0
+
+        foot_r2 = foot_r1 + 1
+        ws_dash.merge_cells(f"A{foot_r2}:H{foot_r2}")
+        ws_dash[f"A{foot_r2}"] = "Sin dato se deja en blanco, no se interpreta automáticamente como cero."
+        ws_dash[f"A{foot_r2}"].font = Font(name="Calibri", size=10, color="64748B")
+        ws_dash[f"A{foot_r2}"].alignment = Alignment(horizontal="left", vertical="center")
+        ws_dash.row_dimensions[foot_r2].height = 22.0
+
+        # Gráfico de barras horizontal nativo para impresión
+        if emp_items:
+            chart = BarChart()
+            chart.type = "bar"
+            chart.grouping = "clustered"
+            chart.gapWidth = 150
+            chart.style = 2
+            chart.y_axis.number_format = "0.00%"
+            chart.x_axis.tickLblPos = "nextTo"
+            chart.legend.legendPos = "b"
+            chart.width = 20
+            chart.height = max(10, min(35, len(emp_items) * 0.45 + 5))
+
+            data = Reference(ws_dash, min_col=4, min_row=9, max_row=last_row_data)
+            cats = Reference(ws_dash, min_col=1, min_row=10, max_row=last_row_data)
+            chart.add_data(data, titles_from_data=True)
+            chart.set_categories(cats)
+            ws_dash.add_chart(chart, f"A{foot_r2 + 2}")
+
+        # Dimensiones de columnas del Dashboard
+        ws_dash.column_dimensions["A"].width = 28.0
+        ws_dash.column_dimensions["B"].width = 16.0
+        ws_dash.column_dimensions["C"].width = 17.0
+        ws_dash.column_dimensions["D"].width = 18.0
+        ws_dash.column_dimensions["E"].width = 15.0
+        ws_dash.column_dimensions["F"].width = 14.0
+        ws_dash.column_dimensions["G"].width = 14.0
+        ws_dash.column_dimensions["H"].width = 14.0
+
+        # Configuración de página lista para impresión ejecutiva
+        ws_dash.page_setup.orientation = ws_dash.ORIENTATION_LANDSCAPE
+        ws_dash.page_setup.paperSize = ws_dash.PAPERSIZE_LETTER
+        ws_dash.page_setup.fitToWidth = 1
+        ws_dash.page_setup.fitToHeight = 0
+        ws_dash.page_setup.fitToPage = True
+        ws_dash.sheet_properties.pageSetUpPr.fitToPage = True
+        ws_dash.print_options.horizontalCentered = True
+        ws_dash.print_title_rows = "9:9"
+
+        # Dimensiones de columnas de Hoja1
+        for col in ws_raw.columns:
+            max_len = 0
+            c_let = get_column_letter(col[0].column)
+            for cell in col:
+                val_s = str(cell.value or "")
+                if len(val_s) > max_len and "\n" not in val_s:
+                    max_len = len(val_s)
+            ws_raw.column_dimensions[c_let].width = max(12, min(max_len + 4, 45))
+
+        # =========================================================================
+        # 3. HOJA: Resumen Ejecutivo
+        # =========================================================================
+        ws_kpis = wb.create_sheet(title="Resumen Ejecutivo")
 
         ws_kpis.merge_cells("A1:G1")
         cell_head = ws_kpis["A1"]

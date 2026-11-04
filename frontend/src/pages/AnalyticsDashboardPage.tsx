@@ -248,6 +248,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
     try {
       setExportingExcel(true);
       const blob = await analyticsApi.exportExcel({
+        days: daysPreset || undefined,
         secretaria: selectedSecretaria !== 'ALL' ? selectedSecretaria : undefined,
         direction: selectedDirection !== 'ALL' ? selectedDirection : undefined,
         unit: selectedUnit !== 'ALL' ? selectedUnit : undefined,

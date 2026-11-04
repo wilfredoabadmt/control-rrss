@@ -199,6 +199,7 @@ export const analyticsApi = {
       page: filters.page || 1,
       page_size: filters.page_size || 20,
     };
+    if (filters.days) params.days = filters.days;
     if (filters.search) params.search = filters.search;
     if (filters.secretaria && filters.secretaria !== 'ALL') params.secretaria = filters.secretaria;
     if (filters.direction && filters.direction !== 'ALL') params.direction = filters.direction;
@@ -229,6 +230,7 @@ export const analyticsApi = {
 
   exportExcel: async (filters: AnalyticsFilters = {}): Promise<Blob> => {
     const params: Record<string, any> = {};
+    if (filters.days) params.days = filters.days;
     if (filters.secretaria && filters.secretaria !== 'ALL') params.secretaria = filters.secretaria;
     if (filters.direction && filters.direction !== 'ALL') params.direction = filters.direction;
     if (filters.unit && filters.unit !== 'ALL') params.unit = filters.unit;

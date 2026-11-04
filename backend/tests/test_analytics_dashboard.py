@@ -296,7 +296,7 @@ async def test_analytics_employees_table_and_filtering(async_db: AsyncSession, s
 
 @pytest.mark.asyncio
 async def test_analytics_export_excel(async_db: AsyncSession, super_admin: User):
-    """Verifica que la exportación genere un archivo Excel con formato y carátula válidos."""
+    """Verifica que la exportación genere un archivo Excel con formato, gráficos imprimibles y filtros de organigrama/días."""
     excel_bytes = await AnalyticsService.export_excel(db=async_db, current_user=super_admin)
     assert isinstance(excel_bytes, bytes)
     assert len(excel_bytes) > 1000
@@ -304,11 +304,31 @@ async def test_analytics_export_excel(async_db: AsyncSession, super_admin: User)
     # Cargar el Excel en memoria con openpyxl para verificar las hojas
     wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
     sheet_names = wb.sheetnames
+    assert "Dashboard cumplimiento" in sheet_names
+    assert "Hoja1" in sheet_names
     assert "Resumen Ejecutivo" in sheet_names
     assert "Detalle de Funcionarios" in sheet_names
 
+    dash_sheet = wb["Dashboard cumplimiento"]
+    assert "CUMPLIMIENTO DE REACCIONES" in str(dash_sheet["A1"].value)
+    assert dash_sheet.page_setup.orientation == "landscape"
+    assert dash_sheet.page_setup.fitToWidth == 1
+
     summary_sheet = wb["Resumen Ejecutivo"]
     assert "GOBIERNO AUTÓNOMO MUNICIPAL DE EL ALTO" in str(summary_sheet["A1"].value)
+
+    # Exportación con filtros de organigrama y ventana temporal en días
+    filtered_bytes = await AnalyticsService.export_excel(
+        db=async_db,
+        current_user=super_admin,
+        days=15,
+        secretaria="SECRETARÍA MUNICIPAL DE COMUNICACIÓN",
+        direction="DIRECCIÓN DE COMUNICACIÓN",
+    )
+    wb_filt = openpyxl.load_workbook(io.BytesIO(filtered_bytes))
+    dash_filt = wb_filt["Dashboard cumplimiento"]
+    assert "15 DÍAS" in str(dash_filt["A1"].value)
+    assert "DIRECCIÓN DE COMUNICACIÓN" in str(dash_filt["A1"].value)
 
 
 @pytest.mark.asyncio
