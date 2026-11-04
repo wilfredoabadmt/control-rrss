@@ -64,7 +64,15 @@ ORGANIGRAMA_HIERARCHY: list[dict[str, Any]] = [
                 "Unidad de Comunicación Digital",
                 "Prensa",
                 "Post Producción",
+                "Post Produccion",
                 "Dicom",
+                "Comunicacion Digital",
+                "Comunicación Digital",
+                "Imagen Corporativo",
+                "Imagen Corporativa",
+                "Secretaría",
+                "Secretaria",
+                "Secretario",
                 "Dirección Central de Comunicación",
             ],
             "Dirección General de Asesoría Legal": [
@@ -410,11 +418,44 @@ ORGANIGRAMA_HIERARCHY: list[dict[str, Any]] = [
 ALL_SECRETARIAS: list[str] = [sec["secretaria"] for sec in ORGANIGRAMA_HIERARCHY]
 
 
+def normalize_direction_name(dir_name: str | None) -> str:
+    """
+    Normaliza sinónimos, acrónimos y abreviaturas a sus nombres oficiales de Dirección.
+    Especialmente unifica 'DICOM', 'Dircom', 'Comunicación' -> 'Dirección de Comunicación'.
+    """
+    if not dir_name:
+        return ""
+    d_clean = dir_name.strip()
+    d_norm = d_clean.lower()
+    # Aliases de Dirección de Comunicación (DICOM)
+    if (
+        d_norm in ("dicom", "dircom", "dcom")
+        or "comunicaci" in d_norm
+        or "prensa y comunicaci" in d_norm
+    ):
+        return "Dirección de Comunicación"
+    # Aliases de Talento Humano
+    if (
+        d_norm in ("rrhh", "dth")
+        or "talento humano" in d_norm
+        or "recursos humanos" in d_norm
+    ):
+        return "Dirección de Talento Humano"
+    # Aliases de Asesoría Legal
+    if "asesor" in d_norm and "legal" in d_norm:
+        return "Dirección General de Asesoría Legal"
+    # Aliases de Planificación
+    if "planificaci" in d_norm:
+        return "Dirección de Planificación"
+    return d_clean
+
+
 def resolve_org_hierarchy(direction_name: str | None, unit_name: str | None) -> tuple[str, str, str]:
     """
-    Resuelve la tríada (secretaría, dirección, unidad) a partir de los datos disponibles del funcionario.
+    Resuelve la tríada (secretaría, dirección, unidad) a partir de los datos disponibles del funcionario,
+    normalizando sinónimos oficiales como DICOM -> Dirección de Comunicación.
     """
-    d_clean = (direction_name or "").strip()
+    d_clean = normalize_direction_name((direction_name or "").strip())
     u_clean = (unit_name or "").strip()
 
     # 1. Intentar resolver por el nombre de la dirección si está especificado
@@ -427,12 +468,20 @@ def resolve_org_hierarchy(direction_name: str | None, unit_name: str | None) -> 
                 if d_norm == dir_nombre.lower() or d_norm in dir_nombre.lower() or dir_nombre.lower() in d_norm:
                     return sec_item["secretaria"], dir_nombre, u_clean or "Sin Unidad Asignada"
 
-    # 2. Intentar resolver por el nombre de la unidad
+    # 2. Intentar resolver por el nombre de la unidad (insensible a acentos)
     if u_clean and u_clean.lower() not in ("no asignada", "sin unidad asignada", "none", ""):
-        u_norm = u_clean.lower()
+        def _clean_accents(s: str) -> str:
+            return s.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+
+        u_norm = _clean_accents(u_clean)
         for sec_item in ORGANIGRAMA_HIERARCHY:
             for dir_nombre, unidades in sec_item["direcciones"].items():
-                if any(u_norm == u.lower() or u_norm in u.lower() or u.lower() in u_norm for u in unidades):
+                if any(
+                    u_norm == _clean_accents(u)
+                    or u_norm in _clean_accents(u)
+                    or _clean_accents(u) in u_norm
+                    for u in unidades
+                ):
                     return sec_item["secretaria"], dir_nombre, u_clean
 
     # 3. Detección especial de menciones a Subalcaldías / Distritos
@@ -531,7 +580,7 @@ class AnalyticsService:
 
             # Filtro por Dirección
             if direction and direction != "ALL":
-                d_target = direction.strip().lower()
+                d_target = normalize_direction_name(direction).strip().lower()
                 matches_dir = (
                     dir_res.lower() == d_target
                     or r.department.lower() == d_target
@@ -941,7 +990,7 @@ class AnalyticsService:
                 if not matches_sec:
                     continue
             if direction and direction != "ALL":
-                d_target = direction.strip().lower()
+                d_target = normalize_direction_name(direction).strip().lower()
                 matches_dir = (
                     dir_res.lower() == d_target
                     or r.department.lower() == d_target
@@ -1719,7 +1768,7 @@ class AnalyticsService:
 
             # Filtrar por dirección
             if direction and direction != "ALL":
-                d_target = direction.strip().lower()
+                d_target = normalize_direction_name(direction).strip().lower()
                 matches_dir = (dir_val.lower() == d_target) or (
                     ("subalcal" in dir_val.lower() or "distrito" in dir_val.lower())
                     and ("subalcal" in d_target or "distrito" in d_target)

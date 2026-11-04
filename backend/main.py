@@ -105,6 +105,8 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE id IN (SELECT ur.user_id FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE r.name IN ('SUPER_ADMIN', 'VIEWER', 'MAE'));"))
                     await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS created_by_user_id UUID;"))
                     await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS direction_name VARCHAR(200);"))
+                    await conn.execute(text("UPDATE employees SET direction_name = 'Dirección de Comunicación' WHERE lower(direction_name) IN ('dicom', 'dircom', 'comunicacion', 'comunicación');"))
+                    await conn.execute(text("UPDATE organizational_units SET name = 'Dirección de Comunicación' WHERE lower(name) IN ('dicom', 'dircom');"))
                     await conn.execute(text("UPDATE organizational_units SET name = 'Despacho Alcalde' WHERE lower(name) = 'despacho alcaldesa';"))
                     await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'Alcaldesa', 'Alcalde') WHERE name LIKE '%Alcaldesa%';"))
                     await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'alcaldesa', 'alcalde') WHERE name LIKE '%alcaldesa%';"))

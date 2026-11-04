@@ -788,3 +788,67 @@ async def test_analytics_viewer_role_has_full_global_visibility(async_db: AsyncS
     assert overview_viewer.kpis.total_reactions == overview_super.kpis.total_reactions
     assert overview_viewer.kpis.total_comments == overview_super.kpis.total_comments
     assert overview_viewer.available_secretarias == overview_super.available_secretarias
+
+
+@pytest.mark.asyncio
+async def test_analytics_dicom_and_direccion_de_comunicacion_unification(async_db: AsyncSession, super_admin: User):
+    """
+    Verifica que 'Dicom' y 'Dirección de Comunicación' se unifiquen canónicamente
+    en la misma Dirección institucional ('Dirección de Comunicación') tanto en el
+    ranking como en el selector de direcciones disponibles y filtros jerárquicos.
+    """
+    unit_prensa = OrganizationalUnit(
+        id=uuid.uuid4(),
+        name="Prensa",
+        code="DICOM-PRENSA",
+    )
+    unit_digital = OrganizationalUnit(
+        id=uuid.uuid4(),
+        name="Comunicacion Digital",
+        code="DICOM-DIGITAL",
+    )
+    async_db.add_all([unit_prensa, unit_digital])
+    await async_db.flush()
+
+    emp1 = Employee(
+        employee_id="EMP-DICOM-01",
+        first_name="Carlos",
+        last_name="Dicom",
+        document_number_encrypted="enc_d1",
+        document_hash="hash_d1",
+        organizational_unit_id=unit_digital.id,
+        direction_name="Dicom",
+        status="ACTIVE",
+    )
+    emp2 = Employee(
+        employee_id="EMP-DICOM-02",
+        first_name="Elena",
+        last_name="Comunicacion",
+        document_number_encrypted="enc_d2",
+        document_hash="hash_d2",
+        organizational_unit_id=unit_prensa.id,
+        direction_name="Dirección de Comunicación",
+        status="ACTIVE",
+    )
+    async_db.add_all([emp1, emp2])
+    await async_db.commit()
+
+    overview = await AnalyticsService.get_overview(db=async_db, current_user=super_admin)
+
+    # Debe haber una sola dirección para ambos (Dirección de Comunicación)
+    ranking_directions = [item.direction for item in overview.direction_rankings]
+    assert "Dirección de Comunicación" in ranking_directions
+    assert "Dicom" not in ranking_directions
+
+    # available_directions no debe incluir 'Dicom' como dirección separada
+    assert "Dicom" not in overview.available_directions
+
+    # Filtrar por 'Dicom' o por 'Dirección de Comunicación' debe retornar ambos funcionarios
+    res_filter_dicom = await AnalyticsService.get_employees_table(
+        db=async_db,
+        current_user=super_admin,
+        direction="Dicom",
+    )
+    matched_ids = {e.employee_id for e in res_filter_dicom.items}
+    assert "EMP-DICOM-01" in matched_ids
+    assert "EMP-DICOM-02" in matched_ids
