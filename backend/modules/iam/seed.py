@@ -128,8 +128,6 @@ ROLE_DEFAULT_PERMISSIONS: dict[str, list[str]] = {
     ],
     UserRole.VIEWER.value: [
         "dashboard:view_executive",
-        "reports:generate",
-        "publications:read",
     ],
 }
 

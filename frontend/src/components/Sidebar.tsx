@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'mae-dashboard',
       label: 'Decisiones MAE',
       icon: Crown,
-      roles: [UserRole.SUPER_ADMIN, UserRole.MAE],
+      roles: [UserRole.SUPER_ADMIN, UserRole.MAE, UserRole.VIEWER],
     },
     {
       id: 'analytics',
@@ -107,7 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'reports',
       label: 'Reportes Oficiales',
       icon: FileSpreadsheet,
-      roles: [UserRole.SUPER_ADMIN, UserRole.AUDITOR, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST, UserRole.VIEWER],
+      roles: [UserRole.SUPER_ADMIN, UserRole.AUDITOR, UserRole.DIRECTOR, UserRole.COMMUNICATIONS_LEAD, UserRole.ANALYST],
     },
     {
       id: 'admin',
