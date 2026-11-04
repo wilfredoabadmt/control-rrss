@@ -4,7 +4,8 @@ Principio VII: Identidad Única e Inmutable
 REQ-INT-003, BR-INT-006, BR-INT-007, BR-INT-008, BR-INT-009
 """
 
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from modules.employees.models import Employee
@@ -31,15 +32,66 @@ class MatchResult:
     message: str = ""
 
 
+@dataclass
+class MatchContext:
+    """Caché en memoria de padrón activo y cuentas sociales para evitar N+1 queries."""
+    active_employees: list[Employee] = field(default_factory=list)
+    emp_by_ci: dict[str, Employee] = field(default_factory=dict)
+    accounts_by_platform: dict[uuid.UUID | None, list[SocialAccount]] = field(default_factory=dict)
+    account_by_ext_id: dict[tuple[uuid.UUID | None, str], SocialAccount] = field(default_factory=dict)
+    account_by_emp_plat: dict[tuple[str, uuid.UUID | None], SocialAccount] = field(default_factory=dict)
+
+
 class InteractionMatcher:
     """
     Motor encargado de cruzar la autoría externa de una interacción con los funcionarios registrados.
     """
 
+    @classmethod
+    async def build_match_context(cls, db: AsyncSession) -> MatchContext:
+        """
+        Pre-carga en memoria el padrón activo de funcionarios y cuentas sociales
+        para ejecutar cruces en masa sin N+1 queries a la base de datos.
+        """
+        stmt_emps = (
+            select(Employee)
+            .where(Employee.status == EmployeeStatus.ACTIVE.value)
+            .options(selectinload(Employee.organizational_unit))
+        )
+        active_employees = list((await db.execute(stmt_emps)).scalars().all())
+        emp_by_ci = {emp.employee_id.strip(): emp for emp in active_employees if emp.employee_id}
+
+        stmt_accs = (
+            select(SocialAccount)
+            .where(SocialAccount.binding_status == BindingStatus.ACTIVE.value)
+            .options(selectinload(SocialAccount.employee))
+        )
+        all_accounts = list((await db.execute(stmt_accs)).scalars().all())
+
+        accounts_by_platform: dict[uuid.UUID | None, list[SocialAccount]] = {}
+        account_by_ext_id: dict[tuple[uuid.UUID | None, str], SocialAccount] = {}
+        account_by_emp_plat: dict[tuple[str, uuid.UUID | None], SocialAccount] = {}
+
+        for acc in all_accounts:
+            accounts_by_platform.setdefault(acc.platform_id, []).append(acc)
+            if acc.external_user_id:
+                account_by_ext_id[(acc.platform_id, str(acc.external_user_id).strip())] = acc
+            if acc.employee_id:
+                account_by_emp_plat[(str(acc.employee_id).strip(), acc.platform_id)] = acc
+
+        return MatchContext(
+            active_employees=active_employees,
+            emp_by_ci=emp_by_ci,
+            accounts_by_platform=accounts_by_platform,
+            account_by_ext_id=account_by_ext_id,
+            account_by_emp_plat=account_by_emp_plat,
+        )
+
     @staticmethod
     async def match_interaction(
         db: AsyncSession,
         interaction: Interaction,
+        context: MatchContext | None = None,
     ) -> MatchResult:
         """
         Ejecuta las reglas BR-INT-006 a BR-INT-009 sobre la interacción.
@@ -77,15 +129,20 @@ class InteractionMatcher:
 
         # 1. Coincidencia directa por Cédula de Identidad (employee_id)
         if not is_anon_id:
-            stmt_ci = (
-                select(Employee)
-                .where(
-                    Employee.employee_id == raw_author_id,
-                    Employee.status == EmployeeStatus.ACTIVE.value,
+            emp_by_ci = None
+            if context:
+                emp_by_ci = context.emp_by_ci.get(raw_author_id)
+            else:
+                stmt_ci = (
+                    select(Employee)
+                    .where(
+                        Employee.employee_id == raw_author_id,
+                        Employee.status == EmployeeStatus.ACTIVE.value,
+                    )
+                    .options(selectinload(Employee.organizational_unit))
                 )
-                .options(selectinload(Employee.organizational_unit))
-            )
-            emp_by_ci = (await db.execute(stmt_ci)).scalar_one_or_none()
+                emp_by_ci = (await db.execute(stmt_ci)).scalar_one_or_none()
+
             if emp_by_ci:
                 return MatchResult(
                     status=MatchStatus.MATCHED,
@@ -97,28 +154,35 @@ class InteractionMatcher:
         # BR-INT-006: 2. Comparar external_author_id con external_user_id de SocialAccount activa
         account = None
         if not is_anon_id:
-            stmt = (
-                select(SocialAccount)
-                .where(
-                    SocialAccount.platform_id == interaction.platform_id,
-                    SocialAccount.external_user_id == raw_author_id,
-                    SocialAccount.binding_status == BindingStatus.ACTIVE.value,
+            if context:
+                account = context.account_by_ext_id.get((interaction.platform_id, raw_author_id))
+            else:
+                stmt = (
+                    select(SocialAccount)
+                    .where(
+                        SocialAccount.platform_id == interaction.platform_id,
+                        SocialAccount.external_user_id == raw_author_id,
+                        SocialAccount.binding_status == BindingStatus.ACTIVE.value,
+                    )
+                    .options(selectinload(SocialAccount.employee))
                 )
-                .options(selectinload(SocialAccount.employee))
-            )
-            account = (await db.execute(stmt)).scalar_one_or_none()
+                account = (await db.execute(stmt)).scalar_one_or_none()
 
         # 3. Si no coincide por ID externo, probar coincidencia por username/handle/URL en SocialAccount
         if not account:
-            stmt_user = (
-                select(SocialAccount)
-                .where(
-                    SocialAccount.platform_id == interaction.platform_id,
-                    SocialAccount.binding_status == BindingStatus.ACTIVE.value,
+            if context:
+                candidates = context.accounts_by_platform.get(interaction.platform_id, [])
+            else:
+                stmt_user = (
+                    select(SocialAccount)
+                    .where(
+                        SocialAccount.platform_id == interaction.platform_id,
+                        SocialAccount.binding_status == BindingStatus.ACTIVE.value,
+                    )
+                    .options(selectinload(SocialAccount.employee))
                 )
-                .options(selectinload(SocialAccount.employee))
-            )
-            candidates = list((await db.execute(stmt_user)).scalars().all())
+                candidates = list((await db.execute(stmt_user)).scalars().all())
+
             import re
             clean_name_pure = re.sub(r"[^a-z]", "", clean_name)
             for cand in candidates:
@@ -153,25 +217,35 @@ class InteractionMatcher:
         if not is_anon_name:
             from modules.shared.name_matching import best_employee_match
 
-            stmt_emps = (
-                select(Employee)
-                .where(Employee.status == EmployeeStatus.ACTIVE.value)
-                .options(selectinload(Employee.organizational_unit))
-            )
-            all_active_emps = list((await db.execute(stmt_emps)).scalars().all())
+            if context:
+                all_active_emps = context.active_employees
+            else:
+                stmt_emps = (
+                    select(Employee)
+                    .where(Employee.status == EmployeeStatus.ACTIVE.value)
+                    .options(selectinload(Employee.organizational_unit))
+                )
+                all_active_emps = list((await db.execute(stmt_emps)).scalars().all())
 
             name_match = best_employee_match(author_name, all_active_emps)
             if name_match.matched:
                 emp = name_match.employee
                 # Enlazar o asociar la cuenta social de forma automática
-                stmt_exist = select(SocialAccount).where(
-                    SocialAccount.employee_id == emp.employee_id,
-                    SocialAccount.platform_id == interaction.platform_id,
-                )
-                emp_acc = (await db.execute(stmt_exist)).scalar_one_or_none()
+                emp_acc = None
+                if context:
+                    emp_acc = context.account_by_emp_plat.get((emp.employee_id, interaction.platform_id))
+                else:
+                    stmt_exist = select(SocialAccount).where(
+                        SocialAccount.employee_id == emp.employee_id,
+                        SocialAccount.platform_id == interaction.platform_id,
+                    )
+                    emp_acc = (await db.execute(stmt_exist)).scalar_one_or_none()
+
                 if emp_acc:
                     if not emp_acc.external_user_id and not is_anon_id:
                         emp_acc.external_user_id = raw_author_id
+                        if context:
+                            context.account_by_ext_id[(interaction.platform_id, raw_author_id)] = emp_acc
                 else:
                     emp_acc = SocialAccount(
                         employee_id=emp.employee_id,
@@ -181,6 +255,11 @@ class InteractionMatcher:
                         binding_status=BindingStatus.ACTIVE.value,
                     )
                     db.add(emp_acc)
+                    if context:
+                        context.account_by_emp_plat[(emp.employee_id, interaction.platform_id)] = emp_acc
+                        if not is_anon_id:
+                            context.account_by_ext_id[(interaction.platform_id, raw_author_id)] = emp_acc
+                        context.accounts_by_platform.setdefault(interaction.platform_id, []).append(emp_acc)
                     await db.flush()
 
                 return MatchResult(
@@ -199,4 +278,3 @@ class InteractionMatcher:
             status=MatchStatus.UNMATCHED,
             message=f"El identificador externo '{raw_author_id}' ('{author_name}') no corresponde a ningún funcionario municipal activo registrado.",
         )
-

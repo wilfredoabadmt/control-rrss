@@ -491,6 +491,9 @@ class AnalyticsService:
             platform_name=platform_name,
             current_user=current_user,
             max_posts=50,
+            days=days,
+            date_from=date_from,
+            date_to=date_to,
         )
 
         all_rows = matrix.rows or []
@@ -861,6 +864,10 @@ class AnalyticsService:
         """
         Retorna la tabla paginada y detallada de funcionarios con filtrado jerárquico tridimensional.
         """
+        if days and days > 0:
+            date_to = datetime.now(UTC)
+            date_from = date_to - timedelta(days=days)
+
         matrix = await MonitoringHubService.get_activity_matrix(
             db=db,
             publication_id=publication_id,
@@ -868,11 +875,10 @@ class AnalyticsService:
             search=search,
             current_user=current_user,
             max_posts=50,
+            days=days,
+            date_from=date_from,
+            date_to=date_to,
         )
-
-        if days and days > 0:
-            date_to = datetime.now(UTC)
-            date_from = date_to - timedelta(days=days)
 
         all_rows = matrix.rows or []
 
@@ -1655,6 +1661,8 @@ class AnalyticsService:
 
         search_q = search.strip().lower() if search and search.strip() else None
 
+        match_ctx = await InteractionMatcher.build_match_context(db)
+
         for it in all_comments_interactions:
             matched_emp_id: str | None = None
             if it.verifications:
@@ -1663,9 +1671,9 @@ class AnalyticsService:
                         matched_emp_id = v.employee_id.strip()
                         break
 
-            # Si no tiene verificación previa, cruzar con padrón municipal
+            # Si no tiene verificación previa, cruzar con padrón municipal (con MatchContext en memoria)
             if not matched_emp_id:
-                match_res = await InteractionMatcher.match_interaction(db, it)
+                match_res = await InteractionMatcher.match_interaction(db, it, context=match_ctx)
                 if match_res.status == MatchStatus.MATCHED and match_res.employee:
                     matched_emp_id = match_res.employee.employee_id
                     it.data_origin_type = DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value

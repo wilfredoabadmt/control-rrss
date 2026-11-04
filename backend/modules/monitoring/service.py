@@ -19,7 +19,7 @@ import os
 import re
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from config import settings
@@ -1754,11 +1754,17 @@ class MonitoringHubService:
         participation_status: str | None = "ALL",
         current_user: User | None = None,
         max_posts: int = 15,
+        days: int | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> ActivityMatrixResponse:
         """
         Genera la matriz de auditoría cruzada:
         Cada persona de la lista vs Cada publicación evaluada -> Reacción, Comentario, Estado Epistémico.
         """
+        if days and days > 0:
+            date_to = datetime.now(UTC)
+            date_from = date_to - timedelta(days=days)
         # 1. Obtener audiencia monitoreada
         audience = await MonitoringHubService.get_audience(db, current_user=current_user)
 
@@ -1780,6 +1786,10 @@ class MonitoringHubService:
             stmt_pubs = stmt_pubs.join(Publication.platform).where(
                 SocialPlatform.name == platform_name.upper().strip()
             )
+        if date_from:
+            stmt_pubs = stmt_pubs.where(Publication.published_at >= date_from)
+        if date_to:
+            stmt_pubs = stmt_pubs.where(Publication.published_at <= date_to)
 
         stmt_pubs = stmt_pubs.order_by(Publication.published_at.desc()).limit(max_posts)
         publications = list((await db.execute(stmt_pubs)).scalars().all())
@@ -1792,14 +1802,21 @@ class MonitoringHubService:
                 dt = dt.replace(tzinfo=UTC)
             return str(dt.isoformat())
 
-        # 2b. Toda publicación con actividad verificada o interacciones queda en la matriz aunque
-        #     quede fuera de la ventana reciente (evita ocultar reacciones auditadas).
+        # 2b. Toda publicación con actividad verificada o interacciones queda en la matriz
+        #     dentro de la ventana temporal si está configurada.
         if not publication_id:
             stmt_active_pubs = (
                 select(Interaction.publication_id)
                 .where(Interaction.publication_id.isnot(None))
-                .distinct()
             )
+            if date_from:
+                stmt_active_pubs = stmt_active_pubs.where(
+                    or_(
+                        Interaction.external_created_at >= date_from,
+                        Interaction.captured_at >= date_from,
+                    )
+                )
+            stmt_active_pubs = stmt_active_pubs.distinct()
             active_pub_ids = [row[0] for row in (await db.execute(stmt_active_pubs)).all()]
             known_ids = {p.id for p in publications}
             extra_ids = [pid for pid in active_pub_ids if pid is not None and pid not in known_ids]
@@ -1809,6 +1826,10 @@ class MonitoringHubService:
                     .where(Publication.id.in_(extra_ids))
                     .options(selectinload(Publication.platform))
                 )
+                if date_from:
+                    stmt_extra = stmt_extra.where(Publication.published_at >= date_from)
+                if date_to:
+                    stmt_extra = stmt_extra.where(Publication.published_at <= date_to)
                 publications.extend((await db.execute(stmt_extra)).scalars().all())
                 publications.sort(key=_pub_sort_key, reverse=True)
 
@@ -1850,13 +1871,21 @@ class MonitoringHubService:
                 selectinload(Interaction.verifications),
             )
         )
+        if date_from:
+            stmt_ints = stmt_ints.where(
+                or_(
+                    Interaction.external_created_at >= date_from,
+                    Interaction.captured_at >= date_from,
+                )
+            )
         interactions = list((await db.execute(stmt_ints)).scalars().all())
 
-        # Auto-verificación y cruce canónico de interacciones sin verificar
+        # Auto-verificación y cruce canónico de interacciones sin verificar con MatchContext en memoria (sin N+1 queries)
+        match_ctx = await InteractionMatcher.build_match_context(db)
         matrix_new_vers = []
         for it in interactions:
             if not it.verifications:
-                match_res = await InteractionMatcher.match_interaction(db, it)
+                match_res = await InteractionMatcher.match_interaction(db, it, context=match_ctx)
                 if match_res.status == MatchStatus.MATCHED and match_res.employee:
                     it.data_origin_type = DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value
                     ver = Verification(

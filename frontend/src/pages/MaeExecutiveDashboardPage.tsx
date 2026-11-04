@@ -219,8 +219,10 @@ Gobierno Autónomo Municipal de El Alto`;
             >
               {[
                 { label: '7 días', val: 7 },
-                { label: '15 días', val: 15 },
+                { label: '14 días', val: 14 },
                 { label: '30 días', val: 30 },
+                { label: '60 días', val: 60 },
+                { label: '90 días', val: 90 },
               ].map((opt) => (
                 <button
                   key={opt.val}

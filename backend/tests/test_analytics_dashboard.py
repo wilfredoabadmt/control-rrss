@@ -329,13 +329,13 @@ async def test_analytics_export_excel(async_db: AsyncSession, super_admin: User)
     filtered_bytes = await AnalyticsService.export_excel(
         db=async_db,
         current_user=super_admin,
-        days=15,
+        days=14,
         secretaria="SECRETARÍA MUNICIPAL DE COMUNICACIÓN",
         direction="DIRECCIÓN DE COMUNICACIÓN",
     )
     wb_filt = openpyxl.load_workbook(io.BytesIO(filtered_bytes))
     dash_filt = wb_filt["Dashboard cumplimiento"]
-    assert "15 DÍAS" in str(dash_filt["A1"].value)
+    assert "14 DÍAS" in str(dash_filt["A1"].value)
     assert "DIRECCIÓN DE COMUNICACIÓN" in str(dash_filt["A1"].value)
 
 
