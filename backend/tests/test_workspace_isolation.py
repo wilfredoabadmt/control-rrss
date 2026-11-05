@@ -418,3 +418,140 @@ async def test_autonomous_users_full_independence_and_superadmin_oversight(async
     assert count_admin_final == 3
 
 
+@pytest.mark.asyncio
+async def test_unit_user_with_viewer_role_is_strictly_confined_to_assigned_unit(async_db):
+    """
+    Verifica que un usuario asignado a una unidad (incluso si posee roles como VIEWER u OPERATOR)
+    quede estrictamente confinado a su unidad asignada:
+    - has_global_visibility es False (no se desborda a visibilidad global).
+    - Solo ve personas pertenecientes a su unidad asignada.
+    - Intentos de registrar o importar en otras unidades se confinan forzosamente a su unidad asignada.
+    - Intentos de transferir a otra unidad son bloqueados.
+    - No ve personas de otras unidades creadas por otros usuarios.
+    """
+    role_viewer = Role(id=uuid.uuid4(), name=UserRole.VIEWER.value, description="Visor")
+    role_operator = Role(id=uuid.uuid4(), name=UserRole.OPERATOR.value, description="Operador")
+
+    # Usuario de Prensa (con rol VIEWER y OPERATOR asignados simultáneamente)
+    user_prensa = User(
+        id=uuid.uuid4(),
+        email="operador.prensa@elalto.gob.bo",
+        full_name="Operador Prensa Multi-Rol",
+        password_hash="hash",
+        workspace_type="UNIT",
+        assigned_direction="Dirección de Comunicación",
+        assigned_unit="Unidad de Prensa",
+        roles=[role_viewer, role_operator],
+    )
+
+    # Usuario de otra unidad: Unidad de Deportes
+    user_deportes = User(
+        id=uuid.uuid4(),
+        email="operador.deportes@elalto.gob.bo",
+        full_name="Operador Deportes",
+        password_hash="hash",
+        workspace_type="UNIT",
+        assigned_direction="Dirección de Deportes",
+        assigned_unit="Unidad de Infraestructura Deportiva",
+        roles=[role_operator],
+    )
+
+    # 1. Verificar que no tiene visibilidad global a pesar del rol VIEWER
+    assert EmployeeService.has_global_visibility(user_prensa) is False
+
+    # 2. Deportes crea su funcionario
+    emp_deportes = await EmployeeService.create_employee(
+        async_db,
+        EmployeeCreate(
+            first_name="Gonzalo",
+            last_name="Atleta",
+            document_number="1122334 LP",
+            id_document="1122334 LP",
+            org_unit_name="Unidad de Infraestructura Deportiva",
+            parent_unit_name="Dirección de Deportes",
+            position_title="Entrenador",
+        ),
+        user_deportes,
+    )
+    assert emp_deportes.employee_id is not None
+
+    # 3. Prensa crea su funcionario intentando especificar otra unidad
+    emp_prensa = await EmployeeService.create_employee(
+        async_db,
+        EmployeeCreate(
+            first_name="Carla",
+            last_name="Redactora",
+            document_number="5566778 LP",
+            id_document="5566778 LP",
+            org_unit_name="Unidad de Infraestructura Deportiva",  # Intento de desborde
+            parent_unit_name="Dirección de Deportes",
+            position_title="Periodista",
+        ),
+        user_prensa,
+    )
+    # Debe quedar forzado a la unidad asignada al usuario: Unidad de Prensa
+    assert emp_prensa.organizational_unit.name == "Unidad de Prensa"
+
+    # 4. Operador Prensa lista funcionarios: ve ÚNICAMENTE el de su unidad (Carla)
+    list_prensa, count_prensa = await EmployeeService.list_employees(
+        db=async_db, current_user=user_prensa
+    )
+    assert count_prensa == 1
+    assert list_prensa[0].employee_id == emp_prensa.employee_id
+    assert list_prensa[0].first_name == "Carla"
+
+    # No ve al funcionario de Deportes
+    emp_ids_prensa = {e.employee_id for e in list_prensa}
+    assert emp_deportes.employee_id not in emp_ids_prensa
+
+    # 5. Operador Deportes lista funcionarios: ve ÚNICAMENTE el de su unidad (Gonzalo)
+    list_deportes, count_deportes = await EmployeeService.list_employees(
+        db=async_db, current_user=user_deportes
+    )
+    assert count_deportes == 1
+    assert list_deportes[0].employee_id == emp_deportes.employee_id
+    assert emp_prensa.employee_id not in {e.employee_id for e in list_deportes}
+
+    # 6. Operador Prensa intenta transferir a Carla fuera de su unidad: bloqueado
+    # Crear unidad destino para la prueba
+    ou_externa = await EmployeeService._resolve_or_create_unit(async_db, "Unidad de Sistemas", "Dirección Administrativa")
+    with pytest.raises(ValidationException) as exc_trans:
+        await EmployeeService.update_employee(
+            async_db,
+            emp_prensa.employee_id,
+            EmployeeUpdate(organizational_unit_id=ou_externa.id),
+            user_prensa,
+        )
+    assert "No cuenta con permisos para transferir funcionarios" in str(exc_trans.value)
+
+    # 7. Operador Prensa importa nómina con filas que declaran otra unidad:
+    # Se confinan automáticamente a su Unidad de Prensa
+    csv_prensa_batch = (
+        "nombres,apellidos,unidad,direccion,cuenta_facebook,cuenta_tiktok\n"
+        "Mateo,Mamani,Unidad de Sistemas,Dirección Administrativa,fb.com/mateo,@mateo\n"
+    ).encode("utf-8")
+    report = await EmployeePayrollImporter.import_payroll_file(
+        db=async_db,
+        file_content=csv_prensa_batch,
+        filename="nomina_desborde.csv",
+        current_user=user_prensa,
+    )
+    assert report.created_count == 1
+
+    # Comprobar que Mateo quedó asignado a Unidad de Prensa y es visible para Prensa
+    list_prensa_final, count_prensa_final = await EmployeeService.list_employees(
+        db=async_db, current_user=user_prensa
+    )
+    assert count_prensa_final == 2
+    for emp in list_prensa_final:
+        assert emp.organizational_unit.name == "Unidad de Prensa"
+
+    # Deportes sigue viendo únicamente a Gonzalo (0 contaminación cruzada)
+    list_deportes_final, count_deportes_final = await EmployeeService.list_employees(
+        db=async_db, current_user=user_deportes
+    )
+    assert count_deportes_final == 1
+    assert list_deportes_final[0].employee_id == emp_deportes.employee_id
+
+
+

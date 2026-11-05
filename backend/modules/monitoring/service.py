@@ -901,8 +901,8 @@ class MonitoringHubService:
                 elif user_unit:
                     u_norm = user_unit.strip().lower()
                     unit_filter = or_(
-                        Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == u_norm),
-                        Employee.created_by_user_id == current_user.id,
+                        Employee.organizational_unit.has(func.lower(func.trim(OrganizationalUnit.name)) == u_norm),
+                        (Employee.organizational_unit_id.is_(None) & (Employee.created_by_user_id == current_user.id)),
                     )
                     stmt = stmt.where(unit_filter)
                 elif user_dir:
@@ -910,9 +910,9 @@ class MonitoringHubService:
                     dir_filter = or_(
                         func.lower(Employee.direction_name) == dir_norm.lower(),
                         Employee.organizational_unit.has(
-                            OrganizationalUnit.parent.has(func.lower(OrganizationalUnit.name) == dir_norm.lower())
+                            OrganizationalUnit.parent.has(func.lower(func.trim(OrganizationalUnit.name)) == dir_norm.lower())
                         ),
-                        Employee.created_by_user_id == current_user.id,
+                        (Employee.organizational_unit_id.is_(None) & (Employee.created_by_user_id == current_user.id)),
                     )
                     stmt = stmt.where(dir_filter)
 

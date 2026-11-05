@@ -343,7 +343,17 @@ class EmployeeService:
         elif current_user and getattr(current_user, "assigned_direction", None):
             norm_dir = re.sub(r'(?i)alcaldesa', 'Alcalde', current_user.assigned_direction.strip())
 
-        if not ou_id and current_user and getattr(current_user, "assigned_unit", None):
+        # Confinamiento estricto a la unidad asignada para usuarios no globales (BR-EMP-014)
+        if current_user and not EmployeeService.has_global_visibility(current_user):
+            user_unit = getattr(current_user, "assigned_unit", None)
+            user_dir = getattr(current_user, "assigned_direction", None)
+            if user_unit:
+                norm_dir = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip()) if user_dir else norm_dir
+                ou = await EmployeeService._resolve_or_create_unit(db, user_unit, norm_dir)
+                ou_id = ou.id
+            elif user_dir and not norm_dir:
+                norm_dir = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip())
+        elif not ou_id and current_user and getattr(current_user, "assigned_unit", None):
             ou = await EmployeeService._resolve_or_create_unit(db, current_user.assigned_unit, norm_dir)
             ou_id = ou.id
 
@@ -412,22 +422,36 @@ class EmployeeService:
     def has_global_visibility(current_user: User | None) -> bool:
         """
         Verifica si un usuario tiene visibilidad institucional global sobre todas las
-        direcciones y unidades (Superadmin, Visor institucional, MAE o workspace GLOBAL).
-        Si el usuario está configurado expresamente como AUTONOMOUS y no posee un rol
-        de supervisión ejecutiva global (SUPER_ADMIN, VIEWER, MAE), prevalece el aislamiento individual.
+        direcciones y unidades (Superadmin central, Visor institucional municipal o workspace GLOBAL sin unidad asignada).
+        Si el usuario tiene una unidad asignada (assigned_unit o workspace_type == "UNIT") o dirección asignada,
+        prevalece estrictamente el confinamiento a su espacio organizacional asignado.
         """
         if not current_user:
             return True
-        if EmployeeService.is_global_superadmin(current_user):
-            return True
-        user_roles = {r.name for r in current_user.roles} if getattr(current_user, "roles", None) else set()
-        if UserRole.VIEWER.value in user_roles or UserRole.MAE.value in user_roles:
-            return True
+
+        user_unit = getattr(current_user, "assigned_unit", None)
+        user_dir = getattr(current_user, "assigned_direction", None)
         ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
-        if ws_type == "GLOBAL":
-            return True
+
+        # Si el usuario tiene expresamente asignada una unidad o workspace UNIT, NUNCA tiene visibilidad global
+        if user_unit or ws_type == "UNIT":
+            return False
+        if ws_type == "DIRECTION" or user_dir:
+            return False
         if ws_type == "AUTONOMOUS":
             return False
+
+        # Si es superadministrador global
+        if EmployeeService.is_global_superadmin(current_user):
+            return True
+
+        if ws_type == "GLOBAL":
+            return True
+
+        user_roles = {r.name for r in current_user.roles} if getattr(current_user, "roles", None) else set()
+        if (UserRole.VIEWER.value in user_roles or UserRole.MAE.value in user_roles) and not user_unit and not user_dir:
+            return True
+
         return False
 
     @staticmethod
@@ -438,22 +462,21 @@ class EmployeeService:
         if EmployeeService.has_global_visibility(current_user):
             return True
 
-        # Si el usuario es el creador directo, siempre tiene acceso a su funcionario
-        if emp.created_by_user_id and emp.created_by_user_id == current_user.id:
-            return True
-
-        ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
-        if ws_type == "AUTONOMOUS":
-            return emp.created_by_user_id == current_user.id
-
         user_unit = getattr(current_user, "assigned_unit", None)
         user_dir = getattr(current_user, "assigned_direction", None)
+        ws_type = (getattr(current_user, "workspace_type", "UNIT") or "UNIT").upper().strip()
 
+        # Si el usuario tiene una unidad asignada, SOLO puede acceder a funcionarios de su unidad
         if user_unit:
             u_clean = user_unit.strip().lower()
             if emp.organizational_unit and (emp.organizational_unit.name or "").strip().lower() == u_clean:
                 return True
+            if not emp.organizational_unit_id and emp.created_by_user_id == current_user.id:
+                return True
             return False
+
+        if ws_type == "AUTONOMOUS":
+            return emp.created_by_user_id == current_user.id
 
         if user_dir:
             dir_norm = re.sub(r'(?i)alcaldesa', 'Alcalde', user_dir.strip()).lower()
@@ -462,6 +485,8 @@ class EmployeeService:
             if emp.organizational_unit and emp.organizational_unit.parent:
                 parent_dir = (emp.organizational_unit.parent.name or "").lower()
             if emp_dir == dir_norm or parent_dir == dir_norm:
+                return True
+            if not emp.organizational_unit_id and emp.created_by_user_id == current_user.id:
                 return True
             return False
 
@@ -504,6 +529,15 @@ class EmployeeService:
         unit_changed = new_unit_id is not None and new_unit_id != emp.organizational_unit_id
         pos_changed = new_pos_id is not None and new_pos_id != emp.position_id
         status_changed = target_status is not None and target_status != emp.status
+
+        # Prohibir que un usuario con unidad asignada transfiera un funcionario fuera de su unidad (BR-EMP-014)
+        if unit_changed and current_user and not EmployeeService.has_global_visibility(current_user):
+            user_unit = getattr(current_user, "assigned_unit", None)
+            if user_unit:
+                stmt_target_ou = select(OrganizationalUnit).where(OrganizationalUnit.id == new_unit_id)
+                target_ou = (await db.execute(stmt_target_ou)).scalar_one_or_none()
+                if target_ou and (target_ou.name or "").strip().lower() != user_unit.strip().lower():
+                    raise ValidationException("No cuenta con permisos para transferir funcionarios a otra unidad organizacional.")
 
         prev_unit_id = emp.organizational_unit_id
         prev_pos_id = emp.position_id
@@ -828,8 +862,8 @@ class EmployeeService:
             elif user_unit:
                 u_norm = user_unit.strip().lower()
                 unit_filter = or_(
-                    Employee.organizational_unit.has(func.lower(OrganizationalUnit.name) == u_norm),
-                    Employee.created_by_user_id == current_user.id,
+                    Employee.organizational_unit.has(func.lower(func.trim(OrganizationalUnit.name)) == u_norm),
+                    (Employee.organizational_unit_id.is_(None) & (Employee.created_by_user_id == current_user.id)),
                 )
                 query = query.where(unit_filter)
                 count_query = count_query.where(unit_filter)
@@ -838,9 +872,9 @@ class EmployeeService:
                 dir_filter = or_(
                     func.lower(Employee.direction_name) == dir_norm.lower(),
                     Employee.organizational_unit.has(
-                        OrganizationalUnit.parent.has(func.lower(OrganizationalUnit.name) == dir_norm.lower())
+                        OrganizationalUnit.parent.has(func.lower(func.trim(OrganizationalUnit.name)) == dir_norm.lower())
                     ),
-                    Employee.created_by_user_id == current_user.id,
+                    (Employee.organizational_unit_id.is_(None) & (Employee.created_by_user_id == current_user.id)),
                 )
                 query = query.where(dir_filter)
                 count_query = count_query.where(dir_filter)

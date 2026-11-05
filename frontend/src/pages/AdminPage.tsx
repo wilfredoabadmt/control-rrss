@@ -180,7 +180,7 @@ export const AdminPage: React.FC = () => {
   const [newWorkspaceType, setNewWorkspaceType] = useState<'GLOBAL' | 'DIRECTION' | 'UNIT' | 'AUTONOMOUS'>('UNIT');
   const [newAssignedDirection, setNewAssignedDirection] = useState('');
   const [newAssignedUnit, setNewAssignedUnit] = useState('');
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(['VIEWER']);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(['OPERATOR']);
   const [submittingUser, setSubmittingUser] = useState(false);
 
   // Edit User Form State
@@ -262,7 +262,7 @@ export const AdminPage: React.FC = () => {
       setNewWorkspaceType('UNIT');
       setNewAssignedDirection('');
       setNewAssignedUnit('');
-      setSelectedRoles(['VIEWER']);
+      setSelectedRoles(['OPERATOR']);
     } catch (err: any) {
       alert(err.response?.data?.detail || err.message || 'Error al crear el usuario en la base de datos.');
     } finally {

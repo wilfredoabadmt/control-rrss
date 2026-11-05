@@ -245,8 +245,10 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
     setEditLoading(true);
     const empId = editingEmployee.id || (editingEmployee as any).employee_id;
 
-    const sanitizedDirection = editDireccion.replace(/alcaldesa/gi, 'Alcalde');
-    const sanitizedUnit = editUnit.replace(/alcaldesa/gi, 'Alcalde');
+    const targetDir = user?.assigned_unit ? (user.assigned_direction || editDireccion) : editDireccion;
+    const targetUnit = user?.assigned_unit ? user.assigned_unit : editUnit;
+    const sanitizedDirection = targetDir.replace(/alcaldesa/gi, 'Alcalde');
+    const sanitizedUnit = targetUnit.replace(/alcaldesa/gi, 'Alcalde');
 
     try {
       await updateEmployeeApi(empId, {
@@ -408,9 +410,11 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
     e.preventDefault();
     setCreateLoading(true);
 
-    const targetDir = newDireccion || user?.assigned_direction || 'Despacho Alcalde';
+    const targetDir = user?.assigned_unit
+      ? (user?.assigned_direction || 'Despacho Alcalde')
+      : (newDireccion || user?.assigned_direction || 'Despacho Alcalde');
     const sanitizedDirection = targetDir.replace(/alcaldesa/gi, 'Alcalde');
-    const sanitizedUnit = (newUnit || user?.assigned_unit || '').replace(/alcaldesa/gi, 'Alcalde');
+    const sanitizedUnit = (user?.assigned_unit || newUnit || '').replace(/alcaldesa/gi, 'Alcalde');
 
     try {
       await createEmployeeApi({
@@ -954,30 +958,51 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
         </div>
 
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Filtro Dirección */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Filter size={14} color="var(--text-muted)" />
-            <select
-              value={filterDireccion}
-              onChange={(e) => setFilterDireccion(e.target.value)}
-              className="form-input"
+          {/* Filtro Dirección / Unidad */}
+          {user?.assigned_unit ? (
+            <div
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
                 height: '38px',
-                padding: '4px 10px',
+                padding: '4px 12px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'rgba(168, 85, 247, 0.12)',
+                border: '1px solid rgba(168, 85, 247, 0.35)',
+                color: '#c084fc',
                 fontSize: '0.8rem',
-                minWidth: '180px',
-                maxWidth: '240px',
-                background: 'var(--bg-secondary)',
+                fontWeight: 600,
               }}
+              title="Su usuario está confinado estrictamente a su unidad asignada"
             >
-              <option value="ALL">Todas las Direcciones</option>
-              {LISTA_DIRECCIONES.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
+              🏛️ Unidad: <strong>{user.assigned_unit}</strong>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Filter size={14} color="var(--text-muted)" />
+              <select
+                value={filterDireccion}
+                onChange={(e) => setFilterDireccion(e.target.value)}
+                className="form-input"
+                style={{
+                  height: '38px',
+                  padding: '4px 10px',
+                  fontSize: '0.8rem',
+                  minWidth: '180px',
+                  maxWidth: '240px',
+                  background: 'var(--bg-secondary)',
+                }}
+              >
+                <option value="ALL">Todas las Direcciones</option>
+                {LISTA_DIRECCIONES.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Filtro Estado */}
           <select
@@ -1018,7 +1043,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
           <button
             onClick={() => {
               setSearch('');
-              setFilterDireccion('ALL');
+              setFilterDireccion(user?.assigned_unit ? (user.assigned_direction?.replace(/alcaldesa/gi, 'Alcalde') || 'ALL') : 'ALL');
               setFilterStatus('ALL');
               setFilterSocial('ALL');
               fetchEmployees();
@@ -1309,7 +1334,7 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                         <button
                           onClick={() => {
                             setSearch('');
-                            setFilterDireccion('ALL');
+                            setFilterDireccion(user?.assigned_unit ? (user.assigned_direction?.replace(/alcaldesa/gi, 'Alcalde') || 'ALL') : 'ALL');
                             setFilterStatus('ALL');
                             setFilterSocial('ALL');
                           }}
@@ -1769,61 +1794,93 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                 </div>
               </div>
 
-              {/* Dirección / Dependencia Superior (Desplegable Padre) */}
+              {/* Dirección / Dependencia Superior */}
               <div className="form-group" style={{ marginBottom: '12px' }}>
                 <label className="form-label">Dirección / Dependencia Superior *</label>
-                <select
-                  className="form-input"
-                  required
-                  value={editDireccion}
-                  onChange={(e) => {
-                    const selDir = e.target.value;
-                    setEditDireccion(selDir);
-                    setEditUnit('');
-                  }}
-                  style={{
-                    background: 'var(--bg-secondary)',
-                    color: '#fff',
-                    borderColor: editDireccion ? 'var(--primary-500)' : 'var(--border-subtle)',
-                  }}
-                >
-                  <option value="">-- Seleccionar Dirección / Dependencia --</option>
-                  {LISTA_DIRECCIONES.map((dir) => (
-                    <option key={dir} value={dir}>
-                      {dir}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Unidad Organizacional (Desplegable Hijo en Cascada) */}
-              <div className="form-group" style={{ marginBottom: '12px' }}>
-                <label className="form-label">Unidad Organizacional (Organigrama) *</label>
-                <select
-                  className="form-input"
-                  required
-                  value={editUnit}
-                  onChange={(e) => setEditUnit(e.target.value)}
-                  disabled={!editDireccion}
-                  style={{
-                    background: 'var(--bg-secondary)',
-                    color: !editDireccion ? 'var(--text-faint)' : '#fff',
-                    cursor: !editDireccion ? 'not-allowed' : 'pointer',
-                    borderColor: editUnit ? '#10b981' : 'var(--border-subtle)',
-                  }}
-                >
-                  <option value="">
-                    {!editDireccion
-                      ? '-- Primero seleccione una Dirección / Dependencia --'
-                      : '-- Seleccionar Unidad correspondiente --'}
-                  </option>
-                  {editDireccion &&
-                    (ORGANIGRAMA_GAMEA[editDireccion] || []).map((u) => (
-                      <option key={u} value={u}>
-                        {u}
+                {user?.assigned_unit ? (
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      background: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: '#38bdf8',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    🏢 {editDireccion || user.assigned_direction?.replace(/alcaldesa/gi, 'Alcalde') || 'Dirección Asignada'}
+                  </div>
+                ) : (
+                  <select
+                    className="form-input"
+                    required
+                    value={editDireccion}
+                    onChange={(e) => {
+                      const selDir = e.target.value;
+                      setEditDireccion(selDir);
+                      setEditUnit('');
+                    }}
+                    style={{
+                      background: 'var(--bg-secondary)',
+                      color: '#fff',
+                      borderColor: editDireccion ? 'var(--primary-500)' : 'var(--border-subtle)',
+                    }}
+                  >
+                    <option value="">-- Seleccionar Dirección / Dependencia --</option>
+                    {LISTA_DIRECCIONES.map((dir) => (
+                      <option key={dir} value={dir}>
+                        {dir}
                       </option>
                     ))}
-                </select>
+                  </select>
+                )}
+              </div>
+
+              {/* Unidad Organizacional (Organigrama) */}
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label className="form-label">Unidad Organizacional (Organigrama) *</label>
+                {user?.assigned_unit ? (
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      background: 'rgba(168, 85, 247, 0.1)',
+                      border: '1px solid rgba(168, 85, 247, 0.35)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: '#c084fc',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    🏛️ {editUnit || user.assigned_unit}
+                  </div>
+                ) : (
+                  <select
+                    className="form-input"
+                    required
+                    value={editUnit}
+                    onChange={(e) => setEditUnit(e.target.value)}
+                    disabled={!editDireccion}
+                    style={{
+                      background: 'var(--bg-secondary)',
+                      color: !editDireccion ? 'var(--text-faint)' : '#fff',
+                      cursor: !editDireccion ? 'not-allowed' : 'pointer',
+                      borderColor: editUnit ? '#10b981' : 'var(--border-subtle)',
+                    }}
+                  >
+                    <option value="">
+                      {!editDireccion
+                        ? '-- Primero seleccione una Dirección / Dependencia --'
+                        : '-- Seleccionar Unidad correspondiente --'}
+                    </option>
+                    {editDireccion &&
+                      (ORGANIGRAMA_GAMEA[editDireccion] || []).map((u) => (
+                        <option key={u} value={u}>
+                          {u}
+                        </option>
+                      ))}
+                  </select>
+                )}
               </div>
 
               {/* Cargo y Cédula de Identidad */}
@@ -2374,66 +2431,112 @@ export const EmployeesPage: React.FC<EmployeesPageProps> = ({ onNavigate }) => {
                 </div>
               </div>
 
-              {/* Dirección / Dependencia Superior (Desplegable Padre) */}
+              {/* Dirección / Dependencia Superior */}
               <div className="form-group">
                 <label className="form-label">Dirección / Dependencia Superior *</label>
-                <select
-                  className="form-input"
-                  required
-                  value={newDireccion}
-                  onChange={(e) => {
-                    const selDir = e.target.value;
-                    setNewDireccion(selDir);
-                    setNewUnit('');
-                  }}
-                  style={{
-                    background: 'var(--bg-secondary)',
-                    color: '#fff',
-                    borderColor: newDireccion ? 'var(--primary-500)' : 'var(--border-subtle)',
-                  }}
-                >
-                  <option value="">-- Seleccionar Dirección / Dependencia --</option>
-                  {LISTA_DIRECCIONES.map((dir) => (
-                    <option key={dir} value={dir}>
-                      {dir}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Unidad Organizacional (Desplegable Hijo en Cascada) */}
-              <div className="form-group">
-                <label className="form-label">Unidad Organizacional (Organigrama) *</label>
-                <select
-                  className="form-input"
-                  required
-                  value={newUnit}
-                  onChange={(e) => setNewUnit(e.target.value)}
-                  disabled={!newDireccion}
-                  style={{
-                    background: 'var(--bg-secondary)',
-                    color: !newDireccion ? 'var(--text-faint)' : '#fff',
-                    cursor: !newDireccion ? 'not-allowed' : 'pointer',
-                    borderColor: newUnit ? '#10b981' : 'var(--border-subtle)',
-                  }}
-                >
-                  <option value="">
-                    {!newDireccion
-                      ? '-- Primero seleccione una Dirección / Dependencia --'
-                      : '-- Seleccionar Unidad correspondiente --'}
-                  </option>
-                  {newDireccion &&
-                    (ORGANIGRAMA_GAMEA[newDireccion] || []).map((u) => (
-                      <option key={u} value={u}>
-                        {u}
+                {user?.assigned_unit ? (
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      background: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: '#38bdf8',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    🏢 {user.assigned_direction?.replace(/alcaldesa/gi, 'Alcalde') || 'Dirección Asignada'}
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                      (Fijada a su espacio)
+                    </span>
+                  </div>
+                ) : (
+                  <select
+                    className="form-input"
+                    required
+                    value={newDireccion}
+                    onChange={(e) => {
+                      const selDir = e.target.value;
+                      setNewDireccion(selDir);
+                      setNewUnit('');
+                    }}
+                    style={{
+                      background: 'var(--bg-secondary)',
+                      color: '#fff',
+                      borderColor: newDireccion ? 'var(--primary-500)' : 'var(--border-subtle)',
+                    }}
+                  >
+                    <option value="">-- Seleccionar Dirección / Dependencia --</option>
+                    {LISTA_DIRECCIONES.map((dir) => (
+                      <option key={dir} value={dir}>
+                        {dir}
                       </option>
                     ))}
-                </select>
-                {newDireccion && (
-                  <span style={{ fontSize: '0.72rem', color: '#38bdf8', marginTop: '4px', display: 'block' }}>
-                    Mostrando únicamente las {ORGANIGRAMA_GAMEA[newDireccion]?.length || 0} unidades pertenecientes a{' '}
-                    <strong>{newDireccion}</strong>
-                  </span>
+                  </select>
+                )}
+              </div>
+
+              {/* Unidad Organizacional (Organigrama) */}
+              <div className="form-group">
+                <label className="form-label">Unidad Organizacional (Organigrama) *</label>
+                {user?.assigned_unit ? (
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      background: 'rgba(168, 85, 247, 0.1)',
+                      border: '1px solid rgba(168, 85, 247, 0.35)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: '#c084fc',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    🏛️ {user.assigned_unit}
+                    <span style={{ fontSize: '0.72rem', color: '#10b981', marginLeft: 'auto' }}>
+                      ✓ Su unidad asignada
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      className="form-input"
+                      required
+                      value={newUnit}
+                      onChange={(e) => setNewUnit(e.target.value)}
+                      disabled={!newDireccion}
+                      style={{
+                        background: 'var(--bg-secondary)',
+                        color: !newDireccion ? 'var(--text-faint)' : '#fff',
+                        cursor: !newDireccion ? 'not-allowed' : 'pointer',
+                        borderColor: newUnit ? '#10b981' : 'var(--border-subtle)',
+                      }}
+                    >
+                      <option value="">
+                        {!newDireccion
+                          ? '-- Primero seleccione una Dirección / Dependencia --'
+                          : '-- Seleccionar Unidad correspondiente --'}
+                      </option>
+                      {newDireccion &&
+                        (ORGANIGRAMA_GAMEA[newDireccion] || []).map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                    </select>
+                    {newDireccion && (
+                      <span style={{ fontSize: '0.72rem', color: '#38bdf8', marginTop: '4px', display: 'block' }}>
+                        Mostrando únicamente las {ORGANIGRAMA_GAMEA[newDireccion]?.length || 0} unidades pertenecientes a{' '}
+                        <strong>{newDireccion}</strong>
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
 

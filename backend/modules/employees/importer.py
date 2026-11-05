@@ -508,9 +508,9 @@ class EmployeePayrollImporter:
 
                         dir_for_emp = parent_unit.name if parent_unit else (raw_parent_unit.title() if raw_parent_unit else None)
                         if not is_superadmin and current_user:
-                            if user_dir and not dir_for_emp:
+                            if user_dir:
                                 dir_for_emp = user_dir
-                            if user_unit and not target_unit:
+                            if user_unit:
                                 target_unit = (
                                     units_by_name.get(user_unit)
                                     or units_by_name.get(user_unit.upper())
