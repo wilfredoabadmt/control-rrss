@@ -178,11 +178,11 @@ export interface ResetTestDataResponse {
   interactions_deleted?: number;
 }
 
-// Cache en memoria para respuestas frecuentes de analítica (TTL 30 segundos)
-// Permite que la conmutación entre secretarías y direcciones sea casi instantánea (0ms).
+// Cache en memoria para respuestas frecuentes de analítica (TTL 60 segundos)
+// Permite que la conmutación entre secretarías y direcciones sea instantánea (0ms).
 const overviewCache = new Map<string, { data: AnalyticsOverviewResponse; ts: number }>();
 const employeesCache = new Map<string, { data: AnalyticsEmployeesPageResponse; ts: number }>();
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 60_000;
 
 export const clearAnalyticsCache = () => {
   overviewCache.clear();

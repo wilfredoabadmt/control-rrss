@@ -141,7 +141,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
     fetchPublications();
   }, [fetchPublications]);
 
-  // Cargar Overview de Analítica
+  // Cargar Overview y Tabla de Funcionarios coordinadamente
   const fetchOverview = useCallback(async () => {
     try {
       setLoadingOverview(true);
@@ -230,13 +230,10 @@ export const AnalyticsDashboardPage: React.FC = () => {
     commentsPage,
   ]);
 
+  // Ejecución paralela combinada para evitar cascadas y acelerar la carga en red
   useEffect(() => {
-    fetchOverview();
-  }, [fetchOverview]);
-
-  useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
+    Promise.all([fetchOverview(), fetchEmployees()]);
+  }, [fetchOverview, fetchEmployees]);
 
   useEffect(() => {
     if (activeTab === 'comments') {
@@ -973,10 +970,10 @@ export const AnalyticsDashboardPage: React.FC = () => {
             </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
-            {overview ? <AnimatedCounter value={overview.kpis.total_employees} /> : '—'}
+            {overview ? <AnimatedCounter value={overview.kpis.total_employees} /> : (loadingOverview ? '...' : '0')}
           </div>
           <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', marginTop: '4px' }}>
-            {overview ? `${overview.kpis.observable_employees} monitoreados con redes` : 'Cargando...'}
+            {overview ? `${overview.kpis.observable_employees} monitoreados con redes` : (loadingOverview ? 'Actualizando datos...' : 'Sin funcionarios')}
           </div>
         </div>
 

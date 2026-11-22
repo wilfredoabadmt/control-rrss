@@ -97,6 +97,17 @@ from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger("modules.monitoring.service")
 
+# Cache global en memoria para la matriz de actividad (TTL de 60 segundos)
+# Evita re-ejecutar queries pesadas, loads de publicaciones e interacción de matching
+# en llamadas concurrentes desde el Overview y la tabla de empleados del frontend.
+_activity_matrix_cache: dict[str, tuple[float, ActivityMatrixResponse]] = {}
+_ACTIVITY_MATRIX_CACHE_TTL_SECONDS = 60.0
+
+
+def clear_activity_matrix_cache():
+    """Limpia el caché de la matriz de actividad tras ingestas o sincronizaciones."""
+    _activity_matrix_cache.clear()
+
 
 def _safe_raw_payload_ref(payload_dict: dict, max_chars: int = 250) -> str:
     """
@@ -1707,6 +1718,7 @@ class MonitoringHubService:
                 correlation_id=cid,
             )
             await db.commit()
+            clear_activity_matrix_cache()
 
         except HTTPException:
             raise
@@ -1765,6 +1777,22 @@ class MonitoringHubService:
         if days and days > 0:
             date_to = datetime.now(UTC)
             date_from = date_to - timedelta(days=days)
+
+        # Comprobación de caché en memoria de alta velocidad
+        user_scope = str(current_user.id) if (current_user and hasattr(current_user, "id")) else "public"
+        cache_key = (
+            f"{str(publication_id)}|{str(platform_name)}|{str(department)}|{str(search)}|"
+            f"{str(participation_status)}|{user_scope}|{max_posts}|{days}|"
+            f"{date_from.isoformat() if date_from else ''}|{date_to.isoformat() if date_to else ''}"
+        )
+        now_ts = time.time()
+        if cache_key in _activity_matrix_cache:
+            c_time, c_data = _activity_matrix_cache[cache_key]
+            if now_ts - c_time < _ACTIVITY_MATRIX_CACHE_TTL_SECONDS:
+                return c_data
+            else:
+                _activity_matrix_cache.pop(cache_key, None)
+
         # 1. Obtener audiencia monitoreada
         audience = await MonitoringHubService.get_audience(db, current_user=current_user)
 
@@ -2167,7 +2195,10 @@ class MonitoringHubService:
             total_publications_evaluated=len(publications),
         )
 
-        return ActivityMatrixResponse(summary=summary, rows=rows)
+        result_matrix = ActivityMatrixResponse(summary=summary, rows=rows)
+        # Guardar en caché en memoria para subsecuentes consultas casi instantáneas (0ms)
+        _activity_matrix_cache[cache_key] = (now_ts, result_matrix)
+        return result_matrix
 
     # -------------------------------------------------------------------------
     # 5. Exportación Oficial en Excel (.xlsx) para Autoridades
