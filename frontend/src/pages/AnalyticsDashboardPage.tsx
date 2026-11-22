@@ -64,19 +64,8 @@ const AnimatedCounter: React.FC<{ value: number; decimals?: number; suffix?: str
 };
 
 export const AnalyticsDashboardPage: React.FC = () => {
-  const { user, hasRole } = useAuth();
+  const { hasRole } = useAuth();
   const canPurge = hasRole([UserRole.SUPER_ADMIN, UserRole.DIRECTOR]);
-  const isViewerOnly = Boolean(
-    user?.roles?.includes(UserRole.VIEWER) &&
-      !hasRole([
-        UserRole.SUPER_ADMIN,
-        UserRole.DIRECTOR,
-        UserRole.COMMUNICATIONS_LEAD,
-        UserRole.ANALYST,
-        UserRole.OPERATOR,
-        UserRole.AUDITOR,
-      ])
-  );
 
   // Pestaña activa principal
   const [activeTab, setActiveTab] = useState<'overview' | 'comments'>('overview');
@@ -957,6 +946,8 @@ export const AnalyticsDashboardPage: React.FC = () => {
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
           gap: '16px',
+          opacity: loadingOverview ? 0.7 : 1,
+          transition: 'opacity 0.2s ease',
         }}
       >
         {/* KPI 1: Funcionarios del Área */}
@@ -1102,7 +1093,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
       {activeTab === 'overview' ? (
         <>
           {/* 4. Grilla de Gráficos Estadísticos */}
-          <div className="analytics-charts-grid">
+          <div className="analytics-charts-grid" style={{ opacity: loadingOverview ? 0.7 : 1, transition: 'opacity 0.2s ease' }}>
             {/* Gráfico 1: Ranking Jerárquico Adaptativo */}
             <div className="analytics-chart-card">
               <div className="analytics-card-header">

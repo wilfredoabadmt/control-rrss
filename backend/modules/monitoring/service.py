@@ -1967,11 +1967,16 @@ class MonitoringHubService:
                 if handle_auth and handle_auth != clean_auth:
                     ints_by_pub_and_author_id.setdefault((pub_key, handle_auth), []).append(it)
 
-            # 3. Por external_author_name normalizado
+            # 3. Por external_author_name normalizado y variantes
             if it.external_author_name:
                 norm_author = _clean_n(it.external_author_name)
                 if norm_author:
                     ints_by_pub_and_name.setdefault((pub_key, norm_author), []).append(it)
+                    # Indexar también sin espacios o con sub-tokens para matching O(1) ultra-rápido
+                    toks = [w for w in it.external_author_name.lower().split() if len(w) >= 3]
+                    if len(toks) >= 2:
+                        ints_by_pub_and_name.setdefault((pub_key, _clean_n(f"{toks[0]} {toks[-1]}")), []).append(it)
+                        ints_by_pub_and_name.setdefault((pub_key, _clean_n(f"{toks[0]} {toks[1]}")), []).append(it)
 
         # 4. Construir filas de la matriz
         rows: list[ActivityMatrixRow] = []
@@ -2043,15 +2048,13 @@ class MonitoringHubService:
                     if v_norm and v_norm not in (norm_full_name, norm_first_last):
                         _add(ints_by_pub_and_name.get((pub.id, v_norm), []))
 
-                # D. Coincidencia Parcial o Difusa de Autor si no se encontró coincidencia directa
-                if not matched_for_pub and pub.id in ints_by_pub:
-                    for pub_it in ints_by_pub[pub.id]:
-                        if pub_it.external_author_name:
-                            c_norm = _clean_n(pub_it.external_author_name)
-                            if c_norm and len(c_norm) >= 6 and (c_norm in norm_full_name or norm_full_name in c_norm):
-                                _add([pub_it])
-                            elif score_candidate(pub_it.external_author_name, emp_dict) >= 0.75:
-                                _add([pub_it])
+                # D. Coincidencia ultra-rápida O(1) con variaciones de nombre de funcionario
+                if not matched_for_pub:
+                    for v_norm in aud_name_variants:
+                        if v_norm:
+                            _add(ints_by_pub_and_name.get((pub.id, v_norm), []))
+                            if matched_for_pub:
+                                break
 
                 reaction_found: str | None = None
                 comment_found: str | None = None
