@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BarChart3,
@@ -145,8 +145,19 @@ export const AnalyticsDashboardPage: React.FC = () => {
     fetchPublications();
   }, [fetchPublications]);
 
+  // AbortControllers para cancelar peticiones obsoletas al cambiar de filtro rápidamente
+  const overviewAbortRef = useRef<AbortController | null>(null);
+  const employeesAbortRef = useRef<AbortController | null>(null);
+  const commentsAbortRef = useRef<AbortController | null>(null);
+
   // Cargar Overview y Tabla de Funcionarios coordinadamente
   const fetchOverview = useCallback(async () => {
+    if (overviewAbortRef.current) {
+      overviewAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    overviewAbortRef.current = controller;
+
     try {
       setLoadingOverview(true);
       setError(null);
@@ -158,18 +169,27 @@ export const AnalyticsDashboardPage: React.FC = () => {
         platform_name: selectedPlatform !== 'ALL' ? selectedPlatform : undefined,
         publication_id: selectedPublication !== 'ALL' ? selectedPublication : undefined,
       };
-      const res = await analyticsApi.getOverview(filters, false);
+      const res = await analyticsApi.getOverview(filters, false, controller.signal);
       setOverview(res);
     } catch (err: any) {
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
       console.error('Error al cargar analítica de reacciones:', err);
       setError('No se pudo cargar el resumen analítico. Verifique la conexión con el servidor.');
     } finally {
-      setLoadingOverview(false);
+      if (overviewAbortRef.current === controller) {
+        setLoadingOverview(false);
+      }
     }
   }, [daysPreset, selectedSecretaria, selectedDirection, selectedUnit, selectedPlatform, selectedPublication]);
 
   // Cargar Tabla de Funcionarios
   const fetchEmployees = useCallback(async () => {
+    if (employeesAbortRef.current) {
+      employeesAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    employeesAbortRef.current = controller;
+
     try {
       setLoadingEmployees(true);
       const filters: AnalyticsFilters = {
@@ -184,12 +204,15 @@ export const AnalyticsDashboardPage: React.FC = () => {
         page: currentPage,
         page_size: pageSize,
       };
-      const res = await analyticsApi.getEmployees(filters, false);
+      const res = await analyticsApi.getEmployees(filters, false, controller.signal);
       setEmployeesData(res);
     } catch (err: any) {
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
       console.error('Error al cargar tabla de funcionarios:', err);
     } finally {
-      setLoadingEmployees(false);
+      if (employeesAbortRef.current === controller) {
+        setLoadingEmployees(false);
+      }
     }
   }, [
     daysPreset,
@@ -205,6 +228,12 @@ export const AnalyticsDashboardPage: React.FC = () => {
 
   // Cargar Auditoría de Comentarios
   const fetchComments = useCallback(async () => {
+    if (commentsAbortRef.current) {
+      commentsAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    commentsAbortRef.current = controller;
+
     try {
       setLoadingComments(true);
       const filters: CommentFilters = {
@@ -217,12 +246,15 @@ export const AnalyticsDashboardPage: React.FC = () => {
         page: commentsPage,
         page_size: commentsPageSize,
       };
-      const res = await analyticsApi.getComments(filters);
+      const res = await analyticsApi.getComments(filters, controller.signal);
       setCommentsData(res);
     } catch (err: any) {
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
       console.error('Error al cargar comentarios auditados:', err);
     } finally {
-      setLoadingComments(false);
+      if (commentsAbortRef.current === controller) {
+        setLoadingComments(false);
+      }
     }
   }, [
     selectedPublication,
@@ -710,6 +742,8 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 setSelectedDirection('ALL');
                 setSelectedUnit('ALL');
                 setCurrentPage(1);
+                setLoadingOverview(true);
+                setLoadingEmployees(true);
               }}
             >
               <option value="ALL">🏛️ Todas las Secretarías y Despacho</option>
@@ -750,6 +784,8 @@ export const AnalyticsDashboardPage: React.FC = () => {
                   if (sec) setSelectedSecretaria(sec);
                 }
                 setCurrentPage(1);
+                setLoadingOverview(true);
+                setLoadingEmployees(true);
               }}
             >
               <option value="ALL">
@@ -795,6 +831,8 @@ export const AnalyticsDashboardPage: React.FC = () => {
               onChange={(e) => {
                 setSelectedUnit(e.target.value);
                 setCurrentPage(1);
+                setLoadingOverview(true);
+                setLoadingEmployees(true);
               }}
             >
               <option value="ALL">
@@ -1326,20 +1364,20 @@ export const AnalyticsDashboardPage: React.FC = () => {
             </div>
 
             {/* Tabla Responsiva sin scroll horizontal */}
-            <div className="table-responsive" style={{ overflowX: 'hidden' }}>
-              <table className="analytics-table" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <div className="table-responsive">
+              <table className="analytics-table" style={{ tableLayout: 'fixed', width: '100%', minWidth: '820px' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '38px', textAlign: 'center', color: '#38bdf8', fontWeight: 700, padding: '10px 4px' }}>N°</th>
-                    <th style={{ width: '16%', padding: '10px 8px' }}>Funcionario / CI</th>
-                    <th style={{ width: '17%', padding: '10px 8px' }}>Dirección / Sec.</th>
-                    <th style={{ width: '16%', padding: '10px 8px' }}>Unidad / Cargo</th>
-                    <th style={{ width: '14%', padding: '10px 8px' }}>Redes</th>
-                    <th style={{ width: '5.5%', textAlign: 'center', padding: '10px 4px' }}>Reacc.</th>
-                    <th style={{ width: '6.5%', textAlign: 'center', padding: '10px 4px' }}>Coment.</th>
-                    <th style={{ width: '7.5%', textAlign: 'center', padding: '10px 4px' }}>Auditados</th>
-                    <th style={{ width: '9%', textAlign: 'center', padding: '10px 4px' }}>Tasa</th>
-                    <th style={{ width: '8.5%', textAlign: 'center', padding: '10px 4px' }}>Estado</th>
+                    <th style={{ width: '3.5%', textAlign: 'center', color: '#38bdf8', fontWeight: 700, padding: '10px 2px' }}>N°</th>
+                    <th style={{ width: '17%', padding: '10px 6px' }}>Funcionario / CI</th>
+                    <th style={{ width: '17%', padding: '10px 6px' }}>Dirección / Sec.</th>
+                    <th style={{ width: '17%', padding: '10px 6px' }}>Unidad / Cargo</th>
+                    <th style={{ width: '12%', padding: '10px 6px' }}>Redes</th>
+                    <th style={{ width: '6%', textAlign: 'center', padding: '10px 2px' }}>Reacc.</th>
+                    <th style={{ width: '6%', textAlign: 'center', padding: '10px 2px' }}>Coment.</th>
+                    <th style={{ width: '7%', textAlign: 'center', padding: '10px 2px' }}>Auditados</th>
+                    <th style={{ width: '7.5%', textAlign: 'center', padding: '10px 2px' }}>Tasa</th>
+                    <th style={{ width: '7%', textAlign: 'center', padding: '10px 2px' }}>Estado</th>
                   </tr>
                 </thead>
                 <tbody style={{ opacity: loadingEmployees ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>

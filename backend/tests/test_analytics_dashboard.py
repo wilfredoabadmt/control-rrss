@@ -15,7 +15,7 @@ from modules.analytics.schemas import (
     AnalyticsEmployeesPageResponse,
     AnalyticsOverviewResponse,
 )
-from modules.analytics.service import AnalyticsService
+from modules.analytics.service import AnalyticsService, clear_analytics_service_cache
 from modules.employees.models import Employee, OrganizationalUnit
 from modules.iam.models import Role, User
 from modules.interactions.models import Interaction
@@ -451,6 +451,7 @@ async def test_analytics_subalcaldias_filtering(async_db: AsyncSession, super_ad
     )
     async_db.add(emp_sub)
     await async_db.commit()
+    clear_analytics_service_cache()
 
     # 3. Filtrar por Secretaría "Subalcaldías"
     res_sub = await AnalyticsService.get_overview(

@@ -190,7 +190,7 @@ export const clearAnalyticsCache = () => {
 };
 
 export const analyticsApi = {
-  getOverview: async (filters: AnalyticsFilters = {}, forceRefresh = false): Promise<AnalyticsOverviewResponse> => {
+  getOverview: async (filters: AnalyticsFilters = {}, forceRefresh = false, signal?: AbortSignal): Promise<AnalyticsOverviewResponse> => {
     const params: Record<string, any> = {};
     if (filters.days) params.days = filters.days;
     if (filters.date_from) params.date_from = filters.date_from;
@@ -211,12 +211,12 @@ export const analyticsApi = {
       overviewCache.delete(cacheKey);
     }
 
-    const res = await apiClient.get<AnalyticsOverviewResponse>('/analytics/overview', { params });
+    const res = await apiClient.get<AnalyticsOverviewResponse>('/analytics/overview', { params, signal });
     overviewCache.set(cacheKey, { data: res.data, ts: now });
     return res.data;
   },
 
-  getEmployees: async (filters: AnalyticsFilters = {}, forceRefresh = false): Promise<AnalyticsEmployeesPageResponse> => {
+  getEmployees: async (filters: AnalyticsFilters = {}, forceRefresh = false, signal?: AbortSignal): Promise<AnalyticsEmployeesPageResponse> => {
     const params: Record<string, any> = {
       page: filters.page || 1,
       page_size: filters.page_size || 20,
@@ -240,12 +240,12 @@ export const analyticsApi = {
       employeesCache.delete(cacheKey);
     }
 
-    const res = await apiClient.get<AnalyticsEmployeesPageResponse>('/analytics/employees', { params });
+    const res = await apiClient.get<AnalyticsEmployeesPageResponse>('/analytics/employees', { params, signal });
     employeesCache.set(cacheKey, { data: res.data, ts: now });
     return res.data;
   },
 
-  getComments: async (filters: CommentFilters = {}): Promise<PostCommentsPageResponse> => {
+  getComments: async (filters: CommentFilters = {}, signal?: AbortSignal): Promise<PostCommentsPageResponse> => {
     const params: Record<string, any> = {
       page: filters.page || 1,
       page_size: filters.page_size || 20,
@@ -257,7 +257,7 @@ export const analyticsApi = {
     if (filters.unit && filters.unit !== 'ALL') params.unit = filters.unit;
     if (filters.search) params.search = filters.search;
 
-    const res = await apiClient.get<PostCommentsPageResponse>('/analytics/comments', { params });
+    const res = await apiClient.get<PostCommentsPageResponse>('/analytics/comments', { params, signal });
     return res.data;
   },
 

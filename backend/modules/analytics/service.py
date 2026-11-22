@@ -526,6 +526,11 @@ def clear_analytics_service_cache() -> None:
     _hierarchy_cache = None
     _overview_cache.clear()
     _employees_table_cache.clear()
+    try:
+        from modules.monitoring.service import _activity_matrix_cache
+        _activity_matrix_cache.clear()
+    except Exception:
+        pass
 
 
 async def get_emp_hierarchy_map_fast(db: AsyncSession) -> dict[str, tuple[str, str, str]]:
@@ -663,9 +668,11 @@ class AnalyticsService:
                 r_dept_clean = _clean_str(r.department)
                 matches_unit = (
                     (u_res_clean == u_target)
-                    or (u_target in u_res_clean and len(u_target) > 5)
+                    or (u_target in u_res_clean and len(u_target) > 3)
+                    or (u_res_clean in u_target and len(u_res_clean) > 3)
                     or (r_dept_clean == u_target)
-                    or (u_target in r_dept_clean and len(u_target) > 5)
+                    or (u_target in r_dept_clean and len(u_target) > 3)
+                    or (r_dept_clean in u_target and len(r_dept_clean) > 3)
                 )
                 if not matches_unit:
                     continue
@@ -1094,9 +1101,11 @@ class AnalyticsService:
                 r_dept_clean = _clean_str(r.department)
                 matches_unit = (
                     (u_res_clean == u_target)
-                    or (u_target in u_res_clean and len(u_target) > 5)
+                    or (u_target in u_res_clean and len(u_target) > 3)
+                    or (u_res_clean in u_target and len(u_res_clean) > 3)
                     or (r_dept_clean == u_target)
-                    or (u_target in r_dept_clean and len(u_target) > 5)
+                    or (u_target in r_dept_clean and len(u_target) > 3)
+                    or (r_dept_clean in u_target and len(r_dept_clean) > 3)
                 )
                 if not matches_unit:
                     continue
@@ -1731,6 +1740,7 @@ class AnalyticsService:
         search: str | None = None,
         secretaria: str | None = None,
         direction: str | None = None,
+        unit: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> PostCommentsPageResponse:
@@ -1865,6 +1875,18 @@ class AnalyticsService:
                     and ("subalcal" in d_target or "distrito" in d_target)
                 )
                 if not matches_dir:
+                    continue
+
+            # Filtrar por unidad operativa dependiente
+            if unit and unit != "ALL":
+                u_target = unit.strip().lower()
+                u_clean = (unit_val or "").strip().lower()
+                matches_unit = (
+                    (u_clean == u_target)
+                    or (u_target in u_clean and len(u_target) > 3)
+                    or (u_clean in u_target and len(u_clean) > 3)
+                )
+                if not matches_unit:
                     continue
 
             # Filtrar por término de búsqueda

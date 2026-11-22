@@ -347,15 +347,17 @@ body {
   padding: 20px 18px;
   backdrop-filter: var(--glass-blur);
   box-shadow: var(--shadow-card);
-  overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .analytics-table {
   width: 100%;
+  min-width: 820px;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .analytics-table th {
