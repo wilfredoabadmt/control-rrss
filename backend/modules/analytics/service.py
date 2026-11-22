@@ -498,12 +498,12 @@ def resolve_org_hierarchy(direction_name: str | None, unit_name: str | None) -> 
                 return "Subalcaldías", f"Subalcaldía Distrito Municipal {i}", u_clean or "Sin Unidad Asignada"
         return "Subalcaldías", "Subalcaldía Distrito Municipal 1", u_clean or "Sin Unidad Asignada"
 
-    # 4. Fallback inteligente
-    resolved_dir = d_clean or u_clean or "Dirección de Comunicación"
-    resolved_sec = "Despacho Alcalde"
+    # 4. Fallback limpio sin inventar pertenencia a Comunicación
+    resolved_dir = d_clean or "Otras Direcciones"
+    resolved_sec = "Otras Dependencias"
     # Verificar si coincide con alguna secretaría conocida
     for sec_item in ORGANIGRAMA_HIERARCHY:
-        if resolved_dir.lower() in sec_item["secretaria"].lower():
+        if d_clean and d_clean.lower() in sec_item["secretaria"].lower():
             resolved_sec = sec_item["secretaria"]
             break
 
@@ -530,6 +530,7 @@ async def get_emp_hierarchy_map_fast(db: AsyncSession) -> dict[str, tuple[str, s
             u_name, p_id = unit_dict[u_id]
             if p_id and p_id in unit_dict:
                 parent_name = unit_dict[p_id][0]
+        # Priorizar dirección explícita del empleado, o la del padre de la unidad, o la unidad misma
         dir_name = d_name or parent_name or u_name
         emp_db_map[eid] = resolve_org_hierarchy(dir_name, u_name)
     return emp_db_map
@@ -575,7 +576,13 @@ class AnalyticsService:
         # 2. Cargar mapeo de empleados desde la base de datos para máxima precisión y rapidez
         emp_db_map = await get_emp_hierarchy_map_fast(db)
 
-        # 3. Filtrar filas de funcionarios según la jerarquía solicitada
+        # Helper para normalizar cadenas comparando acentos y espacios
+        def _clean_str(s: str | None) -> str:
+            if not s:
+                return ""
+            return s.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()
+
+        # 3. Filtrar filas de funcionarios según la jerarquía solicitada estrictamente
         filtered_rows = []
         for r in all_rows:
             sec_res, dir_res, unit_res = emp_db_map.get(
@@ -584,24 +591,24 @@ class AnalyticsService:
 
             # Filtro por Secretaría
             if secretaria and secretaria != "ALL":
-                sec_target = secretaria.strip().lower()
-                matches_sec = (sec_res.lower() == sec_target) or (
-                    "subalcal" in sec_res.lower() and "subalcal" in sec_target
+                sec_target = _clean_str(secretaria)
+                matches_sec = (_clean_str(sec_res) == sec_target) or (
+                    "subalcal" in _clean_str(sec_res) and "subalcal" in sec_target
                 )
                 if not matches_sec:
                     continue
 
             # Filtro por Dirección
             if direction and direction != "ALL":
-                d_target = normalize_direction_name(direction).strip().lower()
+                d_target = _clean_str(normalize_direction_name(direction))
+                dir_clean = _clean_str(dir_res)
                 matches_dir = (
-                    dir_res.lower() == d_target
-                    or r.department.lower() == d_target
+                    dir_clean == d_target
                     or (
-                        ("subalcal" in dir_res.lower() or "distrito" in dir_res.lower())
+                        ("subalcal" in dir_clean or "distrito" in dir_clean)
                         and ("subalcal" in d_target or "distrito" in d_target)
                         and any(
-                            f" {i}" in dir_res.lower() and f" {i}" in d_target
+                            f" {i}" in dir_clean and f" {i}" in d_target
                             for i in range(1, 15)
                         )
                     )
@@ -609,10 +616,13 @@ class AnalyticsService:
                 if not matches_dir:
                     continue
 
-            # Filtro por Unidad
+            # Filtro por Unidad (Estricto: solo servidores de esta unidad operativa)
             if unit and unit != "ALL":
-                u_target = unit.strip().lower()
-                if unit_res.lower() != u_target and r.department.lower() != u_target:
+                u_target = _clean_str(unit)
+                u_res_clean = _clean_str(unit_res)
+                r_dept_clean = _clean_str(r.department)
+                matches_unit = (u_res_clean == u_target) or (r_dept_clean == u_target)
+                if not matches_unit:
                     continue
 
             filtered_rows.append((r, sec_res, dir_res, unit_res))
@@ -976,30 +986,36 @@ class AnalyticsService:
         total_available_posts = len(pubs)
         active_pub_ids = {p.publication_id for p in pubs}
 
+        # Helper para normalizar cadenas comparando acentos y espacios
+        def _clean_str(s: str | None) -> str:
+            if not s:
+                return ""
+            return s.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()
+
         items: list[EmployeeAnalyticsItem] = []
         for r in all_rows:
             sec_res, dir_res, unit_res = emp_db_map.get(
                 r.employee_id, resolve_org_hierarchy(r.department, r.department)
             )
 
-            # Filtros jerárquicos
+            # Filtros jerárquicos estrictos
             if secretaria and secretaria != "ALL":
-                sec_target = secretaria.strip().lower()
-                matches_sec = (sec_res.lower() == sec_target) or (
-                    "subalcal" in sec_res.lower() and "subalcal" in sec_target
+                sec_target = _clean_str(secretaria)
+                matches_sec = (_clean_str(sec_res) == sec_target) or (
+                    "subalcal" in _clean_str(sec_res) and "subalcal" in sec_target
                 )
                 if not matches_sec:
                     continue
             if direction and direction != "ALL":
-                d_target = normalize_direction_name(direction).strip().lower()
+                d_target = _clean_str(normalize_direction_name(direction))
+                dir_clean = _clean_str(dir_res)
                 matches_dir = (
-                    dir_res.lower() == d_target
-                    or r.department.lower() == d_target
+                    dir_clean == d_target
                     or (
-                        ("subalcal" in dir_res.lower() or "distrito" in dir_res.lower())
+                        ("subalcal" in dir_clean or "distrito" in dir_clean)
                         and ("subalcal" in d_target or "distrito" in d_target)
                         and any(
-                            f" {i}" in dir_res.lower() and f" {i}" in d_target
+                            f" {i}" in dir_clean and f" {i}" in d_target
                             for i in range(1, 15)
                         )
                     )
@@ -1007,8 +1023,11 @@ class AnalyticsService:
                 if not matches_dir:
                     continue
             if unit and unit != "ALL":
-                u_target = unit.strip().lower()
-                if unit_res.lower() != u_target and r.department.lower() != u_target:
+                u_target = _clean_str(unit)
+                u_res_clean = _clean_str(unit_res)
+                r_dept_clean = _clean_str(r.department)
+                matches_unit = (u_res_clean == u_target) or (r_dept_clean == u_target)
+                if not matches_unit:
                     continue
 
             user_reacts = 0
