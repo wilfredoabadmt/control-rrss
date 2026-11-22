@@ -118,8 +118,8 @@ services:
       target: production
     container_name: gamea_frontend_prod
     restart: always
-    ports:
-      - "${FRONTEND_PORT:-80}:80"
+    expose:
+      - "80"
     depends_on:
       - api
     deploy:
