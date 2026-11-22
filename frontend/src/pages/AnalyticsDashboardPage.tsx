@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import {
   analyticsApi,
+  clearAnalyticsCache,
   AnalyticsFilters,
   AnalyticsOverviewResponse,
   AnalyticsEmployeesPageResponse,
@@ -411,6 +412,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
             onClick={() => {
+              clearAnalyticsCache();
               fetchOverview();
               fetchEmployees();
               if (activeTab === 'comments') fetchComments();

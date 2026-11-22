@@ -197,7 +197,7 @@ class Employee(Base, TimestampMixin):
         back_populates="employee",
         order_by="desc(EmployeeHistory.effective_date)",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="select",
     )
 
 

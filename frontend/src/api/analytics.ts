@@ -178,8 +178,19 @@ export interface ResetTestDataResponse {
   interactions_deleted?: number;
 }
 
+// Cache en memoria para respuestas frecuentes de analítica (TTL 30 segundos)
+// Permite que la conmutación entre secretarías y direcciones sea casi instantánea (0ms).
+const overviewCache = new Map<string, { data: AnalyticsOverviewResponse; ts: number }>();
+const employeesCache = new Map<string, { data: AnalyticsEmployeesPageResponse; ts: number }>();
+const CACHE_TTL_MS = 30_000;
+
+export const clearAnalyticsCache = () => {
+  overviewCache.clear();
+  employeesCache.clear();
+};
+
 export const analyticsApi = {
-  getOverview: async (filters: AnalyticsFilters = {}): Promise<AnalyticsOverviewResponse> => {
+  getOverview: async (filters: AnalyticsFilters = {}, forceRefresh = false): Promise<AnalyticsOverviewResponse> => {
     const params: Record<string, any> = {};
     if (filters.days) params.days = filters.days;
     if (filters.date_from) params.date_from = filters.date_from;
@@ -190,11 +201,22 @@ export const analyticsApi = {
     if (filters.publication_id && filters.publication_id !== 'ALL') params.publication_id = filters.publication_id;
     if (filters.platform_name && filters.platform_name !== 'ALL') params.platform_name = filters.platform_name;
 
+    const cacheKey = JSON.stringify(params);
+    const now = Date.now();
+    if (!forceRefresh && overviewCache.has(cacheKey)) {
+      const entry = overviewCache.get(cacheKey)!;
+      if (now - entry.ts < CACHE_TTL_MS) {
+        return entry.data;
+      }
+      overviewCache.delete(cacheKey);
+    }
+
     const res = await apiClient.get<AnalyticsOverviewResponse>('/analytics/overview', { params });
+    overviewCache.set(cacheKey, { data: res.data, ts: now });
     return res.data;
   },
 
-  getEmployees: async (filters: AnalyticsFilters = {}): Promise<AnalyticsEmployeesPageResponse> => {
+  getEmployees: async (filters: AnalyticsFilters = {}, forceRefresh = false): Promise<AnalyticsEmployeesPageResponse> => {
     const params: Record<string, any> = {
       page: filters.page || 1,
       page_size: filters.page_size || 20,
@@ -208,7 +230,18 @@ export const analyticsApi = {
     if (filters.platform_name && filters.platform_name !== 'ALL') params.platform_name = filters.platform_name;
     if (filters.participation_status) params.participation_status = filters.participation_status;
 
+    const cacheKey = JSON.stringify(params);
+    const now = Date.now();
+    if (!forceRefresh && employeesCache.has(cacheKey)) {
+      const entry = employeesCache.get(cacheKey)!;
+      if (now - entry.ts < CACHE_TTL_MS) {
+        return entry.data;
+      }
+      employeesCache.delete(cacheKey);
+    }
+
     const res = await apiClient.get<AnalyticsEmployeesPageResponse>('/analytics/employees', { params });
+    employeesCache.set(cacheKey, { data: res.data, ts: now });
     return res.data;
   },
 

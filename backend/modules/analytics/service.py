@@ -510,6 +510,31 @@ def resolve_org_hierarchy(direction_name: str | None, unit_name: str | None) -> 
     return resolved_sec, resolved_dir, u_clean or "Sin Unidad Asignada"
 
 
+async def get_emp_hierarchy_map_fast(db: AsyncSession) -> dict[str, tuple[str, str, str]]:
+    """
+    Construye eficientemente el mapeo de jerarquía de empleados (secretaría, dirección, unidad)
+    usando consultas de proyección ultralivianas, evitando el overhead de selectinload ORM.
+    """
+    stmt_units = select(OrganizationalUnit.id, OrganizationalUnit.name, OrganizationalUnit.parent_id)
+    units_rows = (await db.execute(stmt_units)).all()
+    unit_dict = {u.id: (u.name, u.parent_id) for u in units_rows}
+
+    stmt_emps = select(Employee.employee_id, Employee.direction_name, Employee.organizational_unit_id)
+    emp_rows = (await db.execute(stmt_emps)).all()
+
+    emp_db_map: dict[str, tuple[str, str, str]] = {}
+    for eid, d_name, u_id in emp_rows:
+        u_name = ""
+        parent_name = ""
+        if u_id and u_id in unit_dict:
+            u_name, p_id = unit_dict[u_id]
+            if p_id and p_id in unit_dict:
+                parent_name = unit_dict[p_id][0]
+        dir_name = d_name or parent_name or u_name
+        emp_db_map[eid] = resolve_org_hierarchy(dir_name, u_name)
+    return emp_db_map
+
+
 class AnalyticsService:
 
     @classmethod
@@ -547,20 +572,8 @@ class AnalyticsService:
 
         all_rows = matrix.rows or []
 
-        # 2. Cargar mapeo de empleados desde la base de datos para máxima precisión
-        stmt_emps = (
-            select(Employee)
-            .options(
-                selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent),
-            )
-        )
-        emp_records = list((await db.execute(stmt_emps)).scalars().all())
-        emp_db_map: dict[str, tuple[str, str, str]] = {}
-        for emp in emp_records:
-            u_name = emp.organizational_unit.name if emp.organizational_unit else ""
-            parent_name = emp.organizational_unit.parent.name if emp.organizational_unit and emp.organizational_unit.parent else ""
-            d_name = emp.direction_name or parent_name or u_name
-            emp_db_map[emp.employee_id] = resolve_org_hierarchy(d_name, u_name)
+        # 2. Cargar mapeo de empleados desde la base de datos para máxima precisión y rapidez
+        emp_db_map = await get_emp_hierarchy_map_fast(db)
 
         # 3. Filtrar filas de funcionarios según la jerarquía solicitada
         filtered_rows = []
@@ -931,20 +944,8 @@ class AnalyticsService:
 
         all_rows = matrix.rows or []
 
-        # Cargar mapeo de empleados desde la base de datos
-        stmt_emps = (
-            select(Employee)
-            .options(
-                selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent),
-            )
-        )
-        emp_records = list((await db.execute(stmt_emps)).scalars().all())
-        emp_db_map: dict[str, tuple[str, str, str]] = {}
-        for emp in emp_records:
-            u_name = emp.organizational_unit.name if emp.organizational_unit else ""
-            parent_name = emp.organizational_unit.parent.name if emp.organizational_unit and emp.organizational_unit.parent else ""
-            d_name = emp.direction_name or parent_name or u_name
-            emp_db_map[emp.employee_id] = resolve_org_hierarchy(d_name, u_name)
+        # Cargar mapeo de empleados desde la base de datos de forma ultraliviana
+        emp_db_map = await get_emp_hierarchy_map_fast(db)
 
         unique_posts_dict: dict[uuid.UUID, Any] = {}
         for r in all_rows:
@@ -1647,18 +1648,12 @@ class AnalyticsService:
         stmt_emps = (
             select(Employee)
             .options(
-                selectinload(Employee.organizational_unit).selectinload(OrganizationalUnit.parent),
                 selectinload(Employee.position),
             )
         )
         emp_records = list((await db.execute(stmt_emps)).scalars().all())
         emp_dict: dict[str, Employee] = {e.employee_id: e for e in emp_records}
-        emp_hierarchy_map: dict[str, tuple[str, str, str]] = {}
-        for emp in emp_records:
-            u_name = emp.organizational_unit.name if emp.organizational_unit else ""
-            parent_name = emp.organizational_unit.parent.name if emp.organizational_unit and emp.organizational_unit.parent else ""
-            d_name = emp.direction_name or parent_name or u_name
-            emp_hierarchy_map[emp.employee_id] = resolve_org_hierarchy(d_name, u_name)
+        emp_hierarchy_map = await get_emp_hierarchy_map_fast(db)
 
         # 2. Consultar comentarios en Interaction
         stmt_comments = (

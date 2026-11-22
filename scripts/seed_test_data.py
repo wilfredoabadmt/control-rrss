@@ -1,13 +1,19 @@
 #!/usr/bin/env python
 """
-Script de seed para poblar datos de prueba en la base de datos local.
-Permite validar el flujo completo: funcionarios -> cuentas sociales -> publicaciones -> interacciones -> verificación.
-Ejecutar desde la raíz del proyecto: uv run python scripts/seed_test_data.py
+⚠️ ADVERTENCIA DE SEGURIDAD:
+Este script es EXCLUSIVO para desarrollo y pruebas locales.
+BAJO NINGUNA CIRCUNSTANCIA debe ejecutarse en el entorno de PRODUCCIÓN.
+Puebla datos de prueba sintéticos (funcionarios simulados, interacciones y verificaciones de test).
 """
 import asyncio
 import sys
 import os
 from pathlib import Path
+
+# Guarda estricta: abortar inmediatamente si detecta entorno de producción
+if os.environ.get("ENVIRONMENT", "").lower() in ("production", "prod"):
+    print("❌ ERROR FATAL DE SEGURIDAD: No se permite ejecutar scripts de seed de prueba en PRODUCCIÓN.")
+    sys.exit(1)
 
 # Agregar backend al path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))

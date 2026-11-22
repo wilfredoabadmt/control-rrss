@@ -8,6 +8,7 @@ import uuid
 from datetime import UTC, datetime
 
 from core.security.auth import get_current_user
+from core.security.rbac import require_roles
 from database import get_async_db
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
@@ -18,6 +19,7 @@ from modules.analytics.schemas import (
 )
 from modules.analytics.service import AnalyticsService
 from modules.iam.models import User
+from modules.shared.enums import UserRole
 from sqlalchemy.ext.asyncio import AsyncSession
 
 analytics_router = APIRouter(prefix="/analytics", tags=["Interactive Analytics & Metrics"])
@@ -162,10 +164,10 @@ async def export_analytics_excel(
 @analytics_router.post(
     "/reset-test-data",
     summary="Depuración de datos de prueba / Reset de simulaciones",
-    description="Elimina interacciones y verificaciones de prueba para que los tableros inicien con datos 100% reales.",
+    description="Elimina interacciones y verificaciones de prueba para que los tableros inicien con datos 100% reales. Requiere rol SUPER_ADMIN.",
 )
 async def reset_test_data(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
     db: AsyncSession = Depends(get_async_db),
 ):
     return await AnalyticsService.purge_test_data(db)

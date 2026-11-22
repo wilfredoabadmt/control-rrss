@@ -119,6 +119,10 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("ALTER TABLE interactions ALTER COLUMN external_author_name TYPE TEXT;"))
                     await conn.execute(text("ALTER TABLE interactions ALTER COLUMN raw_payload_ref TYPE TEXT;"))
                     await conn.execute(text("ALTER TABLE interactions ALTER COLUMN content_text TYPE TEXT;"))
+                    # Índices de aceleración para filtrado jerárquico por Secretaría / Dirección
+                    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_org_units_parent_id ON organizational_units(parent_id);"))
+                    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_org_units_name ON organizational_units(name);"))
+                    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_employees_org_unit_status ON employees(organizational_unit_id, status);"))
                 else:
                     for _sql_col in (
                         "ALTER TABLE users ADD COLUMN assigned_direction VARCHAR(200)",
@@ -130,6 +134,9 @@ async def lifespan(app: FastAPI):
                         "ALTER TABLE publications ADD COLUMN meta_reactions_by_type JSON NOT NULL DEFAULT '{}'",
                         "ALTER TABLE publications ADD COLUMN meta_comments_total INTEGER NOT NULL DEFAULT 0",
                         "ALTER TABLE publications ADD COLUMN meta_metrics_synced_at TIMESTAMP",
+                        "CREATE INDEX IF NOT EXISTS ix_org_units_parent_id ON organizational_units(parent_id)",
+                        "CREATE INDEX IF NOT EXISTS ix_org_units_name ON organizational_units(name)",
+                        "CREATE INDEX IF NOT EXISTS ix_employees_org_unit_status ON employees(organizational_unit_id, status)",
                     ):
                         with suppress(Exception):
                             await conn.execute(text(_sql_col))
