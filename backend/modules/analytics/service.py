@@ -627,6 +627,16 @@ class AnalyticsService:
                 return ""
             return s.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()
 
+        def _strip_unit(s: str | None) -> str:
+            if not s:
+                return ""
+            c = _clean_str(s)
+            for pfx in ("unidad de ", "unidad del ", "unidad d ", "unidad "):
+                if c.startswith(pfx):
+                    c = c[len(pfx):]
+                    break
+            return c.strip()
+
         # 3. Filtrar filas de funcionarios según la jerarquía solicitada estrictamente
         filtered_rows = []
         for r in all_rows:
@@ -663,16 +673,20 @@ class AnalyticsService:
 
             # Filtro por Unidad (Estricto: solo servidores de esta unidad operativa)
             if unit and unit != "ALL":
-                u_target = _clean_str(unit)
-                u_res_clean = _clean_str(unit_res)
-                r_dept_clean = _clean_str(r.department)
+                u_target_full = _clean_str(unit)
+                u_target_clean = _strip_unit(unit)
+                u_res_full = _clean_str(unit_res)
+                u_res_clean = _strip_unit(unit_res)
+                r_dept_full = _clean_str(r.department)
+                r_dept_clean = _strip_unit(r.department)
+
                 matches_unit = (
-                    (u_res_clean == u_target)
-                    or (u_target in u_res_clean and len(u_target) > 3)
-                    or (u_res_clean in u_target and len(u_res_clean) > 3)
-                    or (r_dept_clean == u_target)
-                    or (u_target in r_dept_clean and len(u_target) > 3)
-                    or (r_dept_clean in u_target and len(r_dept_clean) > 3)
+                    (u_res_full == u_target_full)
+                    or (u_res_clean == u_target_clean and len(u_target_clean) >= 3)
+                    or (u_target_clean in u_res_clean and len(u_target_clean) >= 4 and u_res_clean not in ("sin unidad asignada", "no asignada", "none"))
+                    or (u_res_clean in u_target_clean and len(u_res_clean) >= 4 and u_res_clean not in ("sin unidad asignada", "no asignada", "none"))
+                    or (r_dept_full == u_target_full)
+                    or (r_dept_clean == u_target_clean and len(u_target_clean) >= 3 and r_dept_clean not in ("sin unidad asignada", "no asignada", "none"))
                 )
                 if not matches_unit:
                     continue
@@ -1065,6 +1079,16 @@ class AnalyticsService:
                 return ""
             return s.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()
 
+        def _strip_unit(s: str | None) -> str:
+            if not s:
+                return ""
+            c = _clean_str(s)
+            for pfx in ("unidad de ", "unidad del ", "unidad d ", "unidad "):
+                if c.startswith(pfx):
+                    c = c[len(pfx):]
+                    break
+            return c.strip()
+
         items: list[EmployeeAnalyticsItem] = []
         for r in all_rows:
             sec_res, dir_res, unit_res = emp_db_map.get(
@@ -1096,16 +1120,20 @@ class AnalyticsService:
                 if not matches_dir:
                     continue
             if unit and unit != "ALL":
-                u_target = _clean_str(unit)
-                u_res_clean = _clean_str(unit_res)
-                r_dept_clean = _clean_str(r.department)
+                u_target_full = _clean_str(unit)
+                u_target_clean = _strip_unit(unit)
+                u_res_full = _clean_str(unit_res)
+                u_res_clean = _strip_unit(unit_res)
+                r_dept_full = _clean_str(r.department)
+                r_dept_clean = _strip_unit(r.department)
+
                 matches_unit = (
-                    (u_res_clean == u_target)
-                    or (u_target in u_res_clean and len(u_target) > 3)
-                    or (u_res_clean in u_target and len(u_res_clean) > 3)
-                    or (r_dept_clean == u_target)
-                    or (u_target in r_dept_clean and len(u_target) > 3)
-                    or (r_dept_clean in u_target and len(r_dept_clean) > 3)
+                    (u_res_full == u_target_full)
+                    or (u_res_clean == u_target_clean and len(u_target_clean) >= 3)
+                    or (u_target_clean in u_res_clean and len(u_target_clean) >= 4 and u_res_clean not in ("sin unidad asignada", "no asignada", "none"))
+                    or (u_res_clean in u_target_clean and len(u_res_clean) >= 4 and u_res_clean not in ("sin unidad asignada", "no asignada", "none"))
+                    or (r_dept_full == u_target_full)
+                    or (r_dept_clean == u_target_clean and len(u_target_clean) >= 3 and r_dept_clean not in ("sin unidad asignada", "no asignada", "none"))
                 )
                 if not matches_unit:
                     continue
@@ -1879,12 +1907,23 @@ class AnalyticsService:
 
             # Filtrar por unidad operativa dependiente
             if unit and unit != "ALL":
-                u_target = unit.strip().lower()
-                u_clean = (unit_val or "").strip().lower()
+                def _strip_u(s: str) -> str:
+                    c = s.lower().strip()
+                    for pfx in ("unidad de ", "unidad del ", "unidad d ", "unidad "):
+                        if c.startswith(pfx):
+                            return c[len(pfx):].strip()
+                    return c
+
+                u_target_full = unit.strip().lower()
+                u_target_clean = _strip_u(unit)
+                u_clean_full = (unit_val or "").strip().lower()
+                u_clean_stripped = _strip_u(unit_val or "")
+
                 matches_unit = (
-                    (u_clean == u_target)
-                    or (u_target in u_clean and len(u_target) > 3)
-                    or (u_clean in u_target and len(u_clean) > 3)
+                    (u_clean_full == u_target_full)
+                    or (u_clean_stripped == u_target_clean and len(u_target_clean) >= 3)
+                    or (u_target_clean in u_clean_stripped and len(u_target_clean) >= 4 and u_clean_stripped not in ("sin unidad asignada", "no asignada", "none"))
+                    or (u_clean_stripped in u_target_clean and len(u_clean_stripped) >= 4 and u_clean_stripped not in ("sin unidad asignada", "no asignada", "none"))
                 )
                 if not matches_unit:
                     continue

@@ -759,6 +759,25 @@ async def test_analytics_area_isolation_and_dynamic_rankings(async_db: AsyncSess
     assert "Funcionarios" in res_unit.ranking_title
     assert "Carla Flores" in res_unit.direction_rankings[0].direction
 
+    # Tabla de funcionarios filtrada por Unidad: Debe mostrar ÚNICAMENTE los de esa unidad
+    table_prensa = await AnalyticsService.get_employees_table(
+        db=async_db,
+        current_user=super_admin,
+        direction="Dirección de Comunicación",
+        unit="Unidad de Prensa",
+    )
+    assert len(table_prensa.items) == 1
+    assert table_prensa.items[0].full_name == "Carla Flores"
+
+    table_img = await AnalyticsService.get_employees_table(
+        db=async_db,
+        current_user=super_admin,
+        direction="Dirección de Comunicación",
+        unit="Unidad de Imagen Corporativa",
+    )
+    assert len(table_img.items) == 1
+    assert table_img.items[0].full_name == "Rodrigo Vargas"
+
 
 
 

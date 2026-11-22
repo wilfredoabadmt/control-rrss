@@ -96,7 +96,7 @@ services:
       target: production
     container_name: gamea_celery_beat_prod
     restart: always
-    command: celery -A workers.celery_app beat -l info --schedule=/data/celerybeat-schedule
+    command: celery -A workers.celery_app beat -l info --schedule=/tmp/celerybeat-schedule
     volumes:
       - celery_schedule:/data
       - backups_data:/backups

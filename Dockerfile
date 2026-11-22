@@ -36,9 +36,11 @@ COPY alembic.ini /app/alembic.ini
 COPY extras /app/extras
 WORKDIR /app/backend
 
-# Crear usuario no root y asignar permisos
+# Crear usuario no root y asignar permisos con directorios de runtime
 RUN addgroup --system appgroup && adduser --system --group appuser \
-    && chown -R appuser:appgroup /app
+    && mkdir -p /app/storage/evidences /app/storage/reports /backups /data /tmp \
+    && chmod 1777 /tmp \
+    && chown -R appuser:appgroup /app /backups /data
 USER appuser
 
 EXPOSE 8000

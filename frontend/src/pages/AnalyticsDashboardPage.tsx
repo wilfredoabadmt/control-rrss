@@ -356,6 +356,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
 
   // Click en una barra de dirección en el gráfico
   const handleBarDirectionClick = (dirName: string | null) => {
+    clearAnalyticsCache();
     if (!dirName) {
       setSelectedDirection('ALL');
       return;
@@ -368,6 +369,59 @@ export const AnalyticsDashboardPage: React.FC = () => {
     setSelectedUnit('ALL');
     setCurrentPage(1);
   };
+
+  // Helper para normalizar nombres organizacionales en el cliente
+  const cleanOrgTerm = (s: string | null | undefined): string => {
+    if (!s) return '';
+    return s
+      .toLowerCase()
+      .replace(/á/g, 'a')
+      .replace(/é/g, 'e')
+      .replace(/í/g, 'i')
+      .replace(/ó/g, 'o')
+      .replace(/ú/g, 'u')
+      .replace(/^(unidad|direccion|secretaria|subalcaldia)\s+(de\s+|del\s+)?/i, '')
+      .trim();
+  };
+
+  // Filtrado defensivo en cliente para garantizar que NUNCA se muestren funcionarios de otra unidad o dirección
+  const displayedEmployees = useMemo(() => {
+    if (!employeesData || !employeesData.items) return [];
+    let items = employeesData.items;
+
+    if (selectedUnit && selectedUnit !== 'ALL') {
+      const uTarget = cleanOrgTerm(selectedUnit);
+      items = items.filter((emp) => {
+        const uRes = cleanOrgTerm(emp.unit);
+        return uRes === uTarget || (uTarget.length >= 4 && uRes.includes(uTarget)) || (uRes.length >= 4 && uTarget.includes(uRes));
+      });
+    } else if (selectedDirection && selectedDirection !== 'ALL') {
+      const dTarget = cleanOrgTerm(selectedDirection);
+      items = items.filter((emp) => {
+        const dRes = cleanOrgTerm(emp.direction);
+        return dRes === dTarget || (dTarget.length >= 4 && dRes.includes(dTarget)) || (dRes.length >= 4 && dTarget.includes(dRes));
+      });
+    }
+
+    return items;
+  }, [employeesData, selectedUnit, selectedDirection]);
+
+  const displayedTotal = useMemo(() => {
+    if (selectedUnit && selectedUnit !== 'ALL') {
+      return displayedEmployees.length;
+    }
+    return employeesData?.total || 0;
+  }, [selectedUnit, displayedEmployees.length, employeesData?.total]);
+
+  const displayedStaffCount = useMemo(() => {
+    if (selectedUnit && selectedUnit !== 'ALL') {
+      if (overview?.ranking_dimension === 'FUNCIONARIO') {
+        return overview.kpis.total_employees;
+      }
+      return displayedEmployees.length > 0 ? displayedEmployees.length : null;
+    }
+    return overview ? overview.kpis.total_employees : null;
+  }, [selectedUnit, overview, displayedEmployees.length]);
 
   // Determinar si hay un filtro de área institucional/territorial activo
   const isAreaFiltered = selectedSecretaria !== 'ALL' || selectedDirection !== 'ALL' || selectedUnit !== 'ALL';
@@ -738,6 +792,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
               className="analytics-select"
               value={selectedSecretaria}
               onChange={(e) => {
+                clearAnalyticsCache();
                 setSelectedSecretaria(e.target.value);
                 setSelectedDirection('ALL');
                 setSelectedUnit('ALL');
@@ -777,6 +832,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
               value={selectedDirection}
               onChange={(e) => {
                 const dir = e.target.value;
+                clearAnalyticsCache();
                 setSelectedDirection(dir);
                 setSelectedUnit('ALL');
                 if (dir !== 'ALL' && selectedSecretaria === 'ALL') {
@@ -829,6 +885,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 cursor: selectedDirection === 'ALL' && selectedSecretaria === 'ALL' ? 'not-allowed' : 'pointer',
               }}
               onChange={(e) => {
+                clearAnalyticsCache();
                 setSelectedUnit(e.target.value);
                 setCurrentPage(1);
                 setLoadingOverview(true);
@@ -1018,10 +1075,24 @@ export const AnalyticsDashboardPage: React.FC = () => {
             </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
-            {overview ? <AnimatedCounter value={overview.kpis.total_employees} /> : (loadingOverview ? '...' : '0')}
+            {displayedStaffCount !== null ? (
+              <AnimatedCounter value={displayedStaffCount} />
+            ) : loadingOverview ? (
+              <span style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>Cargando...</span>
+            ) : (
+              '0'
+            )}
           </div>
           <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', marginTop: '4px' }}>
-            {overview ? `${overview.kpis.observable_employees} monitoreados con redes` : (loadingOverview ? 'Actualizando datos...' : 'Sin funcionarios')}
+            {selectedUnit !== 'ALL' && overview?.ranking_dimension === 'FUNCIONARIO'
+              ? `${overview.kpis.observable_employees} monitoreados con redes`
+              : selectedUnit !== 'ALL'
+              ? `Personal adscrito a ${selectedUnit}`
+              : overview
+              ? `${overview.kpis.observable_employees} monitoreados con redes`
+              : loadingOverview
+              ? 'Actualizando datos...'
+              : 'Sin funcionarios'}
           </div>
         </div>
 
@@ -1133,7 +1204,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
       {/* 3.5 Diagnóstico Semafórico y Filtros Rápidos de Cumplimiento */}
       {overview && (
         <ComplianceGauge
-          totalEmployees={overview.kpis.total_employees}
+          totalEmployees={displayedStaffCount !== null ? displayedStaffCount : overview.kpis.total_employees}
           participatingEmployees={overview.kpis.participating_employees}
           participationRate={overview.kpis.participation_rate}
           employeesWithBoth={overview.kpis.employees_with_both}
@@ -1170,21 +1241,34 @@ export const AnalyticsDashboardPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <BarChartDirection
-                data={overview ? overview.direction_rankings : []}
-                selectedDirection={selectedDirection !== 'ALL' ? selectedDirection : null}
-                onSelectDirection={handleBarDirectionClick}
-                rankingDimension={overview?.ranking_dimension || 'DIRECCION'}
-                rankingTitle={overview?.ranking_title}
-                onSelectUnit={(unit) => {
-                  setSelectedUnit(unit || 'ALL');
-                  setCurrentPage(1);
-                }}
-                onSelectEmployee={(empName) => {
-                  setSearchTerm(empName);
-                  setCurrentPage(1);
-                }}
-              />
+              {loadingOverview && selectedUnit !== 'ALL' && overview?.ranking_dimension !== 'FUNCIONARIO' ? (
+                <div style={{ padding: '44px 20px', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(15, 23, 42, 0.4)', borderRadius: 'var(--radius-lg)', border: '1px dashed rgba(255, 255, 255, 0.1)' }}>
+                  <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 10px auto', color: '#38bdf8' }} />
+                  <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#f1f5f9', display: 'block' }}>
+                    Cargando desempeño de funcionarios — {selectedUnit}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '4px', display: 'block' }}>
+                    Calculando métricas individuales y tasa de acompañamiento...
+                  </span>
+                </div>
+              ) : (
+                <BarChartDirection
+                  data={overview ? overview.direction_rankings : []}
+                  selectedDirection={selectedDirection !== 'ALL' ? selectedDirection : null}
+                  onSelectDirection={handleBarDirectionClick}
+                  rankingDimension={overview?.ranking_dimension || 'DIRECCION'}
+                  rankingTitle={overview?.ranking_title}
+                  onSelectUnit={(unit) => {
+                    clearAnalyticsCache();
+                    setSelectedUnit(unit || 'ALL');
+                    setCurrentPage(1);
+                  }}
+                  onSelectEmployee={(empName) => {
+                    setSearchTerm(empName);
+                    setCurrentPage(1);
+                  }}
+                />
+              )}
             </div>
 
             {/* Gráfico 2: Taxonomía de Reacciones (Donut) */}
@@ -1272,7 +1356,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 </h2>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
                   {employeesData
-                    ? `${employeesData.total} funcionarios encontrados bajo los filtros actuales`
+                    ? `${displayedTotal} funcionarios encontrados bajo los filtros actuales`
                     : 'Cargando padrón...'}
                 </p>
               </div>
@@ -1381,15 +1465,15 @@ export const AnalyticsDashboardPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody style={{ opacity: loadingEmployees ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
-                  {loadingEmployees && (!employeesData || employeesData.items.length === 0) ? (
+                  {loadingEmployees && (!displayedEmployees || displayedEmployees.length === 0) ? (
                     <tr>
                       <td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                         <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto' }} />
                         <p style={{ margin: 0, fontSize: '0.85rem' }}>Cargando registros de funcionarios...</p>
                       </td>
                     </tr>
-                  ) : employeesData && employeesData.items.length > 0 ? (
-                    employeesData.items.map((emp, idx) => (
+                  ) : displayedEmployees && displayedEmployees.length > 0 ? (
+                    displayedEmployees.map((emp, idx) => (
                       <tr key={emp.employee_id}>
                         <td style={{ width: '38px', textAlign: 'center', verticalAlign: 'middle', padding: '10px 2px' }}>
                           <span
@@ -1663,7 +1747,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 }}
               >
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Página {employeesData.page} de {employeesData.total_pages} ({employeesData.total} funcionarios)
+                  Página {employeesData.page} de {employeesData.total_pages} ({displayedTotal} funcionarios)
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <button
