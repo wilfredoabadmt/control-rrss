@@ -33,6 +33,8 @@ class Settings(BaseSettings):
             "http://localhost:3000",
             "http://localhost:5173",
             "http://localhost:80",
+            "https://app.elalto.gob.bo",
+            "http://app.elalto.gob.bo",
             "https://control-social.89.116.29.168.sslip.io",
             "http://control-social.89.116.29.168.sslip.io",
             "*",
