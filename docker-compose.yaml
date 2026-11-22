@@ -113,8 +113,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: ../Dockerfile.frontend
+      context: .
+      dockerfile: Dockerfile.frontend
       target: production
     container_name: gamea_frontend_prod
     restart: always
