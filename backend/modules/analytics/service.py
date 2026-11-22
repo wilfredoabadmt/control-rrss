@@ -1087,17 +1087,18 @@ class AnalyticsService:
             has_both = user_reacts > 0 and user_comments > 0
 
             # Filtros de participación ampliados (reacción, comentario, ambos)
-            if participation_status == "PARTICIPATED" and not has_part:
+            part_filter = (participation_status or "ALL").upper().strip()
+            if part_filter == "PARTICIPATED" and not has_part:
                 continue
-            if participation_status == "WITH_REACTION" and user_reacts == 0:
+            if part_filter == "WITH_REACTION" and user_reacts <= 0:
                 continue
-            if participation_status == "WITH_COMMENT" and not has_comm:
+            if part_filter == "WITH_COMMENT" and not has_comm:
                 continue
-            if participation_status == "WITH_BOTH" and not has_both:
+            if part_filter == "WITH_BOTH" and not has_both:
                 continue
-            if participation_status == "NO_REACTION" and user_reacts > 0:
+            if part_filter == "NO_REACTION" and user_reacts > 0:
                 continue
-            if participation_status == "NO_ACTIVITY" and has_part:
+            if part_filter == "NO_ACTIVITY" and has_part:
                 continue
 
             part_rate = round(

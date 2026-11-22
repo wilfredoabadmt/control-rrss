@@ -195,13 +195,16 @@ async def lifespan(app: FastAPI):
 
             # Limpieza de publicaciones sintéticas heredadas para garantizar datos reales (Principio V)
             try:
-                await session.execute(
-                    text("DELETE FROM interactions WHERE publication_id IN (SELECT id FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%')")
-                )
-                await session.execute(
-                    text("DELETE FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%'")
-                )
-                await session.commit()
+                check_stmt = text("SELECT id FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' LIMIT 1")
+                has_legacy = (await session.execute(check_stmt)).scalar_one_or_none()
+                if has_legacy:
+                    await session.execute(
+                        text("DELETE FROM interactions WHERE publication_id IN (SELECT id FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%')")
+                    )
+                    await session.execute(
+                        text("DELETE FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%'")
+                    )
+                    await session.commit()
             except Exception as e_clean:
                 logger.warning("legacy_publications_cleanup_skipped", error=str(e_clean))
 
@@ -333,6 +336,7 @@ async def correlation_id_and_logging_middleware(request: Request, call_next):
 # Endpoints de Salud (Health Checks)
 # -----------------------------------------------------------------------------
 
+@app.get("/health", tags=["Health"])
 @app.get("/health/liveness", tags=["Health"])
 async def health_liveness() -> dict[str, Any]:
     """Endpoint de liveness probe para orquestación de contenedores."""

@@ -2150,9 +2150,18 @@ class MonitoringHubService:
                 participated_count += 1
 
             # Filtrar por estado de participación si se solicitó
-            if participation_status == "PARTICIPATED" and not has_participated:
+            p_status = (participation_status or "ALL").upper().strip()
+            if p_status == "PARTICIPATED" and not has_participated:
                 continue
-            if participation_status == "NO_ACTIVITY" and has_participated:
+            if p_status == "WITH_REACTION" and person_reactions <= 0:
+                continue
+            if p_status == "WITH_COMMENT" and person_comments <= 0:
+                continue
+            if p_status == "WITH_BOTH" and (person_reactions <= 0 or person_comments <= 0):
+                continue
+            if p_status == "NO_REACTION" and person_reactions > 0:
+                continue
+            if p_status == "NO_ACTIVITY" and has_participated:
                 continue
 
             # Los totales del resumen se acumulan SOLO sobre las filas efectivamente
