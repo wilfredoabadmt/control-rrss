@@ -4,6 +4,7 @@ Plataforma Institucional de Monitoreo y Analítica de Redes Sociales
 Gobierno Autónomo Municipal de El Alto
 """
 
+import asyncio
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
