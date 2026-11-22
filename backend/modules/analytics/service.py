@@ -621,7 +621,12 @@ class AnalyticsService:
                 u_target = _clean_str(unit)
                 u_res_clean = _clean_str(unit_res)
                 r_dept_clean = _clean_str(r.department)
-                matches_unit = (u_res_clean == u_target) or (r_dept_clean == u_target)
+                matches_unit = (
+                    (u_res_clean == u_target)
+                    or (u_target in u_res_clean and len(u_target) > 5)
+                    or (r_dept_clean == u_target)
+                    or (u_target in r_dept_clean and len(u_target) > 5)
+                )
                 if not matches_unit:
                     continue
 
@@ -1026,7 +1031,12 @@ class AnalyticsService:
                 u_target = _clean_str(unit)
                 u_res_clean = _clean_str(unit_res)
                 r_dept_clean = _clean_str(r.department)
-                matches_unit = (u_res_clean == u_target) or (r_dept_clean == u_target)
+                matches_unit = (
+                    (u_res_clean == u_target)
+                    or (u_target in u_res_clean and len(u_target) > 5)
+                    or (r_dept_clean == u_target)
+                    or (u_target in r_dept_clean and len(u_target) > 5)
+                )
                 if not matches_unit:
                     continue
 

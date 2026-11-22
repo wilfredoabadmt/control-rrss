@@ -143,7 +143,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
         platform_name: selectedPlatform !== 'ALL' ? selectedPlatform : undefined,
         publication_id: selectedPublication !== 'ALL' ? selectedPublication : undefined,
       };
-      const res = await analyticsApi.getOverview(filters);
+      const res = await analyticsApi.getOverview(filters, true);
       setOverview(res);
     } catch (err: any) {
       console.error('Error al cargar analítica de reacciones:', err);
@@ -169,7 +169,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
         page: currentPage,
         page_size: pageSize,
       };
-      const res = await analyticsApi.getEmployees(filters);
+      const res = await analyticsApi.getEmployees(filters, true);
       setEmployeesData(res);
     } catch (err: any) {
       console.error('Error al cargar tabla de funcionarios:', err);
@@ -305,6 +305,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
 
   // Click en una barra de dirección en el gráfico
   const handleBarDirectionClick = (dirName: string | null) => {
+    clearAnalyticsCache();
     if (!dirName) {
       setSelectedDirection('ALL');
       return;
@@ -687,6 +688,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
               className="analytics-select"
               value={selectedSecretaria}
               onChange={(e) => {
+                clearAnalyticsCache();
                 setSelectedSecretaria(e.target.value);
                 setSelectedDirection('ALL');
                 setSelectedUnit('ALL');
@@ -723,6 +725,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
               className="analytics-select"
               value={selectedDirection}
               onChange={(e) => {
+                clearAnalyticsCache();
                 const dir = e.target.value;
                 setSelectedDirection(dir);
                 setSelectedUnit('ALL');
@@ -774,6 +777,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 cursor: selectedDirection === 'ALL' && selectedSecretaria === 'ALL' ? 'not-allowed' : 'pointer',
               }}
               onChange={(e) => {
+                clearAnalyticsCache();
                 setSelectedUnit(e.target.value);
                 setCurrentPage(1);
               }}
@@ -1120,6 +1124,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 rankingDimension={overview?.ranking_dimension || 'DIRECCION'}
                 rankingTitle={overview?.ranking_title}
                 onSelectUnit={(unit) => {
+                  clearAnalyticsCache();
                   setSelectedUnit(unit || 'ALL');
                   setCurrentPage(1);
                 }}

@@ -46,7 +46,7 @@ services:
       target: production
     container_name: gamea_api_prod
     restart: always
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips='*'
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips='*'
     env_file:
       - .env.production
     volumes:
