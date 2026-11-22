@@ -63,6 +63,21 @@ const AnimatedCounter: React.FC<{ value: number; decimals?: number; suffix?: str
   );
 };
 
+const cleanSocialHandle = (h: string | null | undefined): string => {
+  if (!h) return '';
+  let str = h.trim();
+  if (str.startsWith('@')) str = str.slice(1);
+  if (str.includes('profile.php?id=')) {
+    const id = str.split('id=')[1]?.split('&')[0] || str;
+    return id.length > 10 ? `${id.slice(0, 10)}…` : id;
+  }
+  if (str.includes('/')) {
+    const parts = str.split('/').filter(Boolean);
+    str = parts[parts.length - 1] || str;
+  }
+  return str.length > 14 ? `${str.slice(0, 13)}…` : str;
+};
+
 export const AnalyticsDashboardPage: React.FC = () => {
   const { hasRole } = useAuth();
   const canPurge = hasRole([UserRole.SUPER_ADMIN, UserRole.DIRECTOR]);
@@ -1310,21 +1325,21 @@ export const AnalyticsDashboardPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Tabla Responsiva */}
-            <div className="table-responsive" style={{ overflowX: 'auto' }}>
-              <table className="analytics-table">
+            {/* Tabla Responsiva sin scroll horizontal */}
+            <div className="table-responsive" style={{ overflowX: 'hidden' }}>
+              <table className="analytics-table" style={{ tableLayout: 'fixed', width: '100%' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '56px', textAlign: 'center', color: '#38bdf8', fontWeight: 700 }}>N°</th>
-                    <th>Funcionario / CI</th>
-                    <th>Secretaría / Dirección</th>
-                    <th>Unidad Asignada</th>
-                    <th>Cuentas Vinculadas</th>
-                    <th style={{ textAlign: 'center' }}>Reacciones</th>
-                    <th style={{ textAlign: 'center' }}>Comentarios</th>
-                    <th style={{ textAlign: 'center' }}>Posts Auditados</th>
-                    <th style={{ textAlign: 'center' }}>Tasa Acompañamiento</th>
-                    <th style={{ textAlign: 'center' }}>Estado Integral</th>
+                    <th style={{ width: '38px', textAlign: 'center', color: '#38bdf8', fontWeight: 700, padding: '10px 4px' }}>N°</th>
+                    <th style={{ width: '16%', padding: '10px 8px' }}>Funcionario / CI</th>
+                    <th style={{ width: '17%', padding: '10px 8px' }}>Dirección / Sec.</th>
+                    <th style={{ width: '16%', padding: '10px 8px' }}>Unidad / Cargo</th>
+                    <th style={{ width: '14%', padding: '10px 8px' }}>Redes</th>
+                    <th style={{ width: '5.5%', textAlign: 'center', padding: '10px 4px' }}>Reacc.</th>
+                    <th style={{ width: '6.5%', textAlign: 'center', padding: '10px 4px' }}>Coment.</th>
+                    <th style={{ width: '7.5%', textAlign: 'center', padding: '10px 4px' }}>Auditados</th>
+                    <th style={{ width: '9%', textAlign: 'center', padding: '10px 4px' }}>Tasa</th>
+                    <th style={{ width: '8.5%', textAlign: 'center', padding: '10px 4px' }}>Estado</th>
                   </tr>
                 </thead>
                 <tbody style={{ opacity: loadingEmployees ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
@@ -1338,19 +1353,19 @@ export const AnalyticsDashboardPage: React.FC = () => {
                   ) : employeesData && employeesData.items.length > 0 ? (
                     employeesData.items.map((emp, idx) => (
                       <tr key={emp.employee_id}>
-                        <td style={{ width: '56px', textAlign: 'center', verticalAlign: 'middle' }}>
+                        <td style={{ width: '38px', textAlign: 'center', verticalAlign: 'middle', padding: '10px 2px' }}>
                           <span
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              minWidth: '28px',
-                              height: '24px',
-                              padding: '0 6px',
-                              borderRadius: '12px',
+                              minWidth: '24px',
+                              height: '22px',
+                              padding: '0 4px',
+                              borderRadius: '11px',
                               background: 'rgba(6, 182, 212, 0.12)',
                               border: '1px solid rgba(6, 182, 212, 0.3)',
-                              fontSize: '0.78rem',
+                              fontSize: '0.74rem',
                               fontWeight: 700,
                               color: '#38bdf8',
                             }}
@@ -1358,50 +1373,124 @@ export const AnalyticsDashboardPage: React.FC = () => {
                             {(currentPage - 1) * pageSize + idx + 1}
                           </span>
                         </td>
-                        <td>
-                          <div style={{ fontWeight: 600, color: '#ffffff' }}>{emp.full_name}</div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>CI / ID: {emp.document_number}</div>
+                        <td style={{ overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              color: '#ffffff',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              fontSize: '0.82rem',
+                            }}
+                            title={emp.full_name}
+                          >
+                            {emp.full_name}
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-faint)' }}>CI: {emp.document_number}</div>
                         </td>
-                        <td>
-                          <div style={{ fontWeight: 600, color: '#f1f5f9' }}>{emp.direction}</div>
+                        <td style={{ overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              color: '#f1f5f9',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              fontSize: '0.79rem',
+                            }}
+                            title={emp.direction}
+                          >
+                            {emp.direction}
+                          </div>
                           {emp.secretaria && (
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>🏛️ {emp.secretaria}</div>
+                            <div
+                              style={{
+                                fontSize: '0.68rem',
+                                color: 'var(--text-muted)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={emp.secretaria}
+                            >
+                              🏛️ {emp.secretaria}
+                            </div>
                           )}
                         </td>
-                        <td>
-                          <div style={{ color: '#cbd5e1' }}>{emp.unit || 'No asignada'}</div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-faint)' }}>{emp.position}</div>
+                        <td style={{ overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              color: '#cbd5e1',
+                              fontWeight: 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              fontSize: '0.79rem',
+                            }}
+                            title={emp.unit || 'No asignada'}
+                          >
+                            {emp.unit || 'No asignada'}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '0.68rem',
+                              color: 'var(--text-faint)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={emp.position}
+                          >
+                            {emp.position}
+                          </div>
                         </td>
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <td style={{ overflow: 'hidden' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                             {emp.facebook_account ? (
-                              <span style={{ fontSize: '0.72rem', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }} />
-                                FB: @{emp.facebook_account}
+                              <span
+                                style={{
+                                  fontSize: '0.71rem',
+                                  color: '#60a5fa',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={`Facebook: @${emp.facebook_account}`}
+                              >
+                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} />
+                                FB: @{cleanSocialHandle(emp.facebook_account)}
                               </span>
                             ) : (
-                              <span style={{ fontSize: '0.7rem', color: 'var(--text-faint)' }}>FB: No vinculada</span>
+                              <span style={{ fontSize: '0.67rem', color: 'var(--text-faint)' }}>FB: No vinculada</span>
                             )}
                             {emp.tiktok_account ? (
-                              <span style={{ fontSize: '0.72rem', color: '#f472b6', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ec4899' }} />
-                                TT: @{emp.tiktok_account}
+                              <span
+                                style={{
+                                  fontSize: '0.71rem',
+                                  color: '#f472b6',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={`TikTok: @${emp.tiktok_account}`}
+                              >
+                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ec4899', flexShrink: 0 }} />
+                                TT: @{cleanSocialHandle(emp.tiktok_account)}
                               </span>
                             ) : (
-                              <span style={{ fontSize: '0.7rem', color: 'var(--text-faint)' }}>TT: No vinculada</span>
+                              <span style={{ fontSize: '0.67rem', color: 'var(--text-faint)' }}>TT: No vinculada</span>
                             )}
                           </div>
                         </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span
-                            style={{
-                              fontSize: '0.92rem',
-                              fontWeight: 700,
-                              color: emp.total_reactions > 0 ? '#38bdf8' : 'var(--text-faint)',
-                            }}
-                          >
-                            {emp.total_reactions}
-                          </span>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: emp.total_reactions > 0 ? '#38bdf8' : 'var(--text-faint)', fontSize: '0.88rem' }}>
+                          {emp.total_reactions}
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           {emp.total_comments > 0 ? (
@@ -1411,33 +1500,30 @@ export const AnalyticsDashboardPage: React.FC = () => {
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '4px',
-                                padding: '3px 8px',
-                                borderRadius: '12px',
+                                gap: '3px',
+                                padding: '2px 7px',
+                                borderRadius: '10px',
                                 background: 'rgba(16, 185, 129, 0.15)',
                                 border: '1px solid rgba(16, 185, 129, 0.4)',
                                 color: '#34d399',
-                                fontSize: '0.78rem',
+                                fontSize: '0.75rem',
                                 fontWeight: 700,
                                 cursor: 'pointer',
-                                transition: 'all 0.15s',
                               }}
                             >
-                              <MessageCircle size={12} />
+                              <MessageCircle size={11} />
                               <span>{emp.total_comments}</span>
                             </button>
                           ) : (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-faint)' }}>0</span>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-faint)' }}>0</span>
                           )}
                         </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
-                            {emp.participated_posts_count} / {emp.total_available_posts}
-                          </span>
+                        <td style={{ textAlign: 'center', fontSize: '0.74rem', color: '#cbd5e1' }}>
+                          {emp.participated_posts_count} / {emp.total_available_posts}
                         </td>
                         <td style={{ textAlign: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                            <div style={{ width: 55, height: 6, borderRadius: 3, background: 'rgba(255, 255, 255, 0.1)', overflow: 'hidden' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                            <div style={{ width: 40, height: 5, borderRadius: 3, background: 'rgba(255, 255, 255, 0.1)', overflow: 'hidden' }}>
                               <div
                                 style={{
                                   width: `${Math.min(emp.participation_rate, 100)}%`,
@@ -1452,7 +1538,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                                 }}
                               />
                             </div>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#f1f5f9' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#f1f5f9' }}>
                               {emp.participation_rate}%
                             </span>
                           </div>
@@ -1465,17 +1551,18 @@ export const AnalyticsDashboardPage: React.FC = () => {
                                 background: 'rgba(245, 158, 11, 0.2)',
                                 border: '1px solid rgba(245, 158, 11, 0.5)',
                                 color: '#fbbf24',
-                                fontSize: '0.72rem',
-                                padding: '3px 8px',
-                                gap: '4px',
+                                fontSize: '0.67rem',
+                                padding: '2px 5px',
+                                gap: '3px',
+                                whiteSpace: 'nowrap',
                               }}
                             >
-                              <Sparkles size={11} />
+                              <Sparkles size={10} />
                               Integral
                             </span>
                           ) : emp.has_participated ? (
-                            <span className="badge badge-success" style={{ gap: '4px', fontSize: '0.72rem', padding: '3px 8px' }}>
-                              <CheckCircle2 size={11} />
+                            <span className="badge badge-success" style={{ gap: '3px', fontSize: '0.67rem', padding: '2px 5px', whiteSpace: 'nowrap' }}>
+                              <CheckCircle2 size={10} />
                               Reaccionó
                             </span>
                           ) : emp.has_commented ? (
@@ -1485,17 +1572,29 @@ export const AnalyticsDashboardPage: React.FC = () => {
                                 background: 'rgba(16, 185, 129, 0.2)',
                                 border: '1px solid rgba(16, 185, 129, 0.5)',
                                 color: '#34d399',
-                                fontSize: '0.72rem',
-                                padding: '3px 8px',
-                                gap: '4px',
+                                fontSize: '0.67rem',
+                                padding: '2px 5px',
+                                gap: '3px',
+                                whiteSpace: 'nowrap',
                               }}
                             >
-                              <MessageSquare size={11} />
+                              <MessageCircle size={10} />
                               Comentó
                             </span>
                           ) : (
-                            <span className="badge badge-warning" style={{ gap: '4px', fontSize: '0.72rem', padding: '3px 8px' }}>
-                              <XCircle size={11} />
+                            <span
+                              className="badge"
+                              style={{
+                                background: 'rgba(255, 255, 255, 0.05)',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                color: 'var(--text-faint)',
+                                fontSize: '0.67rem',
+                                padding: '2px 5px',
+                                gap: '3px',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              <XCircle size={10} />
                               Sin Acción
                             </span>
                           )}
