@@ -84,154 +84,160 @@ async def lifespan(app: FastAPI):
                     hint="Levante PostgreSQL o defina ALLOW_SQLITE_FALLBACK=true solo para emergencias.",
                 )
 
-        try:
-            async with async_engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-        except Exception as e_schema:
-            logger.error("schema_create_failed", error=str(e_schema))
-
-        # Migraciones idempotentes de esquema para tablas existentes en PostgreSQL / SQLite
-        try:
-            async with async_engine.begin() as conn:
-                is_pg = "postgresql" in async_engine.dialect.name
-                if is_pg:
-                    await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_direction VARCHAR(200);"))
-                    await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_unit VARCHAR(200);"))
-                    await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS workspace_type VARCHAR(30) DEFAULT 'UNIT';"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE lower(email) IN ('admin@elalto.gob.bo', 'visualizador@elalto.gob.bo');"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'DIRECTION' WHERE workspace_type IS NULL AND assigned_direction IS NOT NULL AND assigned_unit IS NULL;"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'UNIT' WHERE assigned_unit IS NOT NULL;"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'AUTONOMOUS' WHERE lower(email) NOT IN ('admin@elalto.gob.bo', 'visualizador@elalto.gob.bo') AND (workspace_type IS NULL OR (assigned_direction IS NULL AND assigned_unit IS NULL));"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE assigned_unit IS NULL AND assigned_direction IS NULL AND id IN (SELECT ur.user_id FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE r.name IN ('SUPER_ADMIN', 'VIEWER', 'MAE'));"))
-                    await conn.execute(text("UPDATE users SET workspace_type = 'UNIT' WHERE assigned_unit IS NOT NULL;"))
-                    await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS created_by_user_id UUID;"))
-                    await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS direction_name VARCHAR(200);"))
-                    await conn.execute(text("UPDATE employees SET direction_name = 'Dirección de Comunicación' WHERE lower(direction_name) IN ('dicom', 'dircom', 'comunicacion', 'comunicación');"))
-                    await conn.execute(text("UPDATE organizational_units SET name = 'Dirección de Comunicación' WHERE lower(name) IN ('dicom', 'dircom');"))
-                    await conn.execute(text("UPDATE organizational_units SET name = 'Despacho Alcalde' WHERE lower(name) = 'despacho alcaldesa';"))
-                    await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'Alcaldesa', 'Alcalde') WHERE name LIKE '%Alcaldesa%';"))
-                    await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'alcaldesa', 'alcalde') WHERE name LIKE '%alcaldesa%';"))
-                    await conn.execute(text("UPDATE organizational_units SET parent_id = (SELECT id FROM organizational_units WHERE lower(name) = 'despacho alcalde' LIMIT 1) WHERE lower(name) = 'unidad de relaciones públicas y protocolo' AND (SELECT count(*) FROM organizational_units WHERE lower(name) = 'despacho alcalde') > 0;"))
-                    # Métricas agregadas de Meta en publications (create_all no agrega columnas a tablas existentes)
-                    await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_total INTEGER NOT NULL DEFAULT 0;"))
-                    await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_by_type JSON NOT NULL DEFAULT '{}';"))
-                    await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_comments_total INTEGER NOT NULL DEFAULT 0;"))
-                    await conn.execute(text("ALTER TABLE interactions ALTER COLUMN external_author_name TYPE TEXT;"))
-                    await conn.execute(text("ALTER TABLE interactions ALTER COLUMN raw_payload_ref TYPE TEXT;"))
-                    await conn.execute(text("ALTER TABLE interactions ALTER COLUMN content_text TYPE TEXT;"))
-                    # Índices de aceleración para filtrado jerárquico por Secretaría / Dirección
-                    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_org_units_parent_id ON organizational_units(parent_id);"))
-                    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_org_units_name ON organizational_units(name);"))
-                    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_employees_org_unit_status ON employees(organizational_unit_id, status);"))
-                else:
-                    for _sql_col in (
-                        "ALTER TABLE users ADD COLUMN assigned_direction VARCHAR(200)",
-                        "ALTER TABLE users ADD COLUMN assigned_unit VARCHAR(200)",
-                        "ALTER TABLE users ADD COLUMN workspace_type VARCHAR(30) DEFAULT 'UNIT'",
-                        "ALTER TABLE employees ADD COLUMN created_by_user_id UUID",
-                        "ALTER TABLE employees ADD COLUMN direction_name VARCHAR(200)",
-                        "ALTER TABLE publications ADD COLUMN meta_reactions_total INTEGER NOT NULL DEFAULT 0",
-                        "ALTER TABLE publications ADD COLUMN meta_reactions_by_type JSON NOT NULL DEFAULT '{}'",
-                        "ALTER TABLE publications ADD COLUMN meta_comments_total INTEGER NOT NULL DEFAULT 0",
-                        "ALTER TABLE publications ADD COLUMN meta_metrics_synced_at TIMESTAMP",
-                        "CREATE INDEX IF NOT EXISTS ix_org_units_parent_id ON organizational_units(parent_id)",
-                        "CREATE INDEX IF NOT EXISTS ix_org_units_name ON organizational_units(name)",
-                        "CREATE INDEX IF NOT EXISTS ix_employees_org_unit_status ON employees(organizational_unit_id, status)",
-                    ):
-                        with suppress(Exception):
-                            await conn.execute(text(_sql_col))
-        except Exception as e_mig:
-            logger.warning("schema_migration_step_warning", error=str(e_mig))
-
-        async with AsyncSessionLocal() as session:
-            await seed_roles_and_permissions(session)
-            await seed_social_platforms(session)
-
-            admin_email = "admin@elalto.gob.bo"
-            stmt = select(User).where(User.email == admin_email).options(selectinload(User.roles))
-            res = await session.execute(stmt)
-            existing_admin = res.scalar_one_or_none()
-            if not existing_admin:
-                stmt_role = select(Role).where(Role.name == UserRole.SUPER_ADMIN.value)
-                role_res = await session.execute(stmt_role)
-                superadmin_role = role_res.scalar_one_or_none()
-                admin_user = User(
-                    email=admin_email,
-                    full_name="Super Administrador GAMEA",
-                    password_hash=hash_password("AdminGamea2026!"),
-                    is_active=True,
-                    workspace_type="GLOBAL",
-                    roles=[superadmin_role] if superadmin_role else [],
-                )
-                session.add(admin_user)
-                await session.commit()
-                logger.info("superadmin_seeded_successfully", email=admin_email)
-            elif existing_admin.workspace_type != "GLOBAL":
-                existing_admin.workspace_type = "GLOBAL"
-                await session.commit()
-
-            # Sembrar usuario de demostración con rol exclusivo VIEWER
-            viewer_email = "visualizador@elalto.gob.bo"
-            stmt_v = select(User).where(User.email == viewer_email).options(selectinload(User.roles))
-            existing_viewer = (await session.execute(stmt_v)).scalar_one_or_none()
-            if not existing_viewer:
-                stmt_role_v = select(Role).where(Role.name == UserRole.VIEWER.value)
-                role_res_v = await session.execute(stmt_role_v)
-                viewer_role = role_res_v.scalar_one_or_none()
-                viewer_user = User(
-                    email=viewer_email,
-                    full_name="Visualizador Ejecutivo GAMEA",
-                    password_hash=hash_password("ViewerGamea2026!"),
-                    is_active=True,
-                    workspace_type="GLOBAL",
-                    roles=[viewer_role] if viewer_role else [],
-                )
-                session.add(viewer_user)
-                await session.commit()
-                logger.info("viewer_seeded_successfully", email=viewer_email)
-            elif existing_viewer.workspace_type != "GLOBAL":
-                existing_viewer.workspace_type = "GLOBAL"
-                await session.commit()
-
-            # Limpieza de publicaciones sintéticas heredadas para garantizar datos reales (Principio V)
+        # Inicialización y validaciones de esquema en segundo plano
+        # para que Uvicorn arranque de inmediato (<0.1s) y responda al healthcheck sin bloqueos
+        async def _background_init():
             try:
-                check_stmt = text("SELECT id FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' LIMIT 1")
-                has_legacy = (await session.execute(check_stmt)).scalar_one_or_none()
-                if has_legacy:
-                    await session.execute(
-                        text("DELETE FROM interactions WHERE publication_id IN (SELECT id FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%')")
+                async with async_engine.begin() as conn:
+                    await conn.run_sync(Base.metadata.create_all)
+            except Exception as e_schema:
+                logger.error("schema_create_failed", error=str(e_schema))
+
+            # Migraciones idempotentes de esquema para tablas existentes en PostgreSQL / SQLite
+            try:
+                async with async_engine.begin() as conn:
+                    is_pg = "postgresql" in async_engine.dialect.name
+                    if is_pg:
+                        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_direction VARCHAR(200);"))
+                        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_unit VARCHAR(200);"))
+                        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS workspace_type VARCHAR(30) DEFAULT 'UNIT';"))
+                        await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE lower(email) IN ('admin@elalto.gob.bo', 'visualizador@elalto.gob.bo');"))
+                        await conn.execute(text("UPDATE users SET workspace_type = 'DIRECTION' WHERE workspace_type IS NULL AND assigned_direction IS NOT NULL AND assigned_unit IS NULL;"))
+                        await conn.execute(text("UPDATE users SET workspace_type = 'UNIT' WHERE assigned_unit IS NOT NULL;"))
+                        await conn.execute(text("UPDATE users SET workspace_type = 'AUTONOMOUS' WHERE lower(email) NOT IN ('admin@elalto.gob.bo', 'visualizador@elalto.gob.bo') AND (workspace_type IS NULL OR (assigned_direction IS NULL AND assigned_unit IS NULL));"))
+                        await conn.execute(text("UPDATE users SET workspace_type = 'GLOBAL' WHERE assigned_unit IS NULL AND assigned_direction IS NULL AND id IN (SELECT ur.user_id FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE r.name IN ('SUPER_ADMIN', 'VIEWER', 'MAE'));"))
+                        await conn.execute(text("UPDATE users SET workspace_type = 'UNIT' WHERE assigned_unit IS NOT NULL;"))
+                        await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS created_by_user_id UUID;"))
+                        await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS direction_name VARCHAR(200);"))
+                        await conn.execute(text("UPDATE employees SET direction_name = 'Dirección de Comunicación' WHERE lower(direction_name) IN ('dicom', 'dircom', 'comunicacion', 'comunicación');"))
+                        await conn.execute(text("UPDATE organizational_units SET name = 'Dirección de Comunicación' WHERE lower(name) IN ('dicom', 'dircom');"))
+                        await conn.execute(text("UPDATE organizational_units SET name = 'Despacho Alcalde' WHERE lower(name) = 'despacho alcaldesa';"))
+                        await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'Alcaldesa', 'Alcalde') WHERE name LIKE '%Alcaldesa%';"))
+                        await conn.execute(text("UPDATE organizational_units SET name = replace(name, 'alcaldesa', 'alcalde') WHERE name LIKE '%alcaldesa%';"))
+                        await conn.execute(text("UPDATE organizational_units SET parent_id = (SELECT id FROM organizational_units WHERE lower(name) = 'despacho alcalde' LIMIT 1) WHERE lower(name) = 'unidad de relaciones públicas y protocolo' AND (SELECT count(*) FROM organizational_units WHERE lower(name) = 'despacho alcalde') > 0;"))
+                        # Métricas agregadas de Meta en publications (create_all no agrega columnas a tablas existentes)
+                        await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_total INTEGER NOT NULL DEFAULT 0;"))
+                        await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_reactions_by_type JSON NOT NULL DEFAULT '{}';"))
+                        await conn.execute(text("ALTER TABLE publications ADD COLUMN IF NOT EXISTS meta_comments_total INTEGER NOT NULL DEFAULT 0;"))
+                        await conn.execute(text("ALTER TABLE interactions ALTER COLUMN external_author_name TYPE TEXT;"))
+                        await conn.execute(text("ALTER TABLE interactions ALTER COLUMN raw_payload_ref TYPE TEXT;"))
+                        await conn.execute(text("ALTER TABLE interactions ALTER COLUMN content_text TYPE TEXT;"))
+                        # Índices de aceleración para filtrado jerárquico por Secretaría / Dirección
+                        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_org_units_parent_id ON organizational_units(parent_id);"))
+                        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_org_units_name ON organizational_units(name);"))
+                        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_employees_org_unit_status ON employees(organizational_unit_id, status);"))
+                    else:
+                        for _sql_col in (
+                            "ALTER TABLE users ADD COLUMN assigned_direction VARCHAR(200)",
+                            "ALTER TABLE users ADD COLUMN assigned_unit VARCHAR(200)",
+                            "ALTER TABLE users ADD COLUMN workspace_type VARCHAR(30) DEFAULT 'UNIT'",
+                            "ALTER TABLE employees ADD COLUMN created_by_user_id UUID",
+                            "ALTER TABLE employees ADD COLUMN direction_name VARCHAR(200)",
+                            "ALTER TABLE publications ADD COLUMN meta_reactions_total INTEGER NOT NULL DEFAULT 0",
+                            "ALTER TABLE publications ADD COLUMN meta_reactions_by_type JSON NOT NULL DEFAULT '{}'",
+                            "ALTER TABLE publications ADD COLUMN meta_comments_total INTEGER NOT NULL DEFAULT 0",
+                            "ALTER TABLE publications ADD COLUMN meta_metrics_synced_at TIMESTAMP",
+                            "CREATE INDEX IF NOT EXISTS ix_org_units_parent_id ON organizational_units(parent_id)",
+                            "CREATE INDEX IF NOT EXISTS ix_org_units_name ON organizational_units(name)",
+                            "CREATE INDEX IF NOT EXISTS ix_employees_org_unit_status ON employees(organizational_unit_id, status)",
+                        ):
+                            with suppress(Exception):
+                                await conn.execute(text(_sql_col))
+            except Exception as e_mig:
+                logger.warning("schema_migration_step_warning", error=str(e_mig))
+
+            async with AsyncSessionLocal() as session:
+                await seed_roles_and_permissions(session)
+                await seed_social_platforms(session)
+
+                admin_email = "admin@elalto.gob.bo"
+                stmt = select(User).where(User.email == admin_email).options(selectinload(User.roles))
+                res = await session.execute(stmt)
+                existing_admin = res.scalar_one_or_none()
+                if not existing_admin:
+                    stmt_role = select(Role).where(Role.name == UserRole.SUPER_ADMIN.value)
+                    role_res = await session.execute(stmt_role)
+                    superadmin_role = role_res.scalar_one_or_none()
+                    admin_user = User(
+                        email=admin_email,
+                        full_name="Super Administrador GAMEA",
+                        password_hash=hash_password("AdminGamea2026!"),
+                        is_active=True,
+                        workspace_type="GLOBAL",
+                        roles=[superadmin_role] if superadmin_role else [],
                     )
-                    await session.execute(
-                        text("DELETE FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%'")
-                    )
+                    session.add(admin_user)
                     await session.commit()
-            except Exception as e_clean:
-                logger.warning("legacy_publications_cleanup_skipped", error=str(e_clean))
+                    logger.info("superadmin_seeded_successfully", email=admin_email)
+                elif existing_admin.workspace_type != "GLOBAL":
+                    existing_admin.workspace_type = "GLOBAL"
+                    await session.commit()
 
-            # Sincronización de conectores oficiales con variables de entorno reales
-            try:
-                from core.security.encryption import encrypt_field
-                from modules.monitoring.models import SocialConnectorConfig
-                stmt_cfg = select(SocialConnectorConfig)
-                existing_cfgs = list((await session.execute(stmt_cfg)).scalars().all())
-                for cfg in existing_cfgs:
-                    if cfg.platform_name == "FACEBOOK":
-                        if settings.FACEBOOK_PAGE_ID and cfg.target_account_id in ("100064567891234", ""):
-                            cfg.target_account_id = settings.FACEBOOK_PAGE_ID
-                        if settings.FACEBOOK_PAGE_ACCESS_TOKEN and ("mock" in (cfg.access_token_encrypted or "").lower() or not cfg.access_token_encrypted):
-                            cfg.access_token_encrypted = encrypt_field(settings.FACEBOOK_PAGE_ACCESS_TOKEN)
-                            cfg.last_status = "CONFIGURED"
-                            cfg.status_message = "Conector oficial Meta Graph API conectado con credenciales institucionales."
-                    elif cfg.platform_name == "TIKTOK":
-                        if settings.TIKTOK_CLIENT_KEY and cfg.target_account_id in ("@alcaldia_elalto", ""):
-                            cfg.target_account_id = settings.TIKTOK_CLIENT_KEY
-                        if settings.TIKTOK_ACCESS_TOKEN and ("mock" in (cfg.access_token_encrypted or "").lower() or not cfg.access_token_encrypted):
-                            cfg.access_token_encrypted = encrypt_field(settings.TIKTOK_ACCESS_TOKEN)
-                            cfg.last_status = "CONFIGURED"
-                            cfg.status_message = "Conector oficial TikTok conectado."
-                await session.commit()
-            except Exception as e_cfg:
-                logger.warning("connector_configs_sync_skipped", error=str(e_cfg))
+                # Sembrar usuario de demostración con rol exclusivo VIEWER
+                viewer_email = "visualizador@elalto.gob.bo"
+                stmt_v = select(User).where(User.email == viewer_email).options(selectinload(User.roles))
+                existing_viewer = (await session.execute(stmt_v)).scalar_one_or_none()
+                if not existing_viewer:
+                    stmt_role_v = select(Role).where(Role.name == UserRole.VIEWER.value)
+                    role_res_v = await session.execute(stmt_role_v)
+                    viewer_role = role_res_v.scalar_one_or_none()
+                    viewer_user = User(
+                        email=viewer_email,
+                        full_name="Visualizador Ejecutivo GAMEA",
+                        password_hash=hash_password("ViewerGamea2026!"),
+                        is_active=True,
+                        workspace_type="GLOBAL",
+                        roles=[viewer_role] if viewer_role else [],
+                    )
+                    session.add(viewer_user)
+                    await session.commit()
+                    logger.info("viewer_seeded_successfully", email=viewer_email)
+                elif existing_viewer.workspace_type != "GLOBAL":
+                    existing_viewer.workspace_type = "GLOBAL"
+                    await session.commit()
+
+                # Limpieza de publicaciones sintéticas heredadas para garantizar datos reales (Principio V)
+                try:
+                    check_stmt = text("SELECT id FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' LIMIT 1")
+                    has_legacy = (await session.execute(check_stmt)).scalar_one_or_none()
+                    if has_legacy:
+                        await session.execute(
+                            text("DELETE FROM interactions WHERE publication_id IN (SELECT id FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%')")
+                        )
+                        await session.execute(
+                            text("DELETE FROM publications WHERE external_post_id LIKE 'post_fb_gamea_%' OR external_post_id LIKE 'video_tt_gamea_%' OR external_post_id LIKE 'post_fb_elalto_%' OR external_post_id LIKE 'video_tt_elalto_%'")
+                        )
+                        await session.commit()
+                except Exception as e_clean:
+                    logger.warning("legacy_publications_cleanup_skipped", error=str(e_clean))
+
+                # Sincronización de conectores oficiales con variables de entorno reales
+                try:
+                    from core.security.encryption import encrypt_field
+                    from modules.monitoring.models import SocialConnectorConfig
+                    stmt_cfg = select(SocialConnectorConfig)
+                    existing_cfgs = list((await session.execute(stmt_cfg)).scalars().all())
+                    for cfg in existing_cfgs:
+                        if cfg.platform_name == "FACEBOOK":
+                            if settings.FACEBOOK_PAGE_ID and cfg.target_account_id in ("100064567891234", ""):
+                                cfg.target_account_id = settings.FACEBOOK_PAGE_ID
+                            if settings.FACEBOOK_PAGE_ACCESS_TOKEN and ("mock" in (cfg.access_token_encrypted or "").lower() or not cfg.access_token_encrypted):
+                                cfg.access_token_encrypted = encrypt_field(settings.FACEBOOK_PAGE_ACCESS_TOKEN)
+                                cfg.last_status = "CONFIGURED"
+                                cfg.status_message = "Conector oficial Meta Graph API conectado con credenciales institucionales."
+                        elif cfg.platform_name == "TIKTOK":
+                            if settings.TIKTOK_CLIENT_KEY and cfg.target_account_id in ("@alcaldia_elalto", ""):
+                                cfg.target_account_id = settings.TIKTOK_CLIENT_KEY
+                            if settings.TIKTOK_ACCESS_TOKEN and ("mock" in (cfg.access_token_encrypted or "").lower() or not cfg.access_token_encrypted):
+                                cfg.access_token_encrypted = encrypt_field(settings.TIKTOK_ACCESS_TOKEN)
+                                cfg.last_status = "CONFIGURED"
+                                cfg.status_message = "Conector oficial TikTok conectado."
+                    await session.commit()
+                except Exception as e_cfg:
+                    logger.warning("connector_configs_sync_skipped", error=str(e_cfg))
+
+        # Lanzar la inicialización en background para no bloquear el inicio inmediato del servidor HTTP
+        asyncio.create_task(_background_init())
     except Exception as e:
         logger.error("startup_seeding_failed", error=str(e), exc_info=True)
 
