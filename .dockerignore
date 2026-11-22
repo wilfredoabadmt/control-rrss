@@ -3,10 +3,8 @@
 .gitignore
 .github
 
-# Frontend y dependencias de desarrollo no requeridas en el backend container
+# Dependencias locales de frontend (dist y node_modules)
 frontend/node_modules
-frontend/src
-frontend/public
 frontend/dist
 
 # Entornos virtuales y dependencias locales
