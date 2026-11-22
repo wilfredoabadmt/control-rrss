@@ -143,7 +143,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
         platform_name: selectedPlatform !== 'ALL' ? selectedPlatform : undefined,
         publication_id: selectedPublication !== 'ALL' ? selectedPublication : undefined,
       };
-      const res = await analyticsApi.getOverview(filters, true);
+      const res = await analyticsApi.getOverview(filters, false);
       setOverview(res);
     } catch (err: any) {
       console.error('Error al cargar analítica de reacciones:', err);
@@ -169,7 +169,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
         page: currentPage,
         page_size: pageSize,
       };
-      const res = await analyticsApi.getEmployees(filters, true);
+      const res = await analyticsApi.getEmployees(filters, false);
       setEmployeesData(res);
     } catch (err: any) {
       console.error('Error al cargar tabla de funcionarios:', err);
@@ -219,10 +219,14 @@ export const AnalyticsDashboardPage: React.FC = () => {
     commentsPage,
   ]);
 
-  // Ejecución paralela combinada para evitar cascadas y acelerar la carga en red
+  // Cargas coordinadas e independientes para máxima velocidad de respuesta
   useEffect(() => {
-    Promise.all([fetchOverview(), fetchEmployees()]);
-  }, [fetchOverview, fetchEmployees]);
+    fetchOverview();
+  }, [fetchOverview]);
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [fetchEmployees]);
 
   useEffect(() => {
     if (activeTab === 'comments') {
@@ -305,7 +309,6 @@ export const AnalyticsDashboardPage: React.FC = () => {
 
   // Click en una barra de dirección en el gráfico
   const handleBarDirectionClick = (dirName: string | null) => {
-    clearAnalyticsCache();
     if (!dirName) {
       setSelectedDirection('ALL');
       return;
@@ -688,7 +691,6 @@ export const AnalyticsDashboardPage: React.FC = () => {
               className="analytics-select"
               value={selectedSecretaria}
               onChange={(e) => {
-                clearAnalyticsCache();
                 setSelectedSecretaria(e.target.value);
                 setSelectedDirection('ALL');
                 setSelectedUnit('ALL');
@@ -725,7 +727,6 @@ export const AnalyticsDashboardPage: React.FC = () => {
               className="analytics-select"
               value={selectedDirection}
               onChange={(e) => {
-                clearAnalyticsCache();
                 const dir = e.target.value;
                 setSelectedDirection(dir);
                 setSelectedUnit('ALL');
@@ -777,7 +778,6 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 cursor: selectedDirection === 'ALL' && selectedSecretaria === 'ALL' ? 'not-allowed' : 'pointer',
               }}
               onChange={(e) => {
-                clearAnalyticsCache();
                 setSelectedUnit(e.target.value);
                 setCurrentPage(1);
               }}
@@ -1124,7 +1124,6 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 rankingDimension={overview?.ranking_dimension || 'DIRECCION'}
                 rankingTitle={overview?.ranking_title}
                 onSelectUnit={(unit) => {
-                  clearAnalyticsCache();
                   setSelectedUnit(unit || 'ALL');
                   setCurrentPage(1);
                 }}
@@ -1328,8 +1327,8 @@ export const AnalyticsDashboardPage: React.FC = () => {
                     <th style={{ textAlign: 'center' }}>Estado Integral</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {loadingEmployees ? (
+                <tbody style={{ opacity: loadingEmployees ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
+                  {loadingEmployees && (!employeesData || employeesData.items.length === 0) ? (
                     <tr>
                       <td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                         <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto' }} />

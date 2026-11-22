@@ -1775,15 +1775,16 @@ class MonitoringHubService:
         Cada persona de la lista vs Cada publicación evaluada -> Reacción, Comentario, Estado Epistémico.
         """
         if days and days > 0:
-            date_to = datetime.now(UTC)
-            date_from = date_to - timedelta(days=days)
+            now_hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+            date_to = now_hour + timedelta(hours=1)
+            date_from = now_hour - timedelta(days=days)
 
         # Comprobación de caché en memoria de alta velocidad
         user_scope = str(current_user.id) if (current_user and hasattr(current_user, "id")) else "public"
+        date_key = f"days_{days}" if (days and days > 0) else f"{date_from.strftime('%Y-%m-%d %H') if date_from else ''}|{date_to.strftime('%Y-%m-%d %H') if date_to else ''}"
         cache_key = (
             f"{str(publication_id)}|{str(platform_name)}|{str(department)}|{str(search)}|"
-            f"{str(participation_status)}|{user_scope}|{max_posts}|{days}|"
-            f"{date_from.isoformat() if date_from else ''}|{date_to.isoformat() if date_to else ''}"
+            f"{str(participation_status)}|{user_scope}|{max_posts}|{date_key}"
         )
         now_ts = time.time()
         if cache_key in _activity_matrix_cache:
@@ -1908,11 +1909,12 @@ class MonitoringHubService:
             )
         interactions = list((await db.execute(stmt_ints)).scalars().all())
 
-        # Auto-verificación y cruce canónico de interacciones sin verificar con MatchContext en memoria (sin N+1 queries)
-        match_ctx = await InteractionMatcher.build_match_context(db)
-        matrix_new_vers = []
-        for it in interactions:
-            if not it.verifications:
+        # Auto-verificación y cruce canónico de interacciones sin verificar solo si existen pendientes
+        unverified_ints = [it for it in interactions if not it.verifications]
+        if unverified_ints:
+            match_ctx = await InteractionMatcher.build_match_context(db)
+            matrix_new_vers = []
+            for it in unverified_ints:
                 match_res = await InteractionMatcher.match_interaction(db, it, context=match_ctx)
                 if match_res.status == MatchStatus.MATCHED and match_res.employee:
                     it.data_origin_type = DataOriginType.EMPLOYEE_INTERACTION_OFFICIAL.value
@@ -1926,12 +1928,12 @@ class MonitoringHubService:
                     )
                     it.verifications.append(ver)
                     matrix_new_vers.append(ver)
-        if matrix_new_vers:
-            db.add_all(matrix_new_vers)
-            try:
-                await db.flush()
-            except Exception:
-                pass
+            if matrix_new_vers:
+                db.add_all(matrix_new_vers)
+                try:
+                    await db.flush()
+                except Exception:
+                    pass
 
         # Mapear interacciones por publicación y criterios múltiples de coincidencia
         ints_by_pub_and_emp_id: dict[tuple[uuid.UUID, str], list[Interaction]] = {}

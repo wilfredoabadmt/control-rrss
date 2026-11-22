@@ -5,6 +5,7 @@ Soporta filtrado jerárquico tridimensional: Secretaría -> Dirección -> Unidad
 """
 
 import io
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -510,11 +511,33 @@ def resolve_org_hierarchy(direction_name: str | None, unit_name: str | None) -> 
     return resolved_sec, resolved_dir, u_clean or "Sin Unidad Asignada"
 
 
+_hierarchy_cache: tuple[float, dict[str, tuple[str, str, str]]] | None = None
+_HIERARCHY_CACHE_TTL = 120.0
+
+_overview_cache: dict[str, tuple[float, AnalyticsOverviewResponse]] = {}
+_OVERVIEW_CACHE_TTL = 60.0
+
+_employees_table_cache: dict[str, tuple[float, AnalyticsEmployeesPageResponse]] = {}
+_EMPLOYEES_TABLE_CACHE_TTL = 60.0
+
+
+def clear_analytics_service_cache() -> None:
+    global _hierarchy_cache
+    _hierarchy_cache = None
+    _overview_cache.clear()
+    _employees_table_cache.clear()
+
+
 async def get_emp_hierarchy_map_fast(db: AsyncSession) -> dict[str, tuple[str, str, str]]:
     """
     Construye eficientemente el mapeo de jerarquía de empleados (secretaría, dirección, unidad)
-    usando consultas de proyección ultralivianas, evitando el overhead de selectinload ORM.
+    usando consultas de proyección ultralivianas con caché en memoria (120s).
     """
+    global _hierarchy_cache
+    now = time.time()
+    if _hierarchy_cache and (now - _hierarchy_cache[0] < _HIERARCHY_CACHE_TTL):
+        return _hierarchy_cache[1]
+
     stmt_units = select(OrganizationalUnit.id, OrganizationalUnit.name, OrganizationalUnit.parent_id)
     units_rows = (await db.execute(stmt_units)).all()
     unit_dict = {u.id: (u.name, u.parent_id) for u in units_rows}
@@ -533,6 +556,8 @@ async def get_emp_hierarchy_map_fast(db: AsyncSession) -> dict[str, tuple[str, s
         # Priorizar dirección explícita del empleado, o la del padre de la unidad, o la unidad misma
         dir_name = d_name or parent_name or u_name
         emp_db_map[eid] = resolve_org_hierarchy(dir_name, u_name)
+
+    _hierarchy_cache = (now, emp_db_map)
     return emp_db_map
 
 
@@ -555,9 +580,24 @@ class AnalyticsService:
         """
         Calcula y expone el resumen estadístico multidimensional con rigor epistémico y filtrado jerárquico.
         """
+        is_custom_dates = bool((date_from or date_to) and not (days and days > 0))
+        user_scope = str(current_user.id) if (current_user and hasattr(current_user, "id")) else "public"
+        cache_key = (
+            f"{days or 0}|{secretaria or 'ALL'}|{direction or 'ALL'}|{unit or 'ALL'}|"
+            f"{platform_name or 'ALL'}|{str(publication_id or 'ALL')}|{user_scope}"
+        )
+        now_ts = time.time()
+        if not is_custom_dates and cache_key in _overview_cache:
+            c_time, c_data = _overview_cache[cache_key]
+            if now_ts - c_time < _OVERVIEW_CACHE_TTL:
+                return c_data
+            else:
+                _overview_cache.pop(cache_key, None)
+
         if days and days > 0:
-            date_to = datetime.now(UTC)
-            date_from = date_to - timedelta(days=days)
+            now_hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+            date_to = now_hour + timedelta(hours=1)
+            date_from = now_hour - timedelta(days=days)
 
         # 1. Obtener matriz de actividad
         matrix = await MonitoringHubService.get_activity_matrix(
@@ -907,7 +947,7 @@ class AnalyticsService:
         available_directions = sorted(list(all_directions_set)) if all_directions_set else (sorted(list(dir_stats.keys())) if dir_stats else [])
         available_units = sorted(list({unit_res for _, _, _, unit_res in filtered_rows if unit_res}))
 
-        return AnalyticsOverviewResponse(
+        response = AnalyticsOverviewResponse(
             kpis=kpis,
             reactions_breakdown=reactions_breakdown,
             direction_rankings=direction_rankings,
@@ -919,6 +959,11 @@ class AnalyticsService:
             ranking_dimension=ranking_dimension,
             ranking_title=ranking_title,
         )
+        if not is_custom_dates:
+            if len(_overview_cache) > 200:
+                _overview_cache.clear()
+            _overview_cache[cache_key] = (now_ts, response)
+        return response
 
     @classmethod
     async def get_employees_table(
@@ -941,9 +986,25 @@ class AnalyticsService:
         """
         Retorna la tabla paginada y detallada de funcionarios con filtrado jerárquico tridimensional.
         """
+        is_custom_dates = bool((date_from or date_to) and not (days and days > 0))
+        user_scope = str(current_user.id) if (current_user and hasattr(current_user, "id")) else "public"
+        cache_key = (
+            f"{days or 0}|{secretaria or 'ALL'}|{direction or 'ALL'}|{unit or 'ALL'}|"
+            f"{platform_name or 'ALL'}|{str(publication_id or 'ALL')}|{search or ''}|"
+            f"{participation_status or 'ALL'}|{page}|{page_size}|{user_scope}"
+        )
+        now_ts = time.time()
+        if not is_custom_dates and cache_key in _employees_table_cache:
+            c_time, c_data = _employees_table_cache[cache_key]
+            if now_ts - c_time < _EMPLOYEES_TABLE_CACHE_TTL:
+                return c_data
+            else:
+                _employees_table_cache.pop(cache_key, None)
+
         if days and days > 0:
-            date_to = datetime.now(UTC)
-            date_from = date_to - timedelta(days=days)
+            now_hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+            date_to = now_hour + timedelta(hours=1)
+            date_from = now_hour - timedelta(days=days)
 
         matrix = await MonitoringHubService.get_activity_matrix(
             db=db,
@@ -1149,13 +1210,18 @@ class AnalyticsService:
         paginated_items = items[start_idx:end_idx]
         total_pages = max(1, (total_records + page_size - 1) // page_size)
 
-        return AnalyticsEmployeesPageResponse(
+        response = AnalyticsEmployeesPageResponse(
             items=paginated_items,
             total=total_records,
             page=page,
             page_size=page_size,
             total_pages=total_pages,
         )
+        if not is_custom_dates:
+            if len(_employees_table_cache) > 500:
+                _employees_table_cache.clear()
+            _employees_table_cache[cache_key] = (now_ts, response)
+        return response
 
     @classmethod
     async def export_excel(
@@ -1898,6 +1964,8 @@ class AnalyticsService:
         res_v = await db.execute(delete(Verification))
         res_i = await db.execute(delete(Interaction))
         await db.commit()
+
+        clear_analytics_service_cache()
 
         v_count = getattr(res_v, "rowcount", 0)
         i_count = getattr(res_i, "rowcount", 0)
